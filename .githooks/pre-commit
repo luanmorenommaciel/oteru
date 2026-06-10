@@ -1,0 +1,3 @@
+#!/bin/sh
+# Guarda de PII — bloqueia commits com capturas não-redigidas.
+exec python "$(git rev-parse --show-toplevel)/scripts/check_pii.py"
