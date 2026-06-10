@@ -1,8 +1,9 @@
-"""Transporte OTLP via gRPC (porta 4317).
+"""OTLP transport over gRPC (port 4317).
 
-Reusa a MESMA mensagem proto do transporte HTTP — só muda o canal. Exige que o
-collector tenha um receiver gRPC habilitado (`receivers.otlp.protocols.grpc`) —
-presente no config do diretório irmão, `oteru-collector/oteru-collector-config.yml`.
+Reuses the SAME proto message as the HTTP transport — only the channel
+changes. Requires the collector to have a gRPC receiver enabled
+(`receivers.otlp.protocols.grpc`) — present in the sibling directory's
+config, `oteru-collector/oteru-collector-config.yml`.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ class GrpcTransport:
 
             stub = trace_service_pb2_grpc.TraceServiceStub(self.channel)
         else:
-            raise ValueError(f"sinal desconhecido: {signal!r}")
+            raise ValueError(f"unknown signal: {signal!r}")
         self._stubs[signal] = stub
         return stub
 

@@ -1,4 +1,4 @@
-"""Testes de ``oteru_emitter.rewrite.restamp`` (tempo + rotação de IDs)."""
+"""Tests for ``oteru_emitter.rewrite.restamp`` (time shift + ID rotation)."""
 
 from __future__ import annotations
 
@@ -21,14 +21,14 @@ def _dump(batches) -> list[str]:
     return [json.dumps(b.payload, sort_keys=True) for b in batches]
 
 
-def _coletar(batches, attr_values, key) -> set[str]:
-    valores: set[str] = set()
+def _collect(batches, attr_values, key) -> set[str]:
+    values: set[str] = set()
     for b in batches:
-        valores.update(attr_values(b.payload, key))
-    return valores
+        values.update(attr_values(b.payload, key))
+    return values
 
 
-def test_mesma_seed_e_now_ns_reproduz_byte_a_byte(tiny_path):
+def test_same_seed_and_now_ns_is_byte_reproducible(tiny_path):
     a = load_batches(str(tiny_path))
     b = load_batches(str(tiny_path))
     restamp(a, rotate_keys=ROTATE, seed=42, now_ns=NOW_NS)
@@ -36,61 +36,61 @@ def test_mesma_seed_e_now_ns_reproduz_byte_a_byte(tiny_path):
     assert _dump(a) == _dump(b)
 
 
-def test_rotacao_consistente_mesmo_valor_antigo(tiny_batches, attr_values):
+def test_rotation_is_consistent_for_same_old_value(tiny_batches, attr_values):
     restamp(tiny_batches, rotate_keys=ROTATE, seed=1, now_ns=NOW_NS)
-    novos = _coletar(tiny_batches, attr_values, "session.id")
-    # o mesmo session.id antigo aparece nas 3 batches -> 1 único valor novo
-    assert len(novos) == 1
-    assert SESSION_OLD not in novos
+    new_values = _collect(tiny_batches, attr_values, "session.id")
+    # the same old session.id appears in all 3 batches -> a single new value
+    assert len(new_values) == 1
+    assert SESSION_OLD not in new_values
 
 
-def test_ids_distintos_continuam_distintos(tiny_batches, attr_values):
+def test_distinct_ids_stay_distinct(tiny_batches, attr_values):
     restamp(tiny_batches, rotate_keys=ROTATE, seed=1, now_ns=NOW_NS)
-    prompts = _coletar(tiny_batches, attr_values, "prompt.id")
+    prompts = _collect(tiny_batches, attr_values, "prompt.id")
     assert len(prompts) == 2
     assert not prompts & {PROMPT_OLD_1, PROMPT_OLD_2}
 
 
-def test_identidade_do_principal_nunca_rotacionada(tiny_batches, attr_values):
+def test_principal_identity_never_rotated(tiny_batches, attr_values):
     restamp(tiny_batches, rotate_keys=ROTATE, seed=1, now_ns=NOW_NS)
-    assert _coletar(tiny_batches, attr_values, "user.email") == {"user@example.com"}
-    assert _coletar(tiny_batches, attr_values, "user.id") == {"0" * 64}
-    assert _coletar(tiny_batches, attr_values, "organization.id") == {
+    assert _collect(tiny_batches, attr_values, "user.email") == {"user@example.com"}
+    assert _collect(tiny_batches, attr_values, "user.id") == {"0" * 64}
+    assert _collect(tiny_batches, attr_values, "organization.id") == {
         "11111111-1111-1111-1111-111111111111"
     }
 
 
-def test_sem_shift_sem_rotacao_e_identidade(tiny_path):
-    originais = _dump(load_batches(str(tiny_path)))
+def test_no_shift_no_rotation_is_identity(tiny_path):
+    originals = _dump(load_batches(str(tiny_path)))
     batches = load_batches(str(tiny_path))
     offset = restamp(batches, shift_time=False, rotate_keys=())
     assert offset == 0
-    assert _dump(batches) == originais
+    assert _dump(batches) == originals
 
 
-def test_req_mantem_o_formato(tiny_batches, attr_values):
+def test_req_ids_keep_their_format(tiny_batches, attr_values):
     restamp(tiny_batches, rotate_keys=ROTATE, seed=1, now_ns=NOW_NS)
-    novos = _coletar(tiny_batches, attr_values, "request_id")
-    assert len(novos) == 2
-    assert not novos & {REQ_OLD_1, REQ_OLD_2}
-    for novo in novos:
-        assert novo.startswith("req_")
-        assert len(novo) == len(REQ_OLD_1)
+    new_values = _collect(tiny_batches, attr_values, "request_id")
+    assert len(new_values) == 2
+    assert not new_values & {REQ_OLD_1, REQ_OLD_2}
+    for value in new_values:
+        assert value.startswith("req_")
+        assert len(value) == len(REQ_OLD_1)
 
 
-def test_offset_e_now_menos_o_menor_anchor(tiny_batches):
-    menor_anchor = min(b.anchor_ns for b in tiny_batches if b.anchor_ns is not None)
+def test_offset_is_now_minus_smallest_anchor(tiny_batches):
+    smallest_anchor = min(b.anchor_ns for b in tiny_batches if b.anchor_ns is not None)
     offset = restamp(tiny_batches, now_ns=NOW_NS)
-    assert offset == NOW_NS - menor_anchor
+    assert offset == NOW_NS - smallest_anchor
 
 
-def test_duracao_da_metrica_preservada(tiny_path):
-    def duracao(batches) -> int:
+def test_metric_duration_preserved(tiny_path):
+    def duration(batches) -> int:
         sum_ = batches[2].payload["resourceMetrics"][0]["scopeMetrics"][0]["metrics"][0]["sum"]
-        ponto = sum_["dataPoints"][0]
-        return int(ponto["timeUnixNano"]) - int(ponto["startTimeUnixNano"])
+        point = sum_["dataPoints"][0]
+        return int(point["timeUnixNano"]) - int(point["startTimeUnixNano"])
 
     batches = load_batches(str(tiny_path))
-    antes = duracao(batches)
+    before = duration(batches)
     restamp(batches, now_ns=NOW_NS)
-    assert duracao(batches) == antes
+    assert duration(batches) == before

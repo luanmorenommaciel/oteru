@@ -1,4 +1,4 @@
-"""Testes de integração com o sample real commitado (523 batches, PII redigida)."""
+"""Integration tests against the committed real sample (523 batches, PII redacted)."""
 
 from __future__ import annotations
 
@@ -13,14 +13,14 @@ ROTATE = ("session.id", "prompt.id", "request_id")
 NOW_NS = 2_000_000_000_000_000_000
 
 
-def test_contagem_do_sample(sample_path):
+def test_sample_counts(sample_path):
     batches = load_batches(str(sample_path))
     assert len(batches) == 523
     assert sum(1 for b in batches if b.signal == "logs") == 348
     assert sum(1 for b in batches if b.signal == "metrics") == 175
 
 
-def test_restamp_seedado_deterministico(sample_path):
+def test_seeded_restamp_is_deterministic(sample_path):
     a = load_batches(str(sample_path))
     b = load_batches(str(sample_path))
     restamp(a, rotate_keys=ROTATE, seed=42, now_ns=NOW_NS)
@@ -30,22 +30,22 @@ def test_restamp_seedado_deterministico(sample_path):
     ]
 
 
-def test_rotacao_de_sessoes_e_bijetiva(sample_path, attr_values):
+def test_session_rotation_is_bijective(sample_path, attr_values):
     batches = load_batches(str(sample_path))
-    antigos: set[str] = set()
+    old_values: set[str] = set()
     for b in batches:
-        antigos.update(attr_values(b.payload, "session.id"))
-    assert len(antigos) == 21
+        old_values.update(attr_values(b.payload, "session.id"))
+    assert len(old_values) == 21
 
     restamp(batches, rotate_keys=ROTATE, seed=7, now_ns=NOW_NS)
-    novos: set[str] = set()
+    new_values: set[str] = set()
     for b in batches:
-        novos.update(attr_values(b.payload, "session.id"))
-    assert len(novos) == 21  # bijeção: 21 distintos -> 21 distintos
-    assert not novos & antigos  # nenhum valor antigo sobrevive
+        new_values.update(attr_values(b.payload, "session.id"))
+    assert len(new_values) == 21  # bijection: 21 distinct -> 21 distinct
+    assert not new_values & old_values  # no old value survives
 
 
-def test_email_redigido_preservado_em_todo_lugar(sample_path, attr_values):
+def test_redacted_email_preserved_everywhere(sample_path, attr_values):
     batches = load_batches(str(sample_path))
     restamp(batches, rotate_keys=ROTATE, seed=7, now_ns=NOW_NS)
     total = 0
@@ -56,7 +56,7 @@ def test_email_redigido_preservado_em_todo_lugar(sample_path, attr_values):
     assert total > 0
 
 
-def test_todas_as_batches_convertem_a_protobuf(sample_path):
+def test_every_batch_converts_to_protobuf(sample_path):
     pytest.importorskip("opentelemetry.proto")
     from oteru_emitter.model.otlp import to_request
 

@@ -1,70 +1,71 @@
 # oteru-collector
 
-Sandbox do **OpenTelemetry Collector** (distribuição contrib) para a plataforma
-Oteru. Recebe telemetria OTLP, imprime no stdout (`debug`) e persiste em disco
-(`file`). É o lado **receptor** — o par dele é o
-[`oteru-emitter`](../oteru-emitter), que forja o tráfego.
+**OpenTelemetry Collector** sandbox (contrib distribution) for the Oteru
+platform. Receives OTLP telemetry, prints it to stdout (`debug`) and persists
+it to disk (`file`). It is the **receiving** end — its pair is the
+[`oteru-emitter`](../oteru-emitter), which forges the traffic.
 
 ```
-emitter / Claude Code / POD-1   ──OTLP──►   este collector   ──►  debug (stdout)
-        (gRPC :4317 | HTTP :4318)                              └─►  file  (telemetry/)
+emitter / Claude Code / POD-1   ──OTLP──►   this collector   ──►  debug (stdout)
+        (gRPC :4317 | HTTP :4318)                            └─►  file  (telemetry/)
 ```
 
-## Pré-requisitos
+## Prerequisites
 
-- **Docker** rodando.
+- **Docker** running.
 
-## Comandos
+## Commands
 
 ```bash
-docker compose up                    # sobe em foreground (telemetria imprime aqui)
-docker compose up -d                 # em background
-docker compose logs -f oteru-collector  # acompanha a saída
-docker compose down                  # para
+docker compose up                       # foreground (telemetry prints here)
+docker compose up -d                    # background
+docker compose logs -f oteru-collector  # follow the output
+docker compose down                     # stop
 ```
 
-Da raiz do monorepo, `make up` / `make down` / `make demo` (sobe + envia 5
-batches do emitter + mostra os logs) fazem o mesmo via Makefile.
+From the monorepo root, `make up` / `make down` / `make demo` (start + send 5
+emitter batches + show the logs) do the same via the Makefile.
 
-Após editar `oteru-collector-config.yml`, recrie para remontar a config:
+After editing `oteru-collector-config.yml`, recreate to remount the config:
 
 ```bash
 docker compose up -d --force-recreate
 ```
 
-## Portas (ingress OTLP)
+## Ports (OTLP ingress)
 
-| Porta | Protocolo | Uso |
+| Port | Protocol | Use |
 |---|---|---|
-| `4317` | OTLP/gRPC | emitter `--transport grpc`, POD-1 de produção |
-| `4318` | OTLP/HTTP (`http/protobuf` e `http/json`) | Claude Code CLI, emitter `--transport http` |
+| `4317` | OTLP/gRPC | emitter `--transport grpc`, production POD-1 |
+| `4318` | OTLP/HTTP (`http/protobuf` and `http/json`) | Claude Code CLI, emitter `--transport http` |
 
-Ambos os receivers alimentam as mesmas pipelines (`traces`, `logs`, `metrics`).
+Both receivers feed the same pipelines (`traces`, `logs`, `metrics`).
 
 ## Exporters
 
-Os três sinais fazem fan-out para **dois** exporters (ver
+All three signals fan out to **two** exporters (see
 `oteru-collector-config.yml`):
 
-- **`debug`** (`verbosity: detailed`) — imprime telemetria legível no stdout.
-- **`file`** (`/telemetry/telemetry.json`, com rotação) — grava OTLP/JSON
-  estruturado, **uma batch por linha**. É o formato consumível por `jq`/Python e
-  o que o `oteru-emitter` reproduz no replay.
+- **`debug`** (`verbosity: detailed`) — prints human-readable telemetry to
+  stdout.
+- **`file`** (`/telemetry/telemetry.json`, with rotation) — writes structured
+  OTLP/JSON, **one batch per line**. This is the format consumable by
+  `jq`/Python and what `oteru-emitter` replays.
 
-`telemetry/` é bind-mountado para o host (`docker-compose.yml`); o conteúdo
-`*.json` é gitignored (dados não são versionados).
+`telemetry/` is bind-mounted to the host (`docker-compose.yml`); the `*.json`
+content is gitignored (data is not versioned).
 
-## Capturar telemetria
+## Capturing telemetry
 
-A pasta `telemetry/` já recebe a saída do `file` exporter automaticamente.
-Para acompanhar:
+The `telemetry/` folder automatically receives the `file` exporter output.
+To follow it:
 
 ```bash
 tail -f telemetry/telemetry.json                       # Git Bash
 Get-Content telemetry\telemetry.json -Wait -Tail 20    # PowerShell
 ```
 
-Teste manual de sanidade do pipeline (HTTP):
+Manual pipeline sanity test (HTTP):
 
 ```bash
 curl.exe -v -X POST http://localhost:4318/v1/logs \
@@ -72,11 +73,12 @@ curl.exe -v -X POST http://localhost:4318/v1/logs \
   -d '{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"body":{"stringValue":"manual test"}}]}]}]}'
 ```
 
-`200 OK` + um `LogRecord` com `Body: Str(manual test)` no log = pipeline saudável.
+`200 OK` + a `LogRecord` with `Body: Str(manual test)` in the log = healthy
+pipeline.
 
-## Emitir do Claude Code CLI (hello world, namespace `claude_code.*`)
+## Emitting from the Claude Code CLI (hello world, `claude_code.*` namespace)
 
-Em outro terminal, aponte o Claude Code para este collector (HTTP):
+In another terminal, point Claude Code at this collector (HTTP):
 
 ```bash
 export CLAUDE_CODE_ENABLE_TELEMETRY=1
@@ -89,5 +91,5 @@ export OTEL_LOGS_EXPORT_INTERVAL=2000
 claude
 ```
 
-Claude Code emite **logs + métricas** (`claude_code.*`), sem traces. Para gerar
-tráfego sem uma sessão real, use o [`oteru-emitter`](../oteru-emitter).
+Claude Code emits **logs + metrics** (`claude_code.*`), no traces. To generate
+traffic without a real session, use the [`oteru-emitter`](../oteru-emitter).

@@ -1,7 +1,7 @@
-"""Oteru OTel emitter — forja tráfego de telemetria OTLP fiel ao Claude Code.
+"""Oteru OTel emitter — forges OTLP telemetry traffic faithful to Claude Code.
 
-Fase 1: replay byte-fiel de capturas OTLP/JSON, dual-transport
-(http/protobuf + gRPC), em tempo real, com restamp de timestamps e IDs.
+Phase 1: byte-faithful replay of OTLP/JSON captures, dual-transport
+(http/protobuf + gRPC), realtime pacing, with timestamp and ID restamping.
 """
 
 __version__ = "0.1.0"

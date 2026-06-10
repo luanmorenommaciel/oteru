@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "oteru-emitter"
 dynamic = ["version"]
-description = "Forja tráfego de telemetria OTLP fiel ao Claude Code (replay + futuro gerador sintético)."
+description = "Forges OTLP telemetry traffic faithful to Claude Code (replay + future synthetic generator)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

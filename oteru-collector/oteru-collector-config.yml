@@ -9,8 +9,8 @@ receivers:
 exporters:
   debug:
     verbosity: detailed
-  # Grava cada payload recebido como JSON (uma linha por batch) em /telemetry,
-  # que está montado em ./telemetry no host. rotation evita arquivo gigante.
+  # Writes every received payload as JSON (one line per batch) to /telemetry,
+  # which is bind-mounted to ./telemetry on the host. rotation avoids a huge file.
   file:
     path: /telemetry/telemetry.json
     rotation:

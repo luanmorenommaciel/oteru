@@ -1,9 +1,9 @@
-# Oteru — alvos de desenvolvimento do monorepo.
+# Oteru — development targets for the monorepo.
 #
-# Requer GNU make + bash. No Windows, use o Git Bash (o make do Git for
-# Windows / MSYS2 / Chocolatey); PowerShell puro não funciona.
+# Requires GNU make + bash. On Windows, use Git Bash (the make from Git for
+# Windows / MSYS2 / Chocolatey); plain PowerShell will not work.
 #
-# `make` (sem argumentos) lista os alvos.
+# `make` (no arguments) lists the targets.
 
 SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -25,45 +25,45 @@ VENV_PY := .venv/$(BINDIR)/python
 
 .PHONY: help setup test lint format dry-run pii-guard up down demo clean
 
-help: ## lista os alvos disponíveis
+help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
-setup: ## cria o venv, instala o emitter (editable + dev) e ativa o hook de PII
+setup: ## create the venv, install the emitter (editable + dev) and enable the PII hook
 	python -m venv $(VENV)
 	$(VENV)/$(BINDIR)/python -m pip install --upgrade pip
 	$(VENV)/$(BINDIR)/python -m pip install -e "./$(EMITTER)[dev]"
 	git config core.hooksPath .githooks
-	@echo "setup OK — hook de pre-commit (PII guard) ativado."
+	@echo "setup OK — pre-commit hook (PII guard) enabled."
 
-test: ## roda a suíte pytest do emitter
+test: ## run the emitter's pytest suite
 	cd $(EMITTER) && $(VENV_PY) -m pytest
 
-lint: ## ruff check + verificação de formatação
+lint: ## ruff check + formatting check
 	cd $(EMITTER) && $(VENV_PY) -m ruff check oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff format --check oteru_emitter tests
 
-format: ## aplica ruff format + fixes automáticos
+format: ## apply ruff format + autofixes
 	cd $(EMITTER) && $(VENV_PY) -m ruff check --fix oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff format oteru_emitter tests
 
-dry-run: ## valida o sample sem rede (smoke test)
+dry-run: ## validate the sample without network (smoke test)
 	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.cli replay $(SAMPLE) --dry-run
 
-pii-guard: ## escaneia capturas commitadas por PII (python do sistema)
+pii-guard: ## scan committed captures for PII (system python)
 	python scripts/check_pii.py
 
-up: ## sobe o collector (docker compose, detached)
+up: ## start the collector (docker compose, detached)
 	cd $(COLLECTOR) && docker compose up -d
 
-down: ## derruba o collector
+down: ## stop the collector
 	cd $(COLLECTOR) && docker compose down
 
-demo: up ## sobe o collector, envia 5 batches HTTP e mostra os logs
+demo: up ## start the collector, send 5 batches over HTTP and show the logs
 	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.cli replay $(SAMPLE) \
 		--transport http --limit 5 --max-gap 1
 	cd $(COLLECTOR) && docker compose logs --tail 50
 
-clean: ## remove caches de build/teste (preserva o .venv)
+clean: ## remove build/test caches (keeps the .venv)
 	find . -type d -name __pycache__ -not -path '*/.venv/*' -prune -exec rm -rf {} +
 	rm -rf $(EMITTER)/*.egg-info $(EMITTER)/.pytest_cache $(EMITTER)/.ruff_cache

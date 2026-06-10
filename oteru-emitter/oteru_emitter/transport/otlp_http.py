@@ -1,7 +1,7 @@
-"""Transporte OTLP via HTTP com corpo protobuf (http/protobuf).
+"""OTLP transport over HTTP with a protobuf body (http/protobuf).
 
-POST para /v1/logs, /v1/metrics, /v1/traces com Content-Type
-application/x-protobuf — exatamente o que o Claude Code faz com
+POSTs to /v1/logs, /v1/metrics, /v1/traces with Content-Type
+application/x-protobuf — exactly what Claude Code does with
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf.
 """
 

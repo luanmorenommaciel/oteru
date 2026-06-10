@@ -36,14 +36,14 @@ Without activating the venv: `.\.venv\Scripts\python.exe -m oteru_emitter.cli ..
 ## Architecture
 
 ```
-captura OTLP/JSON
-   │  sources/replay.py      carrega batches + ancora timestamps (anchor = min event time)
+OTLP/JSON capture
+   │  sources/replay.py      loads batches + anchors timestamps (anchor = min event time)
    ▼
-   │  rewrite/restamp.py     desloca tempo p/ "agora" + rotaciona IDs (preserva estrutura)
+   │  rewrite/restamp.py     shifts time to "now" + rotates IDs (preserves structure)
    ▼
-   │  model/otlp.py          dict -> mensagem protobuf OTLP (opentelemetry-proto), modelo neutro
+   │  model/otlp.py          dict -> OTLP protobuf message (opentelemetry-proto), neutral model
    ▼
-   │  scheduler/realtime.py  paceia pelos deltas reais (--speed, --max-gap)
+   │  scheduler/realtime.py  paces by the real deltas (--speed, --max-gap)
    ▼
    └► transport/             otlp_http.py (:4318, application/x-protobuf) | otlp_grpc.py (:4317)
 ```

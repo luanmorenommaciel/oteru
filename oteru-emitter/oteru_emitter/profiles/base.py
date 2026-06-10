@@ -1,4 +1,4 @@
-"""Definição de Profile e registro."""
+"""Profile definition and registry."""
 
 from __future__ import annotations
 
@@ -9,17 +9,17 @@ from dataclasses import dataclass
 class Profile:
     name: str
     description: str
-    # Atributos que são correlação por-run -> rotacionados a cada replay.
+    # Attributes that are per-run correlation -> rotated on every replay.
     rotate_id_keys: tuple[str, ...] = ()
-    # Atributos de identidade do principal -> SEMPRE preservados (doc/sanidade).
+    # Principal-identity attributes -> ALWAYS preserved (doc/sanity).
     preserve_id_keys: tuple[str, ...] = ()
-    # Scopes esperados na captura (validação leve / documentação).
+    # Scopes expected in the capture (light validation / documentation).
     expected_scopes: tuple[str, ...] = ()
 
 
 CLAUDE_CODE = Profile(
     name="claude_code",
-    description="Claude Code CLI — namespace claude_code.*, logs + métricas, sem traces.",
+    description="Claude Code CLI — claude_code.* namespace, logs + metrics, no traces.",
     rotate_id_keys=("session.id", "prompt.id", "request_id"),
     preserve_id_keys=(
         "user.id",
@@ -34,10 +34,10 @@ CLAUDE_CODE = Profile(
     ),
 )
 
-# Profile genérico: replay literal de qualquer captura OTLP, sem suposições.
+# Generic profile: literal replay of any OTLP capture, no assumptions.
 GENERIC = Profile(
     name="generic",
-    description="Replay agnóstico de qualquer captura OTLP/JSON.",
+    description="Agnostic replay of any OTLP/JSON capture.",
     rotate_id_keys=(),
     preserve_id_keys=(),
     expected_scopes=(),
@@ -54,7 +54,7 @@ def get_profile(name: str) -> Profile:
         return _REGISTRY[name]
     except KeyError:
         known = ", ".join(sorted(_REGISTRY))
-        raise ValueError(f"profile desconhecido: {name!r} (conhecidos: {known})") from None
+        raise ValueError(f"unknown profile: {name!r} (known: {known})") from None
 
 
 def list_profiles() -> list[str]:

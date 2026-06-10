@@ -1,4 +1,4 @@
-# Arquivos que quebram com CRLF — sempre LF no checkout, mesmo no Windows.
+# Files that break with CRLF — always LF on checkout, even on Windows.
 .githooks/*  text eol=lf
 Makefile     text eol=lf
 *.sh         text eol=lf

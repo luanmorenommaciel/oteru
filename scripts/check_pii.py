@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Guarda de PII: escaneia as capturas commitadas em busca de identidade real.
+"""PII guard: scans committed captures for real identity.
 
-O risco nº 1 documentado do repo é commitar uma captura OTLP não-redigida
-(elas carregam e-mail, IDs de conta/organização e caminhos do usuário).
-Este script é o único artefato de verificação — reusado pelo Makefile
-(``make pii-guard``), pelo hook de pre-commit e pelo CI.
+The repo's #1 documented risk is committing an un-redacted OTLP capture
+(they carry e-mail, account/organization IDs and user paths). This script
+is the single verification artifact — reused by the Makefile
+(``make pii-guard``), by the pre-commit hook and by CI.
 
-Somente stdlib; roda com o Python do sistema, antes de qualquer ``make setup``.
+Stdlib-only; runs with the system Python, before any ``make setup``.
 
-Regras (violação -> ``arquivo:linha`` + descrição, exit 1):
-1. E-mails fora dos domínios reservados ``example.com/org/net``.
-2. Caminhos de usuário: ``C:\\Users\\<nome>`` (incl. JSON-escaped),
-   ``/home/<nome>``, ``/Users/<nome>``.
-3. Key-aware: ``user.id``, ``user.account_uuid``, ``user.account_id`` e
-   ``organization.id`` precisam ter valor-placeholder (hex todo-zero, UUID de
-   dígito repetido, ``user_REDACTED...``). ``session.id``/``request_id`` reais
-   são permitidos: são correlação, não identidade.
-4. ``host.name`` com valor não-placeholder, se presente.
+Rules (violation -> ``file:line`` + description, exit 1):
+1. E-mails outside the reserved ``example.com/org/net`` domains.
+2. User paths: ``C:\\Users\\<name>`` (incl. JSON-escaped),
+   ``/home/<name>``, ``/Users/<name>``.
+3. Key-aware: ``user.id``, ``user.account_uuid``, ``user.account_id`` and
+   ``organization.id`` must hold placeholder values (all-zero hex,
+   repeated-digit UUID, ``user_REDACTED...``). Real ``session.id`` /
+   ``request_id`` values are allowed: they are correlation, not identity.
+4. ``host.name`` with a non-placeholder value, when present.
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Diretórios com capturas/fixtures commitadas — os únicos lugares onde uma
-# captura pode legitimamente viver no repo.
+# Directories holding committed captures/fixtures — the only places a
+# capture may legitimately live in the repo.
 SCAN_DIRS = (
     REPO_ROOT / "oteru-emitter" / "samples",
     REPO_ROOT / "oteru-emitter" / "tests" / "fixtures",
@@ -38,14 +38,14 @@ ALLOWED_EMAIL_DOMAINS = ("example.com", "example.org", "example.net")
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 
-# C:\Users\<nome> cru ou JSON-escaped (C:\\Users\\<nome>), e /home|/Users POSIX.
+# Raw or JSON-escaped C:\Users\<name> (C:\\Users\\<name>), plus POSIX /home|/Users.
 USER_PATH_RES = (
     re.compile(r"[A-Za-z]:[\\/]{1,4}Users[\\/]{1,4}[A-Za-z0-9._-]+"),
     re.compile(r"/home/[A-Za-z0-9._-]+"),
     re.compile(r"/Users/[A-Za-z0-9._-]+"),
 )
 
-# Chaves de identidade do principal: o valor PRECISA ser placeholder.
+# Principal-identity keys: the value MUST be a placeholder.
 IDENTITY_KEYS = ("user.id", "user.account_uuid", "user.account_id", "organization.id")
 
 ATTR_RE = re.compile(
@@ -53,8 +53,8 @@ ATTR_RE = re.compile(
 )
 
 PLACEHOLDER_RES = (
-    re.compile(r"^0+$"),  # hex/dígitos todo-zero
-    re.compile(r"^(\d)\1{7}-\1{4}-\1{4}-\1{4}-\1{12}$"),  # UUID de dígito repetido
+    re.compile(r"^0+$"),  # all-zero hex/digits
+    re.compile(r"^(\d)\1{7}-\1{4}-\1{4}-\1{4}-\1{12}$"),  # repeated-digit UUID
     re.compile(r"^user_REDACTED"),
     re.compile(r"REDACTED"),
 )
@@ -65,24 +65,24 @@ def _is_placeholder(value: str) -> bool:
 
 
 def _check_line(line: str) -> list[str]:
-    """Retorna as descrições de violação encontradas na linha."""
+    """Returns the violation descriptions found on the line."""
     violations: list[str] = []
 
     for match in EMAIL_RE.finditer(line):
         domain = match.group(1).lower()
         if not any(domain == d or domain.endswith("." + d) for d in ALLOWED_EMAIL_DOMAINS):
-            violations.append(f"e-mail fora de example.com/org/net: {match.group(0)!r}")
+            violations.append(f"e-mail outside example.com/org/net: {match.group(0)!r}")
 
     for rx in USER_PATH_RES:
         for match in rx.finditer(line):
-            violations.append(f"caminho de usuário: {match.group(0)!r}")
+            violations.append(f"user path: {match.group(0)!r}")
 
     for match in ATTR_RE.finditer(line):
         key, value = match.group("key"), match.group("value")
         if key in IDENTITY_KEYS and not _is_placeholder(value):
-            violations.append(f"identidade não-redigida em {key!r}: {value!r}")
+            violations.append(f"un-redacted identity in {key!r}: {value!r}")
         elif key == "host.name" and not _is_placeholder(value):
-            violations.append(f"host.name não-placeholder: {value!r}")
+            violations.append(f"non-placeholder host.name: {value!r}")
 
     return violations
 
@@ -94,7 +94,7 @@ def main() -> int:
             files.extend(sorted(p for p in scan_dir.rglob("*") if p.is_file()))
 
     if not files:
-        print("pii-guard: nenhum arquivo para escanear (diretórios vazios?).", file=sys.stderr)
+        print("pii-guard: no files to scan (empty directories?).", file=sys.stderr)
         return 1
 
     total = 0
@@ -103,7 +103,7 @@ def main() -> int:
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            print(f"{rel}: arquivo binário em diretório de capturas — verifique manualmente.")
+            print(f"{rel}: binary file in a captures directory — check it manually.")
             total += 1
             continue
         for lineno, line in enumerate(text.splitlines(), 1):
@@ -112,10 +112,10 @@ def main() -> int:
                 total += 1
 
     if total:
-        print(f"\npii-guard: {total} violação(ões) — NÃO commite capturas não-redigidas.")
+        print(f"\npii-guard: {total} violation(s) — do NOT commit un-redacted captures.")
         return 1
 
-    print(f"pii-guard: OK ({len(files)} arquivo(s) limpos).")
+    print(f"pii-guard: OK ({len(files)} clean file(s)).")
     return 0
 
 
