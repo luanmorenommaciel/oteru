@@ -9,7 +9,7 @@ por ``max_gap`` para não travar o replay por minutos.
 from __future__ import annotations
 
 import time
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
 from ..sources.replay import Batch
 

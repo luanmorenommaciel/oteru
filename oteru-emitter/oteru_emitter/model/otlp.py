@@ -16,7 +16,7 @@ if TYPE_CHECKING:  # somente para type-checkers; não importa em runtime
     from google.protobuf.message import Message
 
 
-def to_request(signal: str, payload: dict) -> "Message":
+def to_request(signal: str, payload: dict) -> Message:
     """Constrói o Export<Signal>ServiceRequest a partir do dict OTLP/JSON."""
     from google.protobuf.json_format import ParseDict
 
@@ -25,7 +25,7 @@ def to_request(signal: str, payload: dict) -> "Message":
             ExportLogsServiceRequest,
         )
 
-        message: "Message" = ExportLogsServiceRequest()
+        message: Message = ExportLogsServiceRequest()
     elif signal == "metrics":
         from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
             ExportMetricsServiceRequest,

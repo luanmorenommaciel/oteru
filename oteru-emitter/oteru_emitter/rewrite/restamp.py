@@ -20,7 +20,7 @@ import random
 import string
 import time
 import uuid
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
 from ..sources.replay import Batch
 
