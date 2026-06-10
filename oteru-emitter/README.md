@@ -117,11 +117,15 @@ oteru-emitter replay samples\telemetry-sample.json --transport http --seed 42
 
 # send to another collector
 oteru-emitter replay samples\telemetry-sample.json --transport grpc --endpoint other-host:4317
+
+# send to an authenticated backend (e.g. ClickStack/HyperDX ingest) — never hardcode the key
+oteru-emitter replay samples\telemetry-sample.json --transport http `
+  --endpoint http://localhost:4318 --header "authorization=$env:CLICKSTACK_API_KEY" --limit 5
 ```
 
-Main flags: `--transport http|grpc`, `--endpoint`, `--profile`,
-`--speed`, `--max-gap`, `--limit N`, `--seed`, `--no-restamp`, `--dry-run`.
-Full help: `oteru-emitter replay --help`.
+Main flags: `--transport http|grpc`, `--endpoint`, `--header NAME=VALUE`
+(repeatable), `--profile`, `--speed`, `--max-gap`, `--limit N`, `--seed`,
+`--no-restamp`, `--dry-run`. Full help: `oteru-emitter replay --help`.
 
 ## Development (tests and lint)
 

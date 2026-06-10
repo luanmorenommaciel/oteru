@@ -17,11 +17,17 @@ PATHS = {
 
 
 class HttpTransport:
-    def __init__(self, endpoint: str, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        timeout: float = 30.0,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.base = endpoint.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers["Content-Type"] = "application/x-protobuf"
+        self.session.headers.update(headers or {})
 
     def send(self, signal: str, request: object) -> int:
         url = self.base + PATHS[signal]

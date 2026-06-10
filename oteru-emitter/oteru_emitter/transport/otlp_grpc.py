@@ -12,9 +12,16 @@ import grpc
 
 
 class GrpcTransport:
-    def __init__(self, endpoint: str, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        timeout: float = 30.0,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.endpoint = endpoint
         self.timeout = timeout
+        # gRPC metadata keys must be lowercase
+        self.metadata = [(name.lower(), value) for name, value in (headers or {}).items()]
         self.channel = grpc.insecure_channel(endpoint)
         self._stubs: dict[str, object] = {}
 
@@ -42,7 +49,9 @@ class GrpcTransport:
 
     def send(self, signal: str, request: object) -> object:
         stub = self._stub(signal)
-        return stub.Export(request, timeout=self.timeout)  # type: ignore[attr-defined]
+        return stub.Export(  # type: ignore[attr-defined]
+            request, timeout=self.timeout, metadata=self.metadata or None
+        )
 
     def close(self) -> None:
         self.channel.close()

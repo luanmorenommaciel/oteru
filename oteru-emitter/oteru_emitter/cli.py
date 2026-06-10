@@ -53,16 +53,27 @@ def _summarize(batches: list[Batch]) -> str:
     return "\n".join(lines)
 
 
+def _header(value: str) -> tuple[str, str]:
+    """argparse type for --header: validates and splits NAME=VALUE."""
+    name, sep, val = value.partition("=")
+    if not sep or not name:
+        raise argparse.ArgumentTypeError(
+            f"invalid header {value!r}: expected NAME=VALUE, e.g. authorization=<api-key>"
+        )
+    return name, val
+
+
 def _build_transport(args):
+    headers = dict(args.header)
     if args.transport == "http":
         from .transport.otlp_http import HttpTransport
 
         endpoint = args.endpoint or DEFAULT_HTTP_ENDPOINT
-        return HttpTransport(endpoint, timeout=args.timeout), endpoint
+        return HttpTransport(endpoint, timeout=args.timeout, headers=headers), endpoint
     from .transport.otlp_grpc import GrpcTransport
 
     endpoint = args.endpoint or DEFAULT_GRPC_ENDPOINT
-    return GrpcTransport(endpoint, timeout=args.timeout), endpoint
+    return GrpcTransport(endpoint, timeout=args.timeout, headers=headers), endpoint
 
 
 def cmd_replay(args) -> int:
@@ -188,6 +199,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=5.0,
         help="cap (s) for idle gaps between batches. Default: 5",
+    )
+    r.add_argument(
+        "--header",
+        action="append",
+        type=_header,
+        default=[],
+        metavar="NAME=VALUE",
+        help="extra header sent to the collector (repeatable), "
+        "e.g. authorization=<api-key> for ClickStack/HyperDX",
     )
     r.add_argument("--limit", type=int, default=0, help="send only the first N batches")
     r.add_argument("--seed", type=int, default=None, help="seed for ID rotation (reproducible)")

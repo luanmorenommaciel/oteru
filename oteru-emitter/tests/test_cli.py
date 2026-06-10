@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from oteru_emitter.cli import main
 
 
@@ -32,6 +34,21 @@ def test_empty_capture_exit_1(tmp_path, capsys):
 def test_limit_truncates(tiny_path, capsys):
     assert main(["replay", str(tiny_path), "--dry-run", "--limit", "1"]) == 0
     assert "batches: 1" in capsys.readouterr().out
+
+
+def test_header_accepted_on_dry_run(tiny_path, capsys):
+    args = ["replay", str(tiny_path), "--dry-run", "--header", "authorization=test-key"]
+    assert main(args) == 0
+    assert "[dry-run]" in capsys.readouterr().out
+
+
+def test_malformed_header_friendly_error(tiny_path, capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["replay", str(tiny_path), "--dry-run", "--header", "no-equals-sign"])
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "NAME=VALUE" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_no_restamp_reports_off(tiny_path, capsys):
