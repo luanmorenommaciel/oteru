@@ -43,6 +43,11 @@ Watch the records arrive with `docker compose logs -f oteru-collector` (from
 `oteru-collector/`). `make down` stops the collector. Run `make` with no
 arguments to list every target.
 
+To also forward everything to a ClickStack (ClickHouse + HyperDX) backend, set
+`CLICKSTACK_ENDPOINT` + `CLICKSTACK_API_KEY` and use `make up-clickstack` —
+see [`oteru-collector/README.md`](oteru-collector/README.md). Credentials go
+in env vars or the gitignored `.env`, **never in the repo**.
+
 ## Development
 
 ```bash

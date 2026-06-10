@@ -1,0 +1,45 @@
+# Alternative config: everything the default config does, PLUS forwarding to
+# a ClickStack ingest collector (ClickHouse + HyperDX) via otlphttp.
+#
+# Used by `make up-clickstack`. Requires two env vars (never commit values):
+#   CLICKSTACK_ENDPOINT  e.g. http://host.docker.internal:4318
+#   CLICKSTACK_API_KEY   HyperDX ingestion API key
+#
+# NB: from inside this container, "localhost" on the host machine is
+# host.docker.internal — use it in CLICKSTACK_ENDPOINT for a local ClickStack.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+  # Writes every received payload as JSON (one line per batch) to /telemetry,
+  # which is bind-mounted to ./telemetry on the host. rotation avoids a huge file.
+  file:
+    path: /telemetry/telemetry.json
+    rotation:
+      max_megabytes: 10
+      max_backups: 5
+  # Forwards to the ClickStack ingest collector, authenticated by API key.
+  otlp_http/clickstack:
+    endpoint: ${env:CLICKSTACK_ENDPOINT}
+    headers:
+      authorization: ${env:CLICKSTACK_API_KEY}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug, file, otlp_http/clickstack]
+    logs:
+      receivers: [otlp]
+      exporters: [debug, file, otlp_http/clickstack]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug, file, otlp_http/clickstack]

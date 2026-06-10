@@ -32,6 +32,7 @@ make format     # ruff format + autofixes
 make dry-run    # validates the sample without network (523 batches)
 make pii-guard  # python scripts/check_pii.py (system python — works before setup)
 make up/down    # collector via docker compose
+make up-clickstack  # collector + forward to ClickStack (needs CLICKSTACK_ENDPOINT/API_KEY env)
 make demo       # up + 5 batches over HTTP + collector logs
 make clean      # removes build/test caches (keeps .venv)
 ```
@@ -45,6 +46,10 @@ CI (`.github/workflows/ci.yml`): lint + tests on ubuntu/windows × Python
 - **PII discipline.** `oteru-emitter/samples/telemetry-sample.json` is the only
   committed capture, with identity redacted. `oteru-collector/telemetry/*.json`
   is gitignored. Never commit un-redacted captures.
+- **Credentials discipline.** ClickStack endpoint/API key (and any future
+  secrets) live only in env vars or the gitignored `.env`
+  (`oteru-collector/.env.example` has the placeholders). The PII guard does
+  NOT scan for credentials — never commit them anywhere.
 - **PII guard is automated.** `scripts/check_pii.py` (stdlib-only) scans
   `oteru-emitter/samples/` and `oteru-emitter/tests/fixtures/` for real e-mails,
   user paths and non-placeholder identity attributes. It runs as the

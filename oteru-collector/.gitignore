@@ -1,9 +1,12 @@
-# Telemetry dumps gravados pelo file exporter do Collector
+# Telemetry dumps written by the Collector's file exporter
 /telemetry/*.json
 /telemetry/*.json.*
 
-# Logs de terminal redirecionados
+# Redirected terminal logs
 *.log
+
+# Secrets — never commit credentials
+.env
 
 # OS / IDE
 .DS_Store

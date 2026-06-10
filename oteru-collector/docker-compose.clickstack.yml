@@ -1,0 +1,12 @@
+# Compose override: swaps in the ClickStack-forwarding config and passes the
+# required env vars through. Use together with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.clickstack.yml up -d
+# (or simply `make up-clickstack` from the monorepo root).
+services:
+  oteru-collector:
+    volumes:
+      - ./oteru-collector-config.clickstack.yml:/etc/oteru-collector-config.yml
+      - ./telemetry:/telemetry
+    environment:
+      CLICKSTACK_ENDPOINT: ${CLICKSTACK_ENDPOINT}
+      CLICKSTACK_API_KEY: ${CLICKSTACK_API_KEY}

@@ -23,7 +23,7 @@ VENV_PY := .venv/$(BINDIR)/python
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard up down demo clean
+.PHONY: help setup test lint format dry-run pii-guard up up-clickstack down demo clean
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -55,6 +55,15 @@ pii-guard: ## scan committed captures for PII (system python)
 
 up: ## start the collector (docker compose, detached)
 	cd $(COLLECTOR) && docker compose up -d
+
+up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK_ENDPOINT + CLICKSTACK_API_KEY)
+	@cd $(COLLECTOR) && \
+	if [ ! -f .env ] && { [ -z "$${CLICKSTACK_ENDPOINT:-}" ] || [ -z "$${CLICKSTACK_API_KEY:-}" ]; }; then \
+		echo "error: set CLICKSTACK_ENDPOINT and CLICKSTACK_API_KEY (env vars or $(COLLECTOR)/.env —" \
+		     "see $(COLLECTOR)/.env.example). Never commit real values."; \
+		exit 1; \
+	fi && \
+	docker compose -f docker-compose.yml -f docker-compose.clickstack.yml up -d
 
 down: ## stop the collector
 	cd $(COLLECTOR) && docker compose down

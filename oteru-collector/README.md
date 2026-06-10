@@ -32,6 +32,31 @@ After editing `oteru-collector-config.yml`, recreate to remount the config:
 docker compose up -d --force-recreate
 ```
 
+## Forwarding to ClickStack (optional)
+
+The alternative config `oteru-collector-config.clickstack.yml` keeps `debug` +
+`file` and **adds** an `otlphttp/clickstack` exporter that forwards all three
+signals to a [ClickStack](https://clickhouse.com/use-cases/observability)
+(ClickHouse + HyperDX) ingest collector, authenticated by API key:
+
+```bash
+# from the monorepo root — needs both env vars (or oteru-collector/.env,
+# copied from .env.example; .env is gitignored)
+export CLICKSTACK_ENDPOINT=http://host.docker.internal:4318
+export CLICKSTACK_API_KEY=<hyperdx-ingestion-api-key>
+make up-clickstack
+```
+
+Notes:
+
+- From inside the container, "localhost" on the host machine is
+  `host.docker.internal` — use it in `CLICKSTACK_ENDPOINT` for a local
+  ClickStack.
+- **Never commit endpoint/key values** — they are credentials. Pass them via
+  environment or the gitignored `.env` only.
+- The plain `make up` / `docker compose up -d` flow is untouched; `make down`
+  stops either variant.
+
 ## Ports (OTLP ingress)
 
 | Port | Protocol | Use |
