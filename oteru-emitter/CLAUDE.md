@@ -17,7 +17,11 @@ It is a Python package (`oteru_emitter`) with a CLI entry point `oteru-emitter`.
 ```bash
 # install (once)
 python -m venv .venv && . .venv/Scripts/activate   # bash; PS: .\.venv\Scripts\Activate.ps1
-pip install -e .
+pip install -e ".[dev]"                            # dev extras: pytest + ruff
+
+# tests + lint (or, from the monorepo root: make test / make lint / make format)
+pytest
+ruff check . && ruff format --check .
 
 # validate without sending (no collector / network deps needed)
 oteru-emitter replay samples/telemetry-sample.json --dry-run
@@ -73,6 +77,12 @@ Key design decisions:
   versioned). Do NOT commit un-redacted captures — they carry user identity.
 - **Dry-run needs no dependencies** — parsing/restamp/summary run without
   `opentelemetry-proto`/`grpcio`/`requests`; those load lazily at send time.
+- **Tests are Windows-safe and proto-optional.** `tests/` uses `pathlib` only;
+  protobuf tests guard with `pytest.importorskip("opentelemetry.proto")` and
+  `grpcio` is never required by the suite. The committed fixture
+  `tests/fixtures/tiny-capture.json` must stay clean under the PII guard
+  (`python ../scripts/check_pii.py`) — placeholder identity values and
+  `user@example.com` only.
 - **Live Claude Code may be emitting to the same collector.** If
   `CLAUDE_CODE_ENABLE_TELEMETRY=1` is set, the active Claude Code session sends
   real `claude_code.*` telemetry to the same endpoint. Since the emitter replays

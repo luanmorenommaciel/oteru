@@ -1,5 +1,7 @@
 # oteru
 
+[![CI](https://github.com/luanmorenommaciel/oteru/actions/workflows/ci.yml/badge.svg)](https://github.com/luanmorenommaciel/oteru/actions/workflows/ci.yml)
+
 Agentic Observability Platform. One OTel spine for AI governance, tracing, and
 autonomous intelligence.
 
@@ -21,38 +23,47 @@ oteru-collector ──► debug (stdout)
 
 ## Quickstart
 
-Prerequisites: Docker running, Python 3.10+.
-
-### 1. Start the collector
-
-```bash
-cd oteru-collector
-docker compose up -d
-docker compose logs oteru-collector   # wait for "Everything is ready"
-```
-
-### 2. Install the emitter (once)
-
-```powershell
-cd oteru-emitter
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1          # bash: source .venv/Scripts/activate
-pip install -e .
-```
-
-### 3. Replay a capture
+Prerequisites: Docker running, Python 3.10+, GNU make (on Windows, run `make`
+from **Git Bash**).
 
 ```bash
-# validate without sending (no collector / network deps needed)
-oteru-emitter replay samples/telemetry-sample.json --dry-run
+make setup     # venv + editable install (dev extras) + PII pre-commit hook
+make demo      # starts the collector, replays 5 batches over HTTP, tails the logs
+```
 
-# send for real
-oteru-emitter replay samples/telemetry-sample.json --transport http
-oteru-emitter replay samples/telemetry-sample.json --transport grpc --limit 5 --max-gap 1
+Step by step, the same flow is:
+
+```bash
+make up        # collector via docker compose (detached)
+make dry-run   # validate the sample without sending (no network needed)
+cd oteru-emitter && .venv/Scripts/oteru-emitter replay samples/telemetry-sample.json --transport http
 ```
 
 Watch the records arrive with `docker compose logs -f oteru-collector` (from
-`oteru-collector/`).
+`oteru-collector/`). `make down` stops the collector. Run `make` with no
+arguments to list every target.
+
+## Development
+
+```bash
+make test       # pytest suite (oteru-emitter/tests)
+make lint       # ruff check + format check
+make format     # apply ruff format + autofixes
+make pii-guard  # scan committed captures for real identity (system python)
+```
+
+CI (GitHub Actions) runs lint + tests on Ubuntu and Windows × Python 3.10 and
+3.13, plus the PII guard, for any change touching `oteru-emitter/`,
+`scripts/` or the workflow itself.
+
+### PII guard
+
+The #1 documented risk here is committing an un-redacted capture.
+`scripts/check_pii.py` (stdlib-only) scans `oteru-emitter/samples/` and
+`oteru-emitter/tests/fixtures/` for real e-mails, user paths and non-placeholder
+identity attributes. It runs as a **pre-commit hook** (enabled by `make setup`
+via `git config core.hooksPath .githooks`), as `make pii-guard`, and as a CI
+job.
 
 ## Roadmap
 

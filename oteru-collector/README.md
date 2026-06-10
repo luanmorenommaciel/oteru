@@ -23,6 +23,9 @@ docker compose logs -f oteru-collector  # acompanha a saída
 docker compose down                  # para
 ```
 
+Da raiz do monorepo, `make up` / `make down` / `make demo` (sobe + envia 5
+batches do emitter + mostra os logs) fazem o mesmo via Makefile.
+
 Após editar `oteru-collector-config.yml`, recrie para remontar a config:
 
 ```bash

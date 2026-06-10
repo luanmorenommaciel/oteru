@@ -19,11 +19,37 @@ you are working in:
 The emitter sends to the collector; defaults (`localhost:4318`/`4317`) line up
 with the collector's published ports, so no config is needed to wire them.
 
+## Commands
+
+The root `Makefile` is the entry point (GNU make + bash; on Windows use Git
+Bash). `make` with no arguments lists all targets:
+
+```bash
+make setup      # venv + pip install -e "./oteru-emitter[dev]" + PII pre-commit hook
+make test       # pytest (oteru-emitter/tests)
+make lint       # ruff check + ruff format --check
+make format     # ruff format + autofixes
+make dry-run    # validates the sample without network (523 batches)
+make pii-guard  # python scripts/check_pii.py (system python — works before setup)
+make up/down    # collector via docker compose
+make demo       # up + 5 batches over HTTP + collector logs
+make clean      # removes build/test caches (keeps .venv)
+```
+
+CI (`.github/workflows/ci.yml`): lint + tests on ubuntu/windows × Python
+3.10/3.13 + a `pii-guard` job, path-filtered to `oteru-emitter/**`,
+`scripts/**` and the workflow itself.
+
 ## Cross-cutting gotchas
 
 - **PII discipline.** `oteru-emitter/samples/telemetry-sample.json` is the only
   committed capture, with identity redacted. `oteru-collector/telemetry/*.json`
   is gitignored. Never commit un-redacted captures.
+- **PII guard is automated.** `scripts/check_pii.py` (stdlib-only) scans
+  `oteru-emitter/samples/` and `oteru-emitter/tests/fixtures/` for real e-mails,
+  user paths and non-placeholder identity attributes. It runs as the
+  `.githooks/pre-commit` hook (enabled by `make setup`), as `make pii-guard`,
+  and as a CI job. New fixtures must stay clean under it.
 - **Live + synthetic traffic coexist.** A live Claude Code session with
   `CLAUDE_CODE_ENABLE_TELEMETRY=1` and the emitter's replays land on the same
   collector and are indistinguishable at the OTLP envelope. A clean separation

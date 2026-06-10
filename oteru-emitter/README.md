@@ -120,6 +120,28 @@ Flags principais: `--transport http|grpc`, `--endpoint`, `--profile`,
 `--speed`, `--max-gap`, `--limit N`, `--seed`, `--no-restamp`, `--dry-run`.
 Ajuda completa: `oteru-emitter replay --help`.
 
+## Desenvolvimento (testes e lint)
+
+Instale com os extras de dev e rode a suíte:
+
+```bash
+pip install -e ".[dev]"      # pytest + ruff
+pytest                       # suíte em tests/ (fixture tiny + sample real)
+ruff check . && ruff format --check .
+```
+
+Ou, da raiz do monorepo: `make test` / `make lint` / `make format`
+(GNU make + Git Bash no Windows).
+
+- A suíte usa duas capturas: `tests/fixtures/tiny-capture.json` (sintética,
+  minúscula) e `samples/telemetry-sample.json` (real, PII redigida) nos testes
+  de integração.
+- **Qualquer fixture nova precisa passar no PII guard**
+  (`python ../scripts/check_pii.py`): só e-mails `example.com/org/net`,
+  IDs de identidade com valor-placeholder, sem caminhos de usuário.
+- Os testes de protobuf usam `pytest.importorskip("opentelemetry.proto")`;
+  `grpcio` nunca é exigido pela suíte.
+
 ## Arquitetura
 
 ```
