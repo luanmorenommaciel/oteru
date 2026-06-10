@@ -1,0 +1,11 @@
+# docker-compose.yml
+services:
+  oteru-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/oteru-collector-config.yml"]
+    volumes:
+      - ./oteru-collector-config.yml:/etc/oteru-collector-config.yml
+      - ./telemetry:/telemetry
+    ports:
+      - "4317:4317"   # gRPC
+      - "4318:4318"   # HTTP

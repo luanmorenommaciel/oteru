@@ -1,0 +1,11 @@
+# Telemetry dumps gravados pelo file exporter do Collector
+/telemetry/*.json
+/telemetry/*.json.*
+
+# Logs de terminal redirecionados
+*.log
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/

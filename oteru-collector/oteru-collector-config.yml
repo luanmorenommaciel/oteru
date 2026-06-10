@@ -1,0 +1,30 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+  # Grava cada payload recebido como JSON (uma linha por batch) em /telemetry,
+  # que está montado em ./telemetry no host. rotation evita arquivo gigante.
+  file:
+    path: /telemetry/telemetry.json
+    rotation:
+      max_megabytes: 10
+      max_backups: 5
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug, file]
+    logs:
+      receivers: [otlp]
+      exporters: [debug, file]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug, file]

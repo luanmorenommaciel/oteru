@@ -1,0 +1,119 @@
+"""Restamp: re-carimba uma captura para reenvio, **preservando a estrutura**.
+
+Réplica fiel não significa replay cego: para reenviar a mesma captura várias
+vezes sem o backend deduplicar, trocamos a *identidade* (timestamps e IDs de
+correlação por-run) mantendo a *estrutura* intacta — tipos de atributo, ordem,
+redundâncias (`cost_usd` + `cost_usd_micros`) tudo permanece igual.
+
+- Timestamps: todos deslocados pelo mesmo offset, de modo que o evento mais
+  antigo da captura caia em ~"agora". Durações e espaçamentos são preservados.
+- IDs de correlação (ex.: session.id, prompt.id, request_id): rotacionados de
+  forma consistente — o mesmo valor antigo sempre vira o mesmo valor novo
+  dentro de um run, então o agrupamento por sessão/turno é preservado.
+- Identidade do principal (user.id, user.email, organization.id) NÃO é tocada:
+  isso é parte fiel do dado, não correlação por-run.
+"""
+
+from __future__ import annotations
+
+import random
+import string
+import time
+import uuid
+from typing import Callable, Iterable
+
+from ..sources.replay import Batch
+
+# Todos os timestamps a deslocar (inclui startTimeUnixNano para manter durações).
+SHIFT_TIME_KEYS = {"timeUnixNano", "observedTimeUnixNano", "startTimeUnixNano"}
+
+_ID_ALPHABET = string.ascii_letters + string.digits
+
+IdGen = Callable[[str, str], str]
+
+
+def _shift_timestamps(node: object, offset_ns: int) -> None:
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in SHIFT_TIME_KEYS and isinstance(value, (str, int)):
+                try:
+                    node[key] = str(int(value) + offset_ns)
+                    continue
+                except (TypeError, ValueError):
+                    pass
+            _shift_timestamps(value, offset_ns)
+    elif isinstance(node, list):
+        for item in node:
+            _shift_timestamps(item, offset_ns)
+
+
+def _rotate_ids(
+    node: object,
+    keys: set[str],
+    mapping: dict[tuple[str, str], str],
+    gen: IdGen,
+) -> None:
+    if isinstance(node, dict):
+        # entrada de atributo OTLP: {"key": <str>, "value": {"stringValue": ...}}
+        attr_key = node.get("key")
+        value = node.get("value")
+        if (
+            attr_key in keys
+            and isinstance(value, dict)
+            and isinstance(value.get("stringValue"), str)
+        ):
+            old = value["stringValue"]
+            map_key = (attr_key, old)
+            if map_key not in mapping:
+                mapping[map_key] = gen(attr_key, old)
+            value["stringValue"] = mapping[map_key]
+        for child in node.values():
+            _rotate_ids(child, keys, mapping, gen)
+    elif isinstance(node, list):
+        for item in node:
+            _rotate_ids(item, keys, mapping, gen)
+
+
+def _make_id_gen(rnd: random.Random) -> IdGen:
+    """Gera novos IDs preservando o *formato* do original (seedável)."""
+
+    def gen(_key: str, old: str) -> str:
+        if old.startswith("req_"):
+            # ex.: req_011CbtJR1bZ4uLs3hmdd96uE
+            n = max(len(old) - 4, 8)
+            return "req_" + "".join(rnd.choice(_ID_ALPHABET) for _ in range(n))
+        # padrão: UUID v4 (cobre session.id, prompt.id e afins)
+        return str(uuid.UUID(int=rnd.getrandbits(128), version=4))
+
+    return gen
+
+
+def restamp(
+    batches: Iterable[Batch],
+    *,
+    shift_time: bool = True,
+    rotate_keys: Iterable[str] | None = None,
+    seed: int | None = None,
+    now_ns: int | None = None,
+) -> int:
+    """Aplica restamp in-place. Retorna o offset de tempo aplicado (ns)."""
+    batches = list(batches)
+    offset_ns = 0
+
+    if shift_time:
+        anchors = [b.anchor_ns for b in batches if b.anchor_ns is not None]
+        if anchors:
+            now_ns = now_ns if now_ns is not None else time.time_ns()
+            offset_ns = now_ns - min(anchors)
+            for batch in batches:
+                _shift_timestamps(batch.payload, offset_ns)
+
+    rotate_set = {k for k in (rotate_keys or [])}
+    if rotate_set:
+        rnd = random.Random(seed)
+        gen = _make_id_gen(rnd)
+        mapping: dict[tuple[str, str], str] = {}
+        for batch in batches:
+            _rotate_ids(batch.payload, rotate_set, mapping, gen)
+
+    return offset_ns

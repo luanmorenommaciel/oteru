@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# venvs
+.venv/
+venv/
+env/
+
+# capturas locais de telemetria (não versionar dados ao vivo)
+# NB: samples/telemetry-sample.json É versionado de propósito (fixture redigida).
+*.telemetry.json
+captures/
+telemetry/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
