@@ -4,16 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oteru-emitter"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Forja tráfego de telemetria OTLP fiel ao Claude Code (replay + futuro gerador sintético)."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Proprietary" }
-authors = [{ name = "Oteru / AVAD" }]
+license = { text = "MIT" }
+authors = [{ name = "Oteru" }]
 dependencies = [
     "opentelemetry-proto>=1.20.0",
     "grpcio>=1.50.0",
     "requests>=2.28.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
 ]
 
 [project.scripts]
@@ -22,3 +28,20 @@ oteru-emitter = "oteru_emitter.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["oteru_emitter*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "oteru_emitter.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["oteru_emitter"]
