@@ -1,8 +1,8 @@
 """Transporte OTLP via gRPC (porta 4317).
 
 Reusa a MESMA mensagem proto do transporte HTTP — só muda o canal. Exige que o
-collector tenha um receiver gRPC habilitado (no repo hello-world só o `http`
-está configurado; adicionar `grpc:` em receivers.otlp.protocols).
+collector tenha um receiver gRPC habilitado (`receivers.otlp.protocols.grpc`) —
+presente no config do diretório irmão, `oteru-collector/oteru-collector-config.yml`.
 """
 
 from __future__ import annotations
