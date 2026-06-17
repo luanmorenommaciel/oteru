@@ -1,23 +1,23 @@
-"""Conversão dict OTLP/JSON -> mensagem protobuf OTLP.
+"""OTLP/JSON dict -> OTLP protobuf message conversion.
 
-Usa as classes geradas de ``opentelemetry-proto`` como modelo neutro de
-transporte: a MESMA mensagem serializa tanto para http/protobuf quanto para
-gRPC. ``ParseDict`` reconstrói a mensagem fielmente a partir do JSON capturado.
+Uses the generated ``opentelemetry-proto`` classes as a transport-neutral
+model: the SAME message serializes for both http/protobuf and gRPC.
+``ParseDict`` faithfully rebuilds the message from the captured JSON.
 
-Os imports de proto são lazy de propósito: o modo ``--dry-run`` do CLI valida
-parsing/restamp sem exigir ``opentelemetry-proto``/``grpcio`` instalados.
+The proto imports are lazy on purpose: the CLI's ``--dry-run`` mode validates
+parsing/restamp without requiring ``opentelemetry-proto``/``grpcio``.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:  # somente para type-checkers; não importa em runtime
+if TYPE_CHECKING:  # type-checkers only; not imported at runtime
     from google.protobuf.message import Message
 
 
-def to_request(signal: str, payload: dict) -> "Message":
-    """Constrói o Export<Signal>ServiceRequest a partir do dict OTLP/JSON."""
+def to_request(signal: str, payload: dict) -> Message:
+    """Builds the Export<Signal>ServiceRequest from the OTLP/JSON dict."""
     from google.protobuf.json_format import ParseDict
 
     if signal == "logs":
@@ -25,7 +25,7 @@ def to_request(signal: str, payload: dict) -> "Message":
             ExportLogsServiceRequest,
         )
 
-        message: "Message" = ExportLogsServiceRequest()
+        message: Message = ExportLogsServiceRequest()
     elif signal == "metrics":
         from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
             ExportMetricsServiceRequest,
@@ -39,9 +39,9 @@ def to_request(signal: str, payload: dict) -> "Message":
 
         message = ExportTraceServiceRequest()
     else:
-        raise ValueError(f"sinal desconhecido: {signal!r}")
+        raise ValueError(f"unknown signal: {signal!r}")
 
-    # ignore_unknown_fields: tolera campos extras que o emissor possa ter
-    # adicionado e que ainda não estejam no schema proto desta versão.
+    # ignore_unknown_fields: tolerates extra fields the emitter may have
+    # added that are not yet in this version's proto schema.
     ParseDict(payload, message, ignore_unknown_fields=True)
     return message

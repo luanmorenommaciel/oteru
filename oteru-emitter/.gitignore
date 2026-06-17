@@ -11,8 +11,8 @@ dist/
 venv/
 env/
 
-# capturas locais de telemetria (não versionar dados ao vivo)
-# NB: samples/telemetry-sample.json É versionado de propósito (fixture redigida).
+# local telemetry captures (never version live data)
+# NB: samples/telemetry-sample.json IS versioned on purpose (redacted fixture).
 *.telemetry.json
 captures/
 telemetry/

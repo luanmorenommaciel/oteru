@@ -1,7 +1,7 @@
-"""Transporte OTLP via HTTP com corpo protobuf (http/protobuf).
+"""OTLP transport over HTTP with a protobuf body (http/protobuf).
 
-POST para /v1/logs, /v1/metrics, /v1/traces com Content-Type
-application/x-protobuf — exatamente o que o Claude Code faz com
+POSTs to /v1/logs, /v1/metrics, /v1/traces with Content-Type
+application/x-protobuf — exactly what Claude Code does with
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf.
 """
 
@@ -17,11 +17,17 @@ PATHS = {
 
 
 class HttpTransport:
-    def __init__(self, endpoint: str, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        timeout: float = 30.0,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.base = endpoint.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers["Content-Type"] = "application/x-protobuf"
+        self.session.headers.update(headers or {})
 
     def send(self, signal: str, request: object) -> int:
         url = self.base + PATHS[signal]

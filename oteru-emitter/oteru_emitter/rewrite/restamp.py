@@ -1,17 +1,18 @@
-"""Restamp: re-carimba uma captura para reenvio, **preservando a estrutura**.
+"""Restamp: re-stamps a capture for re-sending, **preserving the structure**.
 
-Réplica fiel não significa replay cego: para reenviar a mesma captura várias
-vezes sem o backend deduplicar, trocamos a *identidade* (timestamps e IDs de
-correlação por-run) mantendo a *estrutura* intacta — tipos de atributo, ordem,
-redundâncias (`cost_usd` + `cost_usd_micros`) tudo permanece igual.
+Faithful replay does not mean blind replay: to re-send the same capture many
+times without the backend deduplicating it, we swap the *identity* (timestamps
+and per-run correlation IDs) while keeping the *structure* intact — attribute
+types, ordering, redundancies (`cost_usd` + `cost_usd_micros`) all stay the
+same.
 
-- Timestamps: todos deslocados pelo mesmo offset, de modo que o evento mais
-  antigo da captura caia em ~"agora". Durações e espaçamentos são preservados.
-- IDs de correlação (ex.: session.id, prompt.id, request_id): rotacionados de
-  forma consistente — o mesmo valor antigo sempre vira o mesmo valor novo
-  dentro de um run, então o agrupamento por sessão/turno é preservado.
-- Identidade do principal (user.id, user.email, organization.id) NÃO é tocada:
-  isso é parte fiel do dado, não correlação por-run.
+- Timestamps: all shifted by the same offset so the oldest event in the
+  capture lands at ~"now". Durations and spacing are preserved.
+- Correlation IDs (e.g. session.id, prompt.id, request_id): rotated
+  consistently — the same old value always maps to the same new value within
+  a run, so grouping by session/turn is preserved.
+- Principal identity (user.id, user.email, organization.id) is NOT touched:
+  it is a faithful part of the data, not per-run correlation.
 """
 
 from __future__ import annotations
@@ -20,11 +21,11 @@ import random
 import string
 import time
 import uuid
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
 from ..sources.replay import Batch
 
-# Todos os timestamps a deslocar (inclui startTimeUnixNano para manter durações).
+# Every timestamp to shift (includes startTimeUnixNano to keep durations).
 SHIFT_TIME_KEYS = {"timeUnixNano", "observedTimeUnixNano", "startTimeUnixNano"}
 
 _ID_ALPHABET = string.ascii_letters + string.digits
@@ -54,7 +55,7 @@ def _rotate_ids(
     gen: IdGen,
 ) -> None:
     if isinstance(node, dict):
-        # entrada de atributo OTLP: {"key": <str>, "value": {"stringValue": ...}}
+        # OTLP attribute entry: {"key": <str>, "value": {"stringValue": ...}}
         attr_key = node.get("key")
         value = node.get("value")
         if (
@@ -75,14 +76,14 @@ def _rotate_ids(
 
 
 def _make_id_gen(rnd: random.Random) -> IdGen:
-    """Gera novos IDs preservando o *formato* do original (seedável)."""
+    """Generates new IDs preserving the original's *format* (seedable)."""
 
     def gen(_key: str, old: str) -> str:
         if old.startswith("req_"):
-            # ex.: req_011CbtJR1bZ4uLs3hmdd96uE
+            # e.g. req_011CbtJR1bZ4uLs3hmdd96uE
             n = max(len(old) - 4, 8)
             return "req_" + "".join(rnd.choice(_ID_ALPHABET) for _ in range(n))
-        # padrão: UUID v4 (cobre session.id, prompt.id e afins)
+        # default: UUID v4 (covers session.id, prompt.id and the like)
         return str(uuid.UUID(int=rnd.getrandbits(128), version=4))
 
     return gen
@@ -96,7 +97,7 @@ def restamp(
     seed: int | None = None,
     now_ns: int | None = None,
 ) -> int:
-    """Aplica restamp in-place. Retorna o offset de tempo aplicado (ns)."""
+    """Applies the restamp in-place. Returns the time offset applied (ns)."""
     batches = list(batches)
     offset_ns = 0
 

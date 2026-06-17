@@ -1,0 +1,2 @@
+# Secrets / local environment — never commit credentials.
+.env

@@ -1,4 +1,4 @@
-"""Interface de transporte OTLP."""
+"""OTLP transport interface."""
 
 from __future__ import annotations
 
@@ -9,10 +9,8 @@ DEFAULT_GRPC_ENDPOINT = "localhost:4317"
 
 
 class Transport(Protocol):
-    """Envia uma mensagem Export<Signal>ServiceRequest ao collector."""
+    """Sends an Export<Signal>ServiceRequest message to the collector."""
 
-    def send(self, signal: str, request: object) -> object:
-        ...
+    def send(self, signal: str, request: object) -> object: ...
 
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...

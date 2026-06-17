@@ -1,15 +1,15 @@
-"""Scheduler de tempo real: honra a cadência original entre batches.
+"""Realtime scheduler: honors the original cadence between batches.
 
-O espaçamento é calculado a partir dos ``anchor_ns`` ORIGINAIS das batches
-(não dos timestamps re-carimbados): como o restamp desloca tudo pelo mesmo
-offset, os deltas relativos são idênticos. Gaps ociosos longos são limitados
-por ``max_gap`` para não travar o replay por minutos.
+Spacing is computed from the batches' ORIGINAL ``anchor_ns`` (not the
+re-stamped timestamps): since the restamp shifts everything by the same
+offset, the relative deltas are identical. Long idle gaps are capped by
+``max_gap`` so the replay doesn't stall for minutes.
 """
 
 from __future__ import annotations
 
 import time
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
 from ..sources.replay import Batch
 
@@ -22,8 +22,8 @@ def run_realtime(
     speed: float = 1.0,
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
-    """Itera as batches, dormindo o delta real (÷ speed, teto max_gap) antes de
-    cada envio. ``speed`` > 1 acelera; 1.0 = tempo real."""
+    """Iterates the batches, sleeping the real delta (÷ speed, capped at
+    max_gap) before each send. ``speed`` > 1 accelerates; 1.0 = realtime."""
     prev_anchor: int | None = None
     for batch in batches:
         if prev_anchor is not None and batch.anchor_ns is not None:

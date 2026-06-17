@@ -1,42 +1,42 @@
-"""Fonte de replay: lê uma captura OTLP/JSON (uma batch por linha) e a
-transforma numa sequência de ``Batch`` fiéis, preservando estrutura e tipos.
+"""Replay source: reads an OTLP/JSON capture (one batch per line) and turns it
+into a sequence of faithful ``Batch`` objects, preserving structure and types.
 
-O formato esperado é exatamente o que o `file` exporter do collector grava:
-cada linha é um objeto com uma das chaves ``resourceLogs`` /
-``resourceMetrics`` / ``resourceSpans`` (o corpo de um
-``Export<Signal>ServiceRequest`` em OTLP/JSON).
+The expected format is exactly what the collector's `file` exporter writes:
+each line is an object with one of the keys ``resourceLogs`` /
+``resourceMetrics`` / ``resourceSpans`` (the body of an
+``Export<Signal>ServiceRequest`` in OTLP/JSON).
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Iterator
 
-# chave OTLP/JSON -> nome do sinal
+# OTLP/JSON key -> signal name
 SIGNAL_BY_KEY = {
     "resourceLogs": "logs",
     "resourceMetrics": "metrics",
     "resourceSpans": "traces",
 }
 
-# Timestamps que representam "quando o evento aconteceu" — usados para ancorar
-# o ritmo (pacing) do replay. startTimeUnixNano fica de fora de propósito:
-# ele costuma apontar para o início da sessão e distorceria os deltas.
+# Timestamps that represent "when the event happened" — used to anchor the
+# replay pacing. startTimeUnixNano is left out on purpose: it usually points
+# at the session start and would distort the deltas.
 ANCHOR_TIME_KEYS = {"timeUnixNano", "observedTimeUnixNano"}
 
 
 @dataclass
 class Batch:
-    """Uma batch OTLP carregada do arquivo de captura."""
+    """An OTLP batch loaded from the capture file."""
 
     signal: str  # "logs" | "metrics" | "traces"
-    payload: dict  # dict OTLP/JSON cru (mutável — restamp opera aqui)
-    anchor_ns: int | None  # menor timestamp de evento na batch (ns), p/ pacing
+    payload: dict  # raw OTLP/JSON dict (mutable — restamp operates here)
+    anchor_ns: int | None  # smallest event timestamp in the batch (ns), for pacing
 
 
 def iter_timestamps(node: object) -> Iterator[int]:
-    """Percorre recursivamente o dict/list e produz cada timestamp de evento."""
+    """Recursively walks the dict/list and yields each event timestamp."""
     if isinstance(node, dict):
         for key, value in node.items():
             if key in ANCHOR_TIME_KEYS:
@@ -58,7 +58,7 @@ def _detect_signal(obj: dict) -> str | None:
 
 
 def load_batches(path: str) -> list[Batch]:
-    """Carrega todas as batches do arquivo, em ordem de chegada (linha)."""
+    """Loads every batch from the file, in arrival (line) order."""
     batches: list[Batch] = []
     with open(path, encoding="utf-8") as handle:
         for lineno, raw in enumerate(handle, 1):
@@ -68,10 +68,10 @@ def load_batches(path: str) -> list[Batch]:
             try:
                 obj = json.loads(line)
             except json.JSONDecodeError as exc:
-                raise ValueError(f"linha {lineno}: JSON inválido: {exc}") from exc
+                raise ValueError(f"line {lineno}: invalid JSON: {exc}") from exc
             signal = _detect_signal(obj)
             if signal is None:
-                # linha sem payload OTLP reconhecível — ignora silenciosamente
+                # line without a recognizable OTLP payload — silently ignored
                 continue
             anchors = list(iter_timestamps(obj))
             anchor_ns = min(anchors) if anchors else None

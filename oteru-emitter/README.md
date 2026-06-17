@@ -1,47 +1,49 @@
 # oteru-emitter
 
-Forja tráfego de telemetria **OTLP** fiel ao que o **Claude Code** emite — um
-gerador de *synthetic / replay traffic* para validar o pipeline de observabilidade
-(collector → backend → contrato) sem precisar de uma sessão real do CLI.
+Forges **OTLP** telemetry traffic faithful to what **Claude Code** emits — a
+*synthetic / replay traffic* generator to validate the observability pipeline
+(collector → backend → contract) without needing a real CLI session.
 
-> Subprojeto do monorepo [`oteru`](../README.md), par do
-> [`oteru-collector`](../oteru-collector) (diretório irmão), que sobe o
-> OTel Collector de destino.
+> Subproject of the [`oteru`](../README.md) monorepo, paired with
+> [`oteru-collector`](../oteru-collector) (sibling directory), which runs the
+> target OTel Collector.
 
-## O que faz (Fase 1 — replay fiel)
+## What it does (Phase 1 — faithful replay)
 
-Lê uma captura OTLP/JSON (o que o `file` exporter do collector grava — uma
-batch por linha) e **reenvia ao collector**:
+Reads an OTLP/JSON capture (what the collector's `file` exporter writes — one
+batch per line) and **re-sends it to the collector**:
 
-- **Byte-fiel à estrutura.** Reconstrói a mensagem protobuf OTLP via
-  `opentelemetry-proto`, preservando tipos, ordem de atributos e até as
-  redundâncias do `claude_code.*` (`cost_usd` + `cost_usd_micros`,
+- **Byte-faithful to the structure.** Rebuilds the OTLP protobuf message via
+  `opentelemetry-proto`, preserving types, attribute ordering and even the
+  `claude_code.*` redundancies (`cost_usd` + `cost_usd_micros`,
   `Str("2501")` etc.).
-- **Dual-transport.** Mesma mensagem, dois canais à escolha:
-  `http/protobuf` (`:4318`) ou `gRPC` (`:4317`).
-- **Tempo real.** Honra a cadência original entre eventos (com teto para gaps
-  ociosos).
-- **Restamp.** Re-carimba timestamps (tudo deslocado para "agora") e rotaciona
-  IDs de correlação por-run (`session.id`, `prompt.id`, `request_id`) de forma
-  consistente, para reenviar N vezes sem o backend deduplicar. A **identidade
-  do principal** (`user.email`, `organization.id`, ...) é preservada.
+- **Dual-transport.** Same message, two channels to choose from:
+  `http/protobuf` (`:4318`) or `gRPC` (`:4317`).
+- **Realtime.** Honors the original cadence between events (with a cap for
+  idle gaps).
+- **Restamp.** Re-stamps timestamps (everything shifted to "now") and rotates
+  per-run correlation IDs (`session.id`, `prompt.id`, `request_id`)
+  consistently, so the capture can be re-sent N times without the backend
+  deduplicating it. The **principal identity** (`user.email`,
+  `organization.id`, ...) is preserved.
 
-## Passo a passo (do zero)
+## Step by step (from scratch)
 
-> Comandos em **PowerShell** (Windows). Em bash/Linux, troque
-> `.\.venv\Scripts\Activate.ps1` por `source .venv/Scripts/activate`.
+> Commands in **PowerShell** (Windows). On bash/Linux, replace
+> `.\.venv\Scripts\Activate.ps1` with `source .venv/Scripts/activate`.
 
-### Pré-requisitos
+### Prerequisites
 
 - **Python 3.10+** (`python --version`)
-- **Docker** rodando (para o OTel Collector de destino)
-- Uma **captura** OTLP/JSON para reproduzir. O repo já traz uma em
-  `samples\telemetry-sample.json` (real, com PII redigida). Para usar dados
-  ao vivo, aponte para a saída do collector irmão (ver passo 3).
+- **Docker** running (for the target OTel Collector)
+- An OTLP/JSON **capture** to replay. The repo ships one at
+  `samples\telemetry-sample.json` (real, PII redacted). To use live data,
+  point at the sibling collector's output (see step 3).
 
-### 1. Subir o OTel Collector (diretório irmão)
+### 1. Start the OTel Collector (sibling directory)
 
-O emitter envia para um collector. Suba o do [`oteru-collector`](../oteru-collector):
+The emitter sends to a collector. Start the one in
+[`oteru-collector`](../oteru-collector):
 
 ```powershell
 cd ..\oteru-collector
@@ -49,13 +51,13 @@ docker compose up -d
 docker compose logs oteru-collector | Select-String "Everything is ready"
 ```
 
-Deve escutar em `:4318` (HTTP) e `:4317` (gRPC). Para acompanhar o que chega:
+It should listen on `:4318` (HTTP) and `:4317` (gRPC). To watch what arrives:
 
 ```powershell
 docker compose logs -f oteru-collector
 ```
 
-### 2. Instalar o emitter (uma vez)
+### 2. Install the emitter (once)
 
 ```powershell
 cd oteru-emitter
@@ -64,86 +66,113 @@ python -m venv .venv
 pip install -e .
 ```
 
-Após o `pip install -e .` com o venv ativo, o comando `oteru-emitter` fica
-disponível. (Sem ativar o venv, use
-`.\.venv\Scripts\python.exe -m oteru_emitter.cli` no lugar de `oteru-emitter`.)
+After `pip install -e .` with the venv active, the `oteru-emitter` command is
+available. (Without activating the venv, use
+`.\.venv\Scripts\python.exe -m oteru_emitter.cli` instead of `oteru-emitter`.)
 
-### 3. Validar sem enviar (dry-run)
+### 3. Validate without sending (dry-run)
 
-Confere parsing, restamp e mostra o resumo da captura. **Não** exige collector:
+Checks parsing and restamp, and prints the capture summary. Does **not**
+require a collector:
 
 ```powershell
 oteru-emitter replay samples\telemetry-sample.json --dry-run
 ```
 
-### 4. Enviar de verdade
+### 4. Send for real
 
 ```powershell
-# HTTP/protobuf (porta 4318) — um dos protocolos que o Claude Code pode usar
+# HTTP/protobuf (port 4318) — one of the protocols Claude Code can use
 oteru-emitter replay samples\telemetry-sample.json --transport http
 
-# gRPC (porta 4317)
+# gRPC (port 4317)
 oteru-emitter replay samples\telemetry-sample.json --transport grpc
 ```
 
-Dica para um primeiro teste rápido: `--limit 5 --max-gap 1` envia só 5 batches
-e não espera mais que 1s entre elas.
+Tip for a quick first test: `--limit 5 --max-gap 1` sends only 5 batches and
+never waits more than 1s between them.
 
-### 5. Conferir a recepção
+### 5. Check the reception
 
-No terminal do `docker compose logs -f` (passo 1) você verá os registros
-chegando — com timestamps re-carimbados para "agora" e `session.id` novo a cada
-run. Ou, pontualmente:
+In the `docker compose logs -f` terminal (step 1) you will see the records
+arriving — with timestamps re-stamped to "now" and a new `session.id` on every
+run. Or, on demand:
 
 ```powershell
 cd ..\oteru-collector
 docker compose logs --since 60s oteru-collector | Select-String "Body: Str|session.id"
 ```
 
-## Receitas úteis
+## Useful recipes
 
 ```powershell
-# acelerar 4x (comprime o tempo entre eventos)
+# accelerate 4x (compresses the time between events)
 oteru-emitter replay samples\telemetry-sample.json --transport http --speed 4
 
-# replay literal: timestamps e IDs ORIGINAIS, sem restamp
+# literal replay: ORIGINAL timestamps and IDs, no restamp
 oteru-emitter replay samples\telemetry-sample.json --no-restamp --transport http
 
-# reprodutível: mesma rotação de IDs sempre (útil p/ testar o pipeline)
+# reproducible: same ID rotation every time (useful for pipeline testing)
 oteru-emitter replay samples\telemetry-sample.json --transport http --seed 42
 
-# mandar para outro collector
-oteru-emitter replay samples\telemetry-sample.json --transport grpc --endpoint outro-host:4317
+# send to another collector
+oteru-emitter replay samples\telemetry-sample.json --transport grpc --endpoint other-host:4317
+
+# send to an authenticated backend (e.g. ClickStack/HyperDX ingest) — never hardcode the key
+oteru-emitter replay samples\telemetry-sample.json --transport http `
+  --endpoint http://localhost:4318 --header "authorization=$env:CLICKSTACK_API_KEY" --limit 5
 ```
 
-Flags principais: `--transport http|grpc`, `--endpoint`, `--profile`,
-`--speed`, `--max-gap`, `--limit N`, `--seed`, `--no-restamp`, `--dry-run`.
-Ajuda completa: `oteru-emitter replay --help`.
+Main flags: `--transport http|grpc`, `--endpoint`, `--header NAME=VALUE`
+(repeatable), `--profile`, `--speed`, `--max-gap`, `--limit N`, `--seed`,
+`--no-restamp`, `--dry-run`. Full help: `oteru-emitter replay --help`.
 
-## Arquitetura
+## Development (tests and lint)
+
+Install with the dev extras and run the suite:
+
+```bash
+pip install -e ".[dev]"      # pytest + ruff
+pytest                       # suite in tests/ (tiny fixture + real sample)
+ruff check . && ruff format --check .
+```
+
+Or, from the monorepo root: `make test` / `make lint` / `make format`
+(GNU make + Git Bash on Windows).
+
+- The suite uses two captures: `tests/fixtures/tiny-capture.json` (synthetic,
+  tiny) and `samples/telemetry-sample.json` (real, PII redacted) in the
+  integration tests.
+- **Any new fixture must pass the PII guard**
+  (`python ../scripts/check_pii.py`): only `example.com/org/net` e-mails,
+  placeholder identity values, no user paths.
+- The protobuf tests use `pytest.importorskip("opentelemetry.proto")`;
+  `grpcio` is never required by the suite.
+
+## Architecture
 
 ```
-captura OTLP/JSON
-   │  sources/replay.py     (carrega batches + ancora timestamps)
+OTLP/JSON capture
+   │  sources/replay.py     (loads batches + anchors timestamps)
    ▼
-   │  rewrite/restamp.py    (desloca tempo + rotaciona IDs — preserva estrutura)
+   │  rewrite/restamp.py    (shifts time + rotates IDs — preserves structure)
    ▼
-   │  model/otlp.py         (dict -> mensagem protobuf OTLP, modelo neutro)
+   │  model/otlp.py         (dict -> OTLP protobuf message, neutral model)
    ▼
-   │  scheduler/realtime.py (paceia pelos deltas reais)
+   │  scheduler/realtime.py (paces by the real deltas)
    ▼
    └► transport/            (otlp_http.py | otlp_grpc.py)  -> collector
 ```
 
-`profiles/` é o gancho de expansão: cada emissor (`claude_code`, futuro `codex`,
-`crewai`) declara seus metadados. No replay define quais IDs rotacionar; nos
-geradores sintéticos (Fase 2+) passará a declarar catálogo de eventos, schema
-de atributos e a state machine do ciclo de vida.
+`profiles/` is the extension seam: each emitter (`claude_code`, future
+`codex`, `crewai`) declares its metadata. In replay it defines which IDs to
+rotate; in the synthetic generators (Phase 2+) it will also declare the event
+catalog, the attribute schema and the lifecycle state machine.
 
 ## Roadmap
 
-- **Fase 1 (atual):** replay fiel, dual-transport, tempo real, restamp.
-- **Fase 2:** gerador sintético estocástico (state machine + distribuições
-  ajustadas às capturas + invariantes `cost = f(tokens, model)`), seedável.
-- **Fase 3:** profiles novos (Codex, CrewAI) incl. caminho `gen_ai.*` + spans.
-- **Fase 4:** catálogo de cenários autorado por IA (offline → fixtures).
+- **Phase 1 (current):** faithful replay, dual-transport, realtime, restamp.
+- **Phase 2:** stochastic synthetic generator (state machine + distributions
+  fitted to captures + invariants like `cost = f(tokens, model)`), seedable.
+- **Phase 3:** new profiles (Codex, CrewAI) incl. the `gen_ai.*` path + spans.
+- **Phase 4:** AI-authored scenario catalog (offline → fixtures).

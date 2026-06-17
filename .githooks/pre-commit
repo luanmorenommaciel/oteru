@@ -1,0 +1,3 @@
+#!/bin/sh
+# PII guard — blocks commits containing un-redacted captures.
+exec python "$(git rev-parse --show-toplevel)/scripts/check_pii.py"

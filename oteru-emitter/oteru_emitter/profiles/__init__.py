@@ -1,10 +1,10 @@
-"""Profiles de emissor: o gancho de expansão para Codex, CrewAI, etc.
+"""Emitter profiles: the extension seam for Codex, CrewAI, etc.
 
-No v1 (replay), o profile carrega só os metadados que o replay precisa —
-sobretudo quais IDs são correlação por-run (rotacionáveis) versus identidade
-fiel do principal (preservada). Quando entrarem os geradores sintéticos
-(Fase 2+), o profile também passa a declarar o catálogo de eventos, o schema
-de atributos e a state machine do ciclo de vida.
+In v1 (replay), a profile carries only the metadata replay needs — above all
+which IDs are per-run correlation (rotatable) versus faithful principal
+identity (preserved). Once the synthetic generators land (Phase 2+), the
+profile will also declare the event catalog, the attribute schema and the
+lifecycle state machine.
 """
 
 from __future__ import annotations
