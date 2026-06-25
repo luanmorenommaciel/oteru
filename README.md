@@ -31,6 +31,12 @@ make setup     # venv + editable install (dev extras) + PII pre-commit hook
 make demo      # starts the collector, replays 5 batches over HTTP, tails the logs
 ```
 
+If you are on macOS, the new helper script is:
+
+```bash
+./scripts/run_macos_integration.sh
+```
+
 Step by step, the same flow is:
 
 ```bash
