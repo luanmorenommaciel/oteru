@@ -1,0 +1,32 @@
+# Compose override: adds HyperDX all-in-one as the backend and swaps in the
+# forwarding config for the collector. Use together with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.hyperdx.yml up -d
+# (or simply `make up-hyperdx` from the monorepo root).
+#
+# HyperDX's OTLP ports (4317/4318) are intentionally NOT exposed to the host —
+# the collector reaches them via the internal Docker network (service name: hyperdx).
+# Only the UI port (8080) is published.
+services:
+  oteru-collector:
+    volumes:
+      - ./oteru-collector-config.hyperdx.yml:/etc/oteru-collector-config.yml
+      - ./telemetry:/telemetry
+    environment:
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY:-}
+    depends_on:
+      - hyperdx
+
+  hyperdx:
+    image: docker.hyperdx.io/hyperdx/hyperdx-all-in-one
+    ports:
+      - "8080:8080"
+    # Persist across recreates: telemetry (ClickHouse) + accounts/dashboards/
+    # API keys (MongoDB). Remove with `docker compose down -v` when you want
+    # a factory reset.
+    volumes:
+      - hyperdx-clickhouse:/var/lib/clickhouse
+      - hyperdx-mongo:/data/db
+
+volumes:
+  hyperdx-clickhouse:
+  hyperdx-mongo:
