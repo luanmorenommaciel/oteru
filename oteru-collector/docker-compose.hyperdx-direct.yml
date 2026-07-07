@@ -1,0 +1,26 @@
+# Standalone ClickStack: HyperDX all-in-one with the OTLP ports published on
+# the host, so the emitter ingests DIRECTLY — no oteru-collector in between.
+#   docker compose -f docker-compose.hyperdx-direct.yml up -d
+# (or `make up-direct` from the monorepo root, which also bootstraps the
+# ingestion API key into .env).
+#
+# Do NOT run this together with the base docker-compose.yml — both claim host
+# ports 4317/4318. `make down` the collector stack first.
+#
+# Uses the same named volumes as docker-compose.hyperdx.yml, so telemetry
+# (ClickHouse) and accounts/API keys (MongoDB) persist across modes and
+# recreates. Factory reset: docker compose -f docker-compose.hyperdx-direct.yml down -v
+services:
+  hyperdx:
+    image: docker.hyperdx.io/hyperdx/hyperdx-all-in-one
+    ports:
+      - "8080:8080"   # UI
+      - "4317:4317"   # OTLP gRPC (direct ingest)
+      - "4318:4318"   # OTLP HTTP (direct ingest)
+    volumes:
+      - hyperdx-clickhouse:/var/lib/clickhouse
+      - hyperdx-mongo:/data/db
+
+volumes:
+  hyperdx-clickhouse:
+  hyperdx-mongo:
