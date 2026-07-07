@@ -1,0 +1,41 @@
+﻿# Alternative config: everything the default config does, PLUS forwarding to
+# a HyperDX all-in-one container via otlphttp on the internal Docker network.
+#
+# Used by `make up-hyperdx`. HyperDX requires an ingestion API key even
+# locally (401 without it) — set HYPERDX_API_KEY in .env; the key is shown in
+# the HyperDX UI under Team Settings, or straight from its MongoDB:
+#   docker exec oteru-collector-hyperdx-1 mongosh --quiet hyperdx --eval 'db.teams.findOne().apiKey'
+# The HyperDX service must be reachable as "hyperdx" (docker-compose service name).
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+  file:
+    path: /telemetry/telemetry.json
+    rotation:
+      max_megabytes: 10
+      max_backups: 5
+  otlp_http/hyperdx:
+    endpoint: http://hyperdx:4318
+    headers:
+      authorization: ${env:HYPERDX_API_KEY}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug, file, otlp_http/hyperdx]
+    logs:
+      receivers: [otlp]
+      exporters: [debug, file, otlp_http/hyperdx]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug, file, otlp_http/hyperdx]

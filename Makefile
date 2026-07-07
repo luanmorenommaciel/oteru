@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse down down-clickhouse demo clean
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse up-hyperdx up-direct down down-clickhouse down-direct ingest ingest-loop demo clean
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -64,6 +64,15 @@ e2e-signals: ## verify every --emit combination lands in ClickHouse (needs `make
 up: ## start the collector (docker compose, detached)
 	cd $(COLLECTOR) && docker compose up -d
 
+up-hyperdx: ## start the collector + HyperDX all-in-one; UI at http://localhost:8080
+	@cd $(COLLECTOR) && \
+	if [ ! -f .env ] && [ -z "$${HYPERDX_API_KEY:-}" ]; then \
+		echo "warning: HYPERDX_API_KEY not set — forwarding to HyperDX will get 401s." \
+		     "Register at http://localhost:8080, copy the ingestion API key (Team Settings)" \
+		     "into $(COLLECTOR)/.env (see .env.example), then re-run 'make up-hyperdx'."; \
+	fi && \
+	docker compose -f docker-compose.yml -f docker-compose.hyperdx.yml up -d
+
 up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK_ENDPOINT + CLICKSTACK_API_KEY)
 	@cd $(COLLECTOR) && \
 	if [ ! -f .env ] && { [ -z "$${CLICKSTACK_ENDPOINT:-}" ] || [ -z "$${CLICKSTACK_API_KEY:-}" ]; }; then \
@@ -76,11 +85,27 @@ up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK
 up-clickhouse: ## start the collector + a self-contained ClickHouse backend (native clickhouse exporter)
 	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml up -d
 
+up-direct: ## start ClickStack alone (persistent volumes) + bootstrap the API key into .env
+	cd $(COLLECTOR) && docker compose -f docker-compose.hyperdx-direct.yml up -d
+	bash scripts/hyperdx_bootstrap.sh
+
+ingest: ## replay the full sample DIRECTLY into ClickStack (reads HYPERDX_API_KEY from .env)
+	@key=$$(grep '^HYPERDX_API_KEY=' $(COLLECTOR)/.env 2>/dev/null | cut -d= -f2-); \
+	if [ -z "$$key" ]; then echo "error: HYPERDX_API_KEY not in $(COLLECTOR)/.env — run 'make up-direct' first."; exit 1; fi; \
+	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.cli replay $(SAMPLE) \
+		--transport http --max-gap 1 --header "authorization=$$key"
+
+ingest-loop: ## keep ingesting forever (Ctrl+C to stop)
+	@while true; do $(MAKE) --no-print-directory ingest; sleep 2; done
+
 down: ## stop the collector
 	cd $(COLLECTOR) && docker compose down
 
 down-clickhouse: ## stop the collector + ClickHouse and remove the ClickHouse volume
 	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml down -v
+
+down-direct: ## stop the standalone ClickStack (volumes are kept)
+	cd $(COLLECTOR) && docker compose -f docker-compose.hyperdx-direct.yml down
 
 demo: up ## start the collector, send 5 batches over HTTP and show the logs
 	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.cli replay $(SAMPLE) \
