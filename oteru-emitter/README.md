@@ -29,8 +29,9 @@ batch per line) and **re-sends it to the collector**:
 
 ## Step by step (from scratch)
 
-> Commands in **PowerShell** (Windows). On bash/Linux, replace
-> `.\.venv\Scripts\Activate.ps1` with `source .venv/Scripts/activate`.
+> Commands in **PowerShell** (Windows). On macOS/Linux (bash/zsh), replace
+> `.\.venv\Scripts\Activate.ps1` with `source .venv/bin/activate`, and any
+> `.venv\Scripts\` path with `.venv/bin/`.
 
 ### Prerequisites
 

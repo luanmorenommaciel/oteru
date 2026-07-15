@@ -1,0 +1,44 @@
+# Compose override: self-contained end-to-end. Adds a ClickHouse backend on the
+# compose network and swaps in the clickhouse-exporting collector config. Use
+# together with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml up -d
+# (or simply `make up-clickhouse` from the monorepo root).
+#
+# Unlike the ClickStack override, this needs NO external backend, endpoint, or
+# API key — the collector writes straight into the bundled ClickHouse. Query it
+# on the host at http://localhost:8123 (default user, no password).
+services:
+  oteru-collector:
+    volumes:
+      - ./oteru-collector-config.clickhouse.yml:/etc/oteru-collector-config.yml
+      - ./telemetry:/telemetry
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    # Provisions a dedicated otel user/db on first init. Recent ClickHouse
+    # requires a password for the `default` user over the network, so the
+    # collector (a separate container) needs real credentials — not default/empty.
+    environment:
+      CLICKHOUSE_DB: otel
+      CLICKHOUSE_USER: otel
+      CLICKHOUSE_PASSWORD: otel
+    ports:
+      - "8123:8123"   # HTTP interface (host queries)
+      - "9000:9000"   # native protocol
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+
+volumes:
+  clickhouse-data:
