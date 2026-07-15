@@ -1,0 +1,57 @@
+# Self-contained config: everything the default config does (debug + file), PLUS
+# writing directly into a local ClickHouse via the contrib-native `clickhouse`
+# exporter. No HyperDX, no API key, no second collector hop.
+#
+# Used by `make up-clickhouse` (docker-compose.clickhouse.yml adds the ClickHouse
+# service on the same compose network, reachable as host `clickhouse`).
+#
+# The exporter creates the `otel` database and the otel_logs / otel_traces /
+# otel_metrics_* tables automatically (create_schema: true).
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+  # Writes every received payload as JSON (one line per batch) to /telemetry,
+  # which is bind-mounted to ./telemetry on the host. rotation avoids a huge file.
+  file:
+    path: /telemetry/telemetry.json
+    rotation:
+      max_megabytes: 10
+      max_backups: 5
+  # Persists into ClickHouse over the native protocol. `clickhouse` is the
+  # compose service name; create_schema builds the database + tables on startup.
+  clickhouse:
+    endpoint: tcp://clickhouse:9000?dial_timeout=10s
+    database: otel
+    username: otel
+    password: otel
+    create_schema: true
+    ttl: 72h
+    logs_table_name: otel_logs
+    traces_table_name: otel_traces
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug, file, clickhouse]
+    logs:
+      receivers: [otlp]
+      exporters: [debug, file, clickhouse]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug, file, clickhouse]

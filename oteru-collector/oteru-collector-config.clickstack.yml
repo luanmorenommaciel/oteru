@@ -27,7 +27,7 @@ exporters:
       max_megabytes: 10
       max_backups: 5
   # Forwards to the ClickStack ingest collector, authenticated by API key.
-  otlp_http/clickstack:
+  otlphttp/clickstack:
     endpoint: ${env:CLICKSTACK_ENDPOINT}
     headers:
       authorization: ${env:CLICKSTACK_API_KEY}
@@ -36,10 +36,10 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [debug, file, otlp_http/clickstack]
+      exporters: [debug, file, otlphttp/clickstack]
     logs:
       receivers: [otlp]
-      exporters: [debug, file, otlp_http/clickstack]
+      exporters: [debug, file, otlphttp/clickstack]
     metrics:
       receivers: [otlp]
-      exporters: [debug, file, otlp_http/clickstack]
+      exporters: [debug, file, otlphttp/clickstack]

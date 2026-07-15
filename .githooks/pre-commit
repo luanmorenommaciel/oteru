@@ -1,3 +1,5 @@
 #!/bin/sh
 # PII guard — blocks commits containing un-redacted captures.
-exec python "$(git rev-parse --show-toplevel)/scripts/check_pii.py"
+# Prefer python3 (macOS/Linux have no bare `python`); fall back to `python`.
+PY="$(command -v python3 || command -v python)"
+exec "$PY" "$(git rev-parse --show-toplevel)/scripts/check_pii.py"

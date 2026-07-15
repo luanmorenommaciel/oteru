@@ -42,7 +42,7 @@ Step by step, the same flow is:
 ```bash
 make up        # collector via docker compose (detached)
 make dry-run   # validate the sample without sending (no network needed)
-cd oteru-emitter && .venv/Scripts/oteru-emitter replay samples/telemetry-sample.json --transport http
+cd oteru-emitter && .venv/bin/oteru-emitter replay samples/telemetry-sample.json --transport http  # Windows: .venv\Scripts\oteru-emitter
 ```
 
 Watch the records arrive with `docker compose logs -f oteru-collector` (from

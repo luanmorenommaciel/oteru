@@ -57,6 +57,37 @@ Notes:
 - The plain `make up` / `docker compose up -d` flow is untouched; `make down`
   stops either variant.
 
+## Storing in ClickHouse (self-contained, no external backend)
+
+The override `docker-compose.clickhouse.yml` + config
+`oteru-collector-config.clickhouse.yml` run a **bundled ClickHouse** on the
+compose network and write to it with the contrib-native `clickhouse` exporter —
+no HyperDX, no API key, no second collector hop. The exporter creates the `otel`
+database and the `otel_logs` / `otel_traces` / `otel_metrics_*` tables on
+startup (`create_schema: true`).
+
+```bash
+make up-clickhouse                        # collector + ClickHouse (from the monorepo root)
+# send a capture through the emitter:
+cd ../oteru-emitter && .venv/bin/oteru-emitter replay samples/telemetry-sample.json --transport http
+# verify it landed (default creds otel/otel; HTTP interface on :8123):
+curl -s 'http://localhost:8123/?user=otel&password=otel' --data-binary \
+  "SELECT count() FROM otel.otel_logs"
+make down-clickhouse                      # stop + remove the ClickHouse volume
+```
+
+Notes:
+
+- The bundled ClickHouse is a **local dev backend** with throwaway credentials
+  (`otel`/`otel`) — fine for the sandbox, not for anything shared. Recent
+  ClickHouse requires a password for the `default` user over the network, so a
+  dedicated `otel` user is provisioned via the image's env vars.
+- Query the data on the host at `http://localhost:8123` (HTTP) or `:9000`
+  (native), user `otel`, password `otel`.
+- Choose your backend: **`up-clickstack`** forwards to an *external* ClickStack
+  (managed / HyperDX UI); **`up-clickhouse`** is fully self-contained (raw
+  ClickHouse tables you query with SQL).
+
 ## Ports (OTLP ingress)
 
 | Port | Protocol | Use |

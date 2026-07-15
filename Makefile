@@ -21,16 +21,21 @@ endif
 
 VENV_PY := .venv/$(BINDIR)/python
 
+# Python for bootstrapping (creating the venv, system-python targets). Prefer
+# python3 — macOS/Linux have no bare `python`; fall back to `python` on Windows
+# / Git Bash. Override for a specific interpreter: `make setup PYTHON=python3.13`.
+PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
+
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard up up-clickstack down demo clean
+.PHONY: help setup test lint format dry-run pii-guard up up-clickstack up-clickhouse down down-clickhouse demo clean
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
 setup: ## create the venv, install the emitter (editable + dev) and enable the PII hook
-	python -m venv $(VENV)
+	$(PYTHON) -m venv $(VENV)
 	$(VENV)/$(BINDIR)/python -m pip install --upgrade pip
 	$(VENV)/$(BINDIR)/python -m pip install -e "./$(EMITTER)[dev]"
 	git config core.hooksPath .githooks
@@ -51,7 +56,7 @@ dry-run: ## validate the sample without network (smoke test)
 	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.cli replay $(SAMPLE) --dry-run
 
 pii-guard: ## scan committed captures for PII (system python)
-	python scripts/check_pii.py
+	$(PYTHON) scripts/check_pii.py
 
 up: ## start the collector (docker compose, detached)
 	cd $(COLLECTOR) && docker compose up -d
@@ -65,8 +70,14 @@ up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK
 	fi && \
 	docker compose -f docker-compose.yml -f docker-compose.clickstack.yml up -d
 
+up-clickhouse: ## start the collector + a self-contained ClickHouse backend (native clickhouse exporter)
+	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml up -d
+
 down: ## stop the collector
 	cd $(COLLECTOR) && docker compose down
+
+down-clickhouse: ## stop the collector + ClickHouse and remove the ClickHouse volume
+	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml down -v
 
 demo: up ## start the collector, send 5 batches over HTTP and show the logs
 	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.cli replay $(SAMPLE) \
