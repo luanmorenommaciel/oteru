@@ -49,6 +49,21 @@ Watch the records arrive with `docker compose logs -f oteru-collector` (from
 `oteru-collector/`). `make down` stops the collector. Run `make` with no
 arguments to list every target.
 
+To send only some signals, add `--emit` (comma-separated `log`, `metric`,
+`trace` — any combination, none implies another):
+
+```bash
+cd oteru-emitter && .venv/bin/oteru-emitter replay samples/telemetry-sample.json --emit log,metric
+```
+
+The default is every signal the capture holds. Note that the committed sample
+has **no traces**: Claude Code emits logs and metrics by default, and spans only
+when the opt-in beta is enabled (see
+[`oteru-collector/README.md`](oteru-collector/README.md#traces-opt-in-beta)).
+Until a real span capture exists, the trace path is exercised with the synthetic
+`oteru-emitter/tests/fixtures/traces-capture.json`.
+See [`oteru-emitter/README.md`](oteru-emitter/README.md#choosing-which-signals-to-send---emit).
+
 To also forward everything to a ClickStack (ClickHouse + HyperDX) backend, set
 `CLICKSTACK_ENDPOINT` + `CLICKSTACK_API_KEY` and use `make up-clickstack` —
 see [`oteru-collector/README.md`](oteru-collector/README.md). Credentials go
@@ -57,10 +72,11 @@ in env vars or the gitignored `.env`, **never in the repo**.
 ## Development
 
 ```bash
-make test       # pytest suite (oteru-emitter/tests)
-make lint       # ruff check + format check
-make format     # apply ruff format + autofixes
-make pii-guard  # scan committed captures for real identity (system python)
+make test         # pytest suite (oteru-emitter/tests)
+make lint         # ruff check + format check
+make format       # apply ruff format + autofixes
+make pii-guard    # scan committed captures for real identity (system python)
+make e2e-signals  # verify every --emit combination reaches ClickHouse (needs make up-clickhouse)
 ```
 
 CI (GitHub Actions) runs lint + tests on Ubuntu and Windows × Python 3.10 and

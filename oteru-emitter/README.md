@@ -19,6 +19,9 @@ batch per line) and **re-sends it to the collector**:
   `Str("2501")` etc.).
 - **Dual-transport.** Same message, two channels to choose from:
   `http/protobuf` (`:4318`) or `gRPC` (`:4317`).
+- **Signal selection.** `--emit log,metric,trace` replays only the chosen
+  signals. The three are independent — any combination is valid and none
+  implies another.
 - **Realtime.** Honors the original cadence between events (with a cap for
   idle gaps).
 - **Restamp.** Re-stamps timestamps (everything shifted to "now") and rotates
@@ -125,8 +128,60 @@ oteru-emitter replay samples\telemetry-sample.json --transport http `
 ```
 
 Main flags: `--transport http|grpc`, `--endpoint`, `--header NAME=VALUE`
-(repeatable), `--profile`, `--speed`, `--max-gap`, `--limit N`, `--seed`,
-`--no-restamp`, `--dry-run`. Full help: `oteru-emitter replay --help`.
+(repeatable), `--emit`, `--profile`, `--speed`, `--max-gap`, `--limit N`,
+`--seed`, `--no-restamp`, `--dry-run`. Full help:
+`oteru-emitter replay --help`.
+
+## Choosing which signals to send (`--emit`)
+
+By default the emitter replays **every signal the capture holds**. `--emit`
+narrows that to a comma-separated list of `log`, `metric` and `trace`:
+
+```powershell
+oteru-emitter replay samples\telemetry-sample.json --emit log            # logs only
+oteru-emitter replay samples\telemetry-sample.json --emit metric         # metrics only
+oteru-emitter replay tests\fixtures\traces-capture.json --emit trace     # traces only
+oteru-emitter replay samples\telemetry-sample.json --emit log,metric     # both
+```
+
+The names are **singular**, order does not matter (output is always reported as
+`log,metric,trace`), and the flag is repeatable (`--emit log --emit metric` is
+the same as `--emit log,metric`).
+
+There is **no dependency between signals**: a trace does not require a log or a
+metric. This mirrors OTLP, where the three are separate pipelines.
+
+Two things `--emit` deliberately does *not* do:
+
+- It **selects, never fabricates.** Asking for a signal the capture does not
+  hold is an error (exit 1), not an empty send — `samples/telemetry-sample.json`
+  is a real Claude Code capture, so it has logs and metrics but **no traces**.
+  For the trace signal, use `tests/fixtures/traces-capture.json` (synthetic,
+  fictitious IDs).
+- It **is applied before `--limit`**, so `--emit metric --limit 5` sends five
+  *metric* batches rather than the metrics among the first five batches.
+
+## Signals: what Claude Code actually emits
+
+| Signal | Claude Code | In `samples/telemetry-sample.json` | Fixture for testing |
+|---|---|---|---|
+| `log` | yes (`claude_code.*` events) | 348 batches | `tests/fixtures/tiny-capture.json` |
+| `metric` | yes (`claude_code.*` counters) | 175 batches | `tests/fixtures/tiny-capture.json` |
+| `trace` | **opt-in beta** — off unless `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1` + `OTEL_TRACES_EXPORTER=otlp` | none | `tests/fixtures/traces-capture.json` |
+
+The sample predates the traces beta, so it has none. Logs and metrics carry
+empty trace IDs regardless — those records correlate via `session.id` /
+`prompt.id`, not spans.
+
+`tests/fixtures/traces-capture.json` fills the gap so the trace path (collector
+ingress → ClickHouse `otel_traces`) can be exercised at all. It is **synthetic**
+but modelled on the documented span schema — `claude_code.interaction` (root) →
+`claude_code.llm_request` / `claude_code.tool` → `claude_code.tool.execution`,
+with the documented attributes (`model`, `gen_ai.system`, `input_tokens`,
+`tool_name`, `tool_use_id`, ...) and placeholder identity. Two things in it are
+**not** verified against a real capture: the instrumentation scope name
+(`com.anthropic.claude_code.traces`) and the exact attribute value formats.
+Replace it with a redacted real capture once someone runs the beta.
 
 ## Development (tests and lint)
 
@@ -154,7 +209,7 @@ Or, from the monorepo root: `make test` / `make lint` / `make format`
 
 ```
 OTLP/JSON capture
-   │  sources/replay.py     (loads batches + anchors timestamps)
+   │  sources/replay.py     (loads batches + anchors timestamps + --emit selection)
    ▼
    │  rewrite/restamp.py    (shifts time + rotates IDs — preserves structure)
    ▼

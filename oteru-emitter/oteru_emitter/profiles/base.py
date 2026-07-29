@@ -19,7 +19,7 @@ class Profile:
 
 CLAUDE_CODE = Profile(
     name="claude_code",
-    description="Claude Code CLI — claude_code.* namespace, logs + metrics, no traces.",
+    description="Claude Code CLI — claude_code.* namespace, logs + metrics; traces opt-in (beta).",
     rotate_id_keys=("session.id", "prompt.id", "request_id"),
     preserve_id_keys=(
         "user.id",
