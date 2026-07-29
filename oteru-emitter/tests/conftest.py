@@ -7,16 +7,24 @@ between tests.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
+
+# tests/ is not a package; pytest prepends this directory to sys.path.
+from factories import logs_sharing_trace_context, traces_capture
 
 from oteru_emitter.sources.replay import Batch, load_batches
 
 TESTS_DIR = Path(__file__).resolve().parent
 TINY_PATH = TESTS_DIR / "fixtures" / "tiny-capture.json"
-TRACES_PATH = TESTS_DIR / "fixtures" / "traces-capture.json"
 SAMPLE_PATH = TESTS_DIR.parent / "samples" / "telemetry-sample.json"
+
+
+def _write_capture(path: Path, batches: list[dict]) -> Path:
+    path.write_text("".join(json.dumps(batch) + "\n" for batch in batches), encoding="utf-8")
+    return path
 
 
 @pytest.fixture
@@ -26,19 +34,33 @@ def tiny_path() -> Path:
 
 
 @pytest.fixture
-def traces_path() -> Path:
-    """Path to the synthetic traces capture (2 batches, 3 spans, fictitious IDs).
+def traces_path(tmp_path: Path) -> Path:
+    """A traces capture built by ``factories``, written to a temp file.
 
-    Claude Code emits no spans, so the real sample has no traces — this fixture
-    is what exercises the trace signal end to end.
+    Built rather than committed: the repo ships code to run locally, never
+    captured telemetry. See ``tests/factories.py``.
     """
-    return TRACES_PATH
+    return _write_capture(tmp_path / "traces-capture.json", traces_capture())
 
 
 @pytest.fixture
 def traces_batches(traces_path: Path) -> list[Batch]:
-    """Batches from the traces capture, reloaded on every test."""
+    """Batches from the traces capture, rebuilt on every test."""
     return load_batches(str(traces_path))
+
+
+@pytest.fixture
+def trace_correlated_batches(tmp_path: Path) -> list[Batch]:
+    """Spans plus log records that share the same trace context.
+
+    Rotating trace IDs must keep these two in sync, or the log/trace join
+    that makes the telemetry useful silently breaks.
+    """
+    path = _write_capture(
+        tmp_path / "correlated.json",
+        [*traces_capture(), *logs_sharing_trace_context()],
+    )
+    return load_batches(str(path))
 
 
 @pytest.fixture

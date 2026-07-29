@@ -8,6 +8,8 @@ import pytest
 
 pytest.importorskip("opentelemetry.proto")
 
+from factories import SPAN_INTERACTION, TRACE_1  # noqa: E402
+
 from oteru_emitter.model.otlp import normalize_ids, to_request  # noqa: E402
 
 
@@ -35,16 +37,16 @@ def test_traces_become_export_request_with_hex_ids_decoded(traces_batches):
     # conversion the collector rejects the batch ("invalid TraceID length").
     request = to_request("traces", traces_batches[0].payload)
     assert type(request).__name__ == "ExportTraceServiceRequest"
-    spans = request.resource_spans[0].scope_spans[0].spans
-    assert spans[0].name == "claude_code.interaction"
-    assert spans[0].trace_id.hex() == "4bf92f3577b34da6a3ce929d0e0e4736"
-    assert spans[0].span_id.hex() == "a1b2c3d4e5f60718"
-    # the child spans point back at their parent (interaction -> llm_request)
-    assert spans[1].name == "claude_code.llm_request"
-    assert spans[1].parent_span_id.hex() == "a1b2c3d4e5f60718"
-    # ...and the grandchild at the tool span (tool -> tool.execution)
-    assert spans[3].name == "claude_code.tool.execution"
-    assert spans[3].parent_span_id.hex() == spans[2].span_id.hex()
+    by_name = {s.name: s for s in request.resource_spans[0].scope_spans[0].spans}
+    root = by_name["claude_code.interaction"]
+    assert root.trace_id.hex() == TRACE_1
+    assert root.span_id.hex() == SPAN_INTERACTION
+    # children point back at the root, grandchildren at the tool span
+    assert by_name["claude_code.llm_request"].parent_span_id.hex() == SPAN_INTERACTION
+    assert by_name["claude_code.tool"].parent_span_id.hex() == SPAN_INTERACTION
+    tool_span_id = by_name["claude_code.tool"].span_id.hex()
+    assert by_name["claude_code.tool.execution"].parent_span_id.hex() == tool_span_id
+    assert by_name["claude_code.tool.blocked_on_user"].parent_span_id.hex() == tool_span_id
 
 
 def test_to_request_does_not_mutate_the_payload(traces_batches):
