@@ -1,0 +1,69 @@
+{
+  "$schema": "https://oteru.dev/schemas/bronze-contract.json",
+  "version": "bronze-v1",
+  "description": "Bronze-layer contract: what the collector → ClickHouse pipeline guarantees to downstream lanes (modeling, engine). Verified by scripts/check_bronze_contract.py. Semantics: listed tables/columns/attributes/metrics MUST exist with the listed types; extra columns or attributes are always allowed (additive changes are free). Renaming or removing anything listed here is a breaking change — see docs/swim-lanes.md §3.",
+  "database": "otel",
+  "tables": {
+    "otel_logs": {
+      "columns": {
+        "Timestamp": "DateTime64(9)",
+        "TraceId": "String",
+        "SpanId": "String",
+        "TraceFlags": "UInt8",
+        "SeverityText": "LowCardinality(String)",
+        "SeverityNumber": "UInt8",
+        "ServiceName": "LowCardinality(String)",
+        "Body": "String",
+        "ResourceAttributes": "Map(LowCardinality(String), String)",
+        "ScopeName": "String",
+        "ScopeVersion": "LowCardinality(String)",
+        "ScopeAttributes": "Map(LowCardinality(String), String)",
+        "LogAttributes": "Map(LowCardinality(String), String)"
+      },
+      "required_log_attributes": [
+        "event.name",
+        "session.id",
+        "user.email",
+        "organization.id"
+      ],
+      "event_attributes": {
+        "api_request": [
+          "cost_usd",
+          "model",
+          "input_tokens",
+          "output_tokens",
+          "duration_ms",
+          "session.id"
+        ],
+        "tool_decision": [
+          "tool_name",
+          "decision",
+          "source",
+          "session.id"
+        ],
+        "user_prompt": [
+          "prompt.id",
+          "prompt_length",
+          "session.id",
+          "user.email"
+        ]
+      }
+    },
+    "otel_metrics_sum": {
+      "columns": {
+        "ResourceAttributes": "Map(LowCardinality(String), String)",
+        "ServiceName": "LowCardinality(String)",
+        "MetricName": "String",
+        "MetricDescription": "String",
+        "MetricUnit": "String",
+        "Attributes": "Map(LowCardinality(String), String)",
+        "StartTimeUnix": "DateTime64(9)",
+        "TimeUnix": "DateTime64(9)",
+        "Value": "Float64"
+      },
+      "required_metrics": [
+        "claude_code.session.count"
+      ]
+    }
+  }
+}

@@ -1,0 +1,51 @@
+name: Contract
+
+# Enforces the seam contracts that keep the swim lanes decoupled
+# (docs/swim-lanes.md §3). Currently: the bronze contract — the collector →
+# ClickHouse schema guaranteed to the modeling/engine lanes.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "oteru-collector/**"
+      - "oteru-emitter/samples/**"
+      - "contracts/**"
+      - "scripts/check_bronze_contract.py"
+      - ".github/workflows/contract.yml"
+  pull_request:
+    paths:
+      - "oteru-collector/**"
+      - "oteru-emitter/samples/**"
+      - "contracts/**"
+      - "scripts/check_bronze_contract.py"
+      - ".github/workflows/contract.yml"
+
+jobs:
+  bronze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install the emitter
+        run: pip install -e "./oteru-emitter"
+      - name: Start collector + ClickHouse
+        run: make up-clickhouse
+      - name: Wait for the OTLP HTTP receiver
+        run: |
+          for i in $(seq 1 30); do
+            (echo > /dev/tcp/localhost/4318) 2>/dev/null && exit 0
+            sleep 2
+          done
+          echo "collector did not come up" && exit 1
+      - name: Replay the golden fixture (25 batches — covers api_request at batch 20)
+        run: oteru-emitter replay oteru-emitter/samples/telemetry-sample.json --transport http --limit 25 --max-gap 1
+      - name: Let the clickhouse exporter flush
+        run: sleep 10
+      - name: Check the bronze contract
+        run: python scripts/check_bronze_contract.py contracts/bronze-v1.json
+      - name: Tear down
+        if: always()
+        run: make down-clickhouse

@@ -31,6 +31,7 @@ make lint       # ruff check + ruff format --check
 make format     # ruff format + autofixes
 make dry-run    # validates the sample without network (523 batches)
 make pii-guard  # python scripts/check_pii.py (system python — works before setup)
+make contract-check  # verify contracts/bronze-v1.json against a running ClickHouse
 make up/down    # collector via docker compose
 make up-clickstack  # collector + forward to ClickStack (needs CLICKSTACK_ENDPOINT/API_KEY env)
 make demo       # up + 5 batches over HTTP + collector logs
@@ -55,6 +56,13 @@ CI (`.github/workflows/ci.yml`): lint + tests on ubuntu/windows × Python
   user paths and non-placeholder identity attributes. It runs as the
   `.githooks/pre-commit` hook (enabled by `make setup`), as `make pii-guard`,
   and as a CI job. New fixtures must stay clean under it.
+- **Contracts protect the swim lanes.** `contracts/bronze-v1.json` is the
+  collector → ClickHouse schema contract for downstream lanes; the
+  **Contract** workflow (`.github/workflows/contract.yml`) replays the golden
+  fixture through the real pipeline and runs
+  `scripts/check_bronze_contract.py` on PRs touching `oteru-collector/**`,
+  `contracts/**`, the sample, or the checker. Breaking (non-additive)
+  contract changes follow the protocol in [`docs/swim-lanes.md`](docs/swim-lanes.md).
 - **Live + synthetic traffic coexist.** A live Claude Code session with
   `CLAUDE_CODE_ENABLE_TELEMETRY=1` and the emitter's replays land on the same
   collector and are indistinguishable at the OTLP envelope. A clean separation
