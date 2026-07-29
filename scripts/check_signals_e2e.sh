@@ -15,7 +15,10 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EMITTER="$ROOT/oteru-emitter"
 TINY="$EMITTER/tests/fixtures/tiny-capture.json"
-TRACES="$EMITTER/tests/fixtures/traces-capture.json"
+
+# Trace captures are built, not committed — see oteru-emitter/tests/factories.py.
+TRACES="$(mktemp -t oteru-traces-XXXXXX).json"
+trap 'rm -f "$TRACES"' EXIT
 CH="${CLICKHOUSE_URL:-http://localhost:8123/?user=otel&password=otel}"
 OTLP="${OTLP_HTTP_ENDPOINT:-http://localhost:4318}"
 SETTLE="${SETTLE_SECONDS:-6}"
@@ -66,10 +69,40 @@ case_emit() {
 echo "signal-selection e2e ($OTLP, ClickHouse)"
 cd "$EMITTER" || exit 1
 
+"$PY" - "$TRACES" <<'PY' || { echo "  FAIL: could not build the traces capture"; exit 1; }
+import json, sys, pathlib
+sys.path.insert(0, "tests")
+from factories import traces_capture
+
+pathlib.Path(sys.argv[1]).write_text(
+    "".join(json.dumps(b) + "\n" for b in traces_capture()), encoding="utf-8"
+)
+PY
+
 case_emit "logs only"    "$TINY"   "log"        3 0 0
 case_emit "metrics only" "$TINY"   "metric"     0 0 1
-case_emit "traces only"  "$TRACES" "trace"      0 5 0
+case_emit "traces only"  "$TRACES" "trace"      0 6 0
 case_emit "combined"     "$TINY"   "log,metric" 3 0 1
+
+# Replaying the same capture twice must yield two distinct traces. Trace/span
+# IDs are structural OTLP fields, so nothing rotated them before and every
+# replay collided with the original trace. Counted as a delta, so pre-existing
+# rows in the table cannot confound it.
+traces_before="$(curl -sf "$CH" --data-binary \
+  "SELECT uniqExact(TraceId) FROM otel.otel_traces FORMAT TSV")"
+for _ in 1 2; do
+  "$PY" -m oteru_emitter.cli replay "$TRACES" \
+    --transport http --max-gap 0.2 --emit trace >/dev/null 2>&1 || true
+done
+sleep "$SETTLE"
+traces_after="$(curl -sf "$CH" --data-binary \
+  "SELECT uniqExact(TraceId) FROM otel.otel_traces FORMAT TSV")"
+new_traces=$((traces_after - traces_before))
+if [ "$new_traces" -eq 4 ]; then
+  echo "  ok   two replays -> 4 distinct traces (no ID collision)"
+else
+  fail "two replays of a 2-trace capture yielded $new_traces distinct traces (expected 4)"
+fi
 
 # A payload with no records at all must be accepted, not rejected.
 for path in v1/logs v1/metrics v1/traces; do

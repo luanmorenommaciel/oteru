@@ -146,6 +146,7 @@ def cmd_replay(args) -> int:
         batches,
         shift_time=not args.no_restamp,
         rotate_keys=rotate_keys,
+        rotate_trace_ids=not args.no_restamp,
         seed=args.seed,
     )
 
