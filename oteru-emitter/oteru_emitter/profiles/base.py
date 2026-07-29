@@ -29,8 +29,10 @@ CLAUDE_CODE = Profile(
         "organization.id",
     ),
     expected_scopes=(
-        "com.anthropic.claude_code.events",
-        "com.anthropic.claude_code",
+        "com.anthropic.claude_code.events",  # logs
+        "com.anthropic.claude_code",  # metrics
+        "com.anthropic.claude_code.tracing",  # traces, 2.1.191+
+        "com.anthropic.claude_code.traces",  # traces, up to 2.1.170
     ),
 )
 

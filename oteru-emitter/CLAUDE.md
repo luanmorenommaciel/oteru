@@ -128,6 +128,15 @@ Key design decisions:
   values are fabricated and identity is placeholder-only. When the schema
   changes, re-read it from a live capture and update the factory — do not commit
   the capture.
+- **Scope names drift across versions — bump them together with the version.**
+  The trace scope is `com.anthropic.claude_code.traces` up to 2.1.170 and
+  `com.anthropic.claude_code.tracing` from 2.1.191 on. The factory got this
+  wrong exactly once, and instructively: it grew out of a 2.1.170 capture where
+  `.traces` was correct, the `service.version` strings were bumped to 2.1.220,
+  and the scope name rode along unreviewed. Nothing failed — the payload is
+  well-formed OTLP either way, so it took querying real traffic to notice. A
+  rename like this makes a `WHERE ScopeName = …` return nothing without erroring;
+  `profiles/base.py::expected_scopes` lists both spellings for that reason.
 - **Live Claude Code may be emitting to the same collector.** If
   `CLAUDE_CODE_ENABLE_TELEMETRY=1` is set, the active Claude Code session sends
   real `claude_code.*` telemetry to the same endpoint. Since the emitter replays

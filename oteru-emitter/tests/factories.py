@@ -25,7 +25,9 @@ SPAN_TOOL_BLOCKED = "d4e5f60718293041"
 SPAN_TOOL_EXEC = "e5f6071829304152"
 SPAN_INTERACTION_2 = "f60718293041526a"
 
-SCOPE = {"name": "com.anthropic.claude_code.traces", "version": "2.1.220"}
+# The trace scope was renamed between versions: `.traces` up to 2.1.170,
+# `.tracing` from 2.1.191 on. Keep this in step with the version above.
+SCOPE = {"name": "com.anthropic.claude_code.tracing", "version": "2.1.220"}
 
 # Mirrors the real capture: no identity in the resource block, no host.name.
 RESOURCE = {
