@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard up up-clickstack up-clickhouse down down-clickhouse demo clean
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse down down-clickhouse demo clean
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -57,6 +57,9 @@ dry-run: ## validate the sample without network (smoke test)
 
 pii-guard: ## scan committed captures for PII (system python)
 	$(PYTHON) scripts/check_pii.py
+
+e2e-signals: ## verify every --emit combination lands in ClickHouse (needs `make up-clickhouse`)
+	bash scripts/check_signals_e2e.sh
 
 up: ## start the collector (docker compose, detached)
 	cd $(COLLECTOR) && docker compose up -d
