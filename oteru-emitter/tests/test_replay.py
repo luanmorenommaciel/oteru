@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from oteru_emitter.sources.replay import load_batches
+from oteru_emitter.sources.replay import load_batches, select_signals
 
 
 def test_counts_signals_and_order(tiny_batches):
@@ -37,3 +37,25 @@ def test_start_time_excluded_from_anchors(tiny_batches):
     # the metrics batch's startTimeUnixNano is EARLIER than every event,
     # but it does not count as an anchor (it would distort the pacing)
     assert tiny_batches[2].anchor_ns == 1_000_000_007_000_000_000
+
+
+def test_spans_anchor_on_start_time(traces_batches):
+    # spans carry no timeUnixNano — without startTimeUnixNano as an anchor a
+    # traces-only capture would be unanchored and never restamped
+    assert [b.signal for b in traces_batches] == ["traces", "traces"]
+    assert traces_batches[0].anchor_ns == 1_752_620_000_000_000_000
+
+
+def test_select_signals_keeps_order_and_drops_the_rest(tiny_batches):
+    assert [b.signal for b in select_signals(tiny_batches, {"logs"})] == ["logs", "logs"]
+    assert [b.signal for b in select_signals(tiny_batches, {"metrics"})] == ["metrics"]
+    assert [b.signal for b in select_signals(tiny_batches, {"logs", "metrics"})] == [
+        "logs",
+        "logs",
+        "metrics",
+    ]
+
+
+def test_select_signals_absent_signal_yields_nothing(tiny_batches):
+    # selecting a signal the capture does not hold never fabricates one
+    assert select_signals(tiny_batches, {"traces"}) == []

@@ -94,3 +94,35 @@ def test_metric_duration_preserved(tiny_path):
     before = duration(batches)
     restamp(batches, now_ns=NOW_NS)
     assert duration(batches) == before
+
+
+def _span_times(batches) -> list[tuple[int, int]]:
+    """(start, end) of every span in the batches, in order."""
+    out: list[tuple[int, int]] = []
+    for batch in batches:
+        for rs in batch.payload.get("resourceSpans", []):
+            for ss in rs.get("scopeSpans", []):
+                for span in ss.get("spans", []):
+                    out.append((int(span["startTimeUnixNano"]), int(span["endTimeUnixNano"])))
+    return out
+
+
+def test_span_end_time_shifts_with_start_preserving_duration(traces_batches):
+    before = _span_times(traces_batches)
+    durations = [end - start for start, end in before]
+
+    offset = restamp(traces_batches, rotate_keys=(), now_ns=NOW_NS)
+
+    after = _span_times(traces_batches)
+    # both ends move by the same offset — otherwise the duration is corrupted
+    assert after == [(start + offset, end + offset) for start, end in before]
+    assert [end - start for start, end in after] == durations
+    assert all(end > start for start, end in after)
+
+
+def test_traces_only_capture_is_anchored_and_shifted(traces_batches):
+    # spans have no timeUnixNano; anchoring on startTimeUnixNano is what makes
+    # a traces-only replay land at "now" instead of keeping stale timestamps
+    offset = restamp(traces_batches, rotate_keys=(), now_ns=NOW_NS)
+    assert offset != 0
+    assert min(start for start, _ in _span_times(traces_batches)) == NOW_NS

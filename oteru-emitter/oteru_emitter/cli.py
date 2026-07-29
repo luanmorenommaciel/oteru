@@ -8,6 +8,8 @@ Examples:
     oteru-emitter replay telemetry.json --transport http
     oteru-emitter replay telemetry.json --transport grpc --speed 4
     oteru-emitter replay telemetry.json --no-restamp --transport http
+    oteru-emitter replay telemetry.json --emit log,metric   # only these signals
+    oteru-emitter replay traces.json --emit trace           # traces alone
 """
 
 from __future__ import annotations
@@ -20,7 +22,13 @@ from . import __version__
 from .profiles import get_profile, list_profiles
 from .rewrite.restamp import restamp
 from .scheduler.realtime import run_realtime
-from .sources.replay import Batch, load_batches
+from .sources.replay import (
+    CLI_SIGNAL_NAMES,
+    SIGNAL_BY_CLI_NAME,
+    Batch,
+    load_batches,
+    select_signals,
+)
 from .transport.base import DEFAULT_GRPC_ENDPOINT, DEFAULT_HTTP_ENDPOINT
 
 
@@ -63,6 +71,34 @@ def _header(value: str) -> tuple[str, str]:
     return name, val
 
 
+def _cli_names(signals) -> list[str]:
+    """Internal signal names -> CLI names, in canonical log/metric/trace order."""
+    wanted = set(signals)
+    return [name for name in CLI_SIGNAL_NAMES if SIGNAL_BY_CLI_NAME[name] in wanted]
+
+
+def _emit(value: str) -> list[str]:
+    """argparse type for --emit: parses a comma-separated signal list.
+
+    Accepts ``log``, ``metric`` and ``trace`` in any combination and order;
+    returns the internal signal names. The values are independent — none of
+    them implies another.
+    """
+    names = [part.strip().lower() for part in value.split(",") if part.strip()]
+    if not names:
+        raise argparse.ArgumentTypeError(
+            f"invalid --emit {value!r}: expected at least one of "
+            f"{', '.join(CLI_SIGNAL_NAMES)}, e.g. --emit log,metric"
+        )
+    unknown = [n for n in names if n not in SIGNAL_BY_CLI_NAME]
+    if unknown:
+        raise argparse.ArgumentTypeError(
+            f"unknown signal(s) {', '.join(repr(u) for u in unknown)} in --emit: "
+            f"expected {', '.join(CLI_SIGNAL_NAMES)} (singular, comma-separated)"
+        )
+    return [SIGNAL_BY_CLI_NAME[n] for n in names]
+
+
 def _build_transport(args):
     headers = dict(args.header)
     if args.transport == "http":
@@ -83,12 +119,27 @@ def cmd_replay(args) -> int:
     except OSError as exc:
         print(f"error: could not read '{args.file}': {exc}", file=sys.stderr)
         return 1
-    if args.limit:
-        batches = batches[: args.limit]
-
     if not batches:
         print("no OTLP batches found in the file.", file=sys.stderr)
         return 1
+
+    # --emit is a selection over what the capture holds, applied before --limit
+    # so that `--emit metric --limit 5` yields 5 metric batches, not the metric
+    # subset of the first 5 batches.
+    selected = sorted({s for group in (args.emit or []) for s in group}) or None
+    if selected is not None:
+        available = sorted({b.signal for b in batches})
+        batches = select_signals(batches, set(selected))
+        if not batches:
+            print(
+                f"no batches left after --emit {','.join(_cli_names(selected))}: "
+                f"the capture only holds {','.join(_cli_names(available))}.",
+                file=sys.stderr,
+            )
+            return 1
+
+    if args.limit:
+        batches = batches[: args.limit]
 
     rotate_keys = () if args.no_restamp else profile.rotate_id_keys
     offset_ns = restamp(
@@ -101,6 +152,10 @@ def cmd_replay(args) -> int:
     print(f"oteru-emitter {__version__} — replay")
     print(f"  file:      {args.file}")
     print(f"  profile:   {profile.name} ({profile.description})")
+    print(
+        "  emit:      "
+        + (",".join(_cli_names(selected)) if selected else "all signals in the capture")
+    )
     print(
         f"  restamp:   {'off' if args.no_restamp else 'on'}"
         + (
@@ -182,6 +237,15 @@ def build_parser() -> argparse.ArgumentParser:
         choices=list_profiles(),
         default="claude_code",
         help="emitter profile (defines which IDs to rotate). Default: claude_code",
+    )
+    r.add_argument(
+        "--emit",
+        action="append",
+        type=_emit,
+        default=None,
+        metavar="SIGNAL[,SIGNAL...]",
+        help="replay only these signals: log, metric, trace (comma-separated, "
+        "repeatable, any combination). Default: every signal in the capture",
     )
     r.add_argument(
         "--no-restamp",

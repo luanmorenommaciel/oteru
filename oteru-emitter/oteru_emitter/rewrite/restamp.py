@@ -25,8 +25,15 @@ from collections.abc import Callable, Iterable
 
 from ..sources.replay import Batch
 
-# Every timestamp to shift (includes startTimeUnixNano to keep durations).
-SHIFT_TIME_KEYS = {"timeUnixNano", "observedTimeUnixNano", "startTimeUnixNano"}
+# Every timestamp to shift. start/endTimeUnixNano are both here so durations
+# survive: shifting only the start of a span would leave end < start and yield
+# a negative duration downstream.
+SHIFT_TIME_KEYS = {
+    "timeUnixNano",
+    "observedTimeUnixNano",
+    "startTimeUnixNano",
+    "endTimeUnixNano",
+}
 
 _ID_ALPHABET = string.ascii_letters + string.digits
 

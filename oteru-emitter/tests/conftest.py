@@ -15,6 +15,7 @@ from oteru_emitter.sources.replay import Batch, load_batches
 
 TESTS_DIR = Path(__file__).resolve().parent
 TINY_PATH = TESTS_DIR / "fixtures" / "tiny-capture.json"
+TRACES_PATH = TESTS_DIR / "fixtures" / "traces-capture.json"
 SAMPLE_PATH = TESTS_DIR.parent / "samples" / "telemetry-sample.json"
 
 
@@ -22,6 +23,22 @@ SAMPLE_PATH = TESTS_DIR.parent / "samples" / "telemetry-sample.json"
 def tiny_path() -> Path:
     """Path to the tiny synthetic capture (2 logs + 1 metrics)."""
     return TINY_PATH
+
+
+@pytest.fixture
+def traces_path() -> Path:
+    """Path to the synthetic traces capture (2 batches, 3 spans, fictitious IDs).
+
+    Claude Code emits no spans, so the real sample has no traces — this fixture
+    is what exercises the trace signal end to end.
+    """
+    return TRACES_PATH
+
+
+@pytest.fixture
+def traces_batches(traces_path: Path) -> list[Batch]:
+    """Batches from the traces capture, reloaded on every test."""
+    return load_batches(str(traces_path))
 
 
 @pytest.fixture

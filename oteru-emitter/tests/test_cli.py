@@ -56,3 +56,68 @@ def test_no_restamp_reports_off(tiny_path, capsys):
     out = capsys.readouterr().out
     assert "restamp:   off" in out
     assert "offset" not in out
+
+
+def test_emit_selects_a_single_signal(tiny_path, capsys):
+    assert main(["replay", str(tiny_path), "--dry-run", "--emit", "log"]) == 0
+    out = capsys.readouterr().out
+    assert "emit:      log" in out
+    assert "batches: 2" in out
+    assert "logs=2" in out
+    assert "metrics=" not in out  # not just absent from the count — filtered out
+
+
+def test_emit_accepts_any_combination_in_canonical_order(tiny_path, capsys):
+    # signals are independent: order given does not matter, none implies another
+    assert main(["replay", str(tiny_path), "--dry-run", "--emit", "metric,log"]) == 0
+    out = capsys.readouterr().out
+    assert "emit:      log,metric" in out
+    assert "batches: 3" in out
+
+
+def test_emit_is_repeatable_and_deduplicates(tiny_path, capsys):
+    args = ["replay", str(tiny_path), "--dry-run", "--emit", "log", "--emit", "log,metric"]
+    assert main(args) == 0
+    out = capsys.readouterr().out
+    assert "emit:      log,metric" in out
+    assert "batches: 3" in out
+
+
+def test_emit_defaults_to_every_signal_in_the_capture(tiny_path, capsys):
+    assert main(["replay", str(tiny_path), "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "emit:      all signals in the capture" in out
+    assert "batches: 3" in out
+
+
+def test_emit_trace_replays_the_traces_capture(traces_path, capsys):
+    assert main(["replay", str(traces_path), "--dry-run", "--emit", "trace"]) == 0
+    out = capsys.readouterr().out
+    assert "emit:      trace" in out
+    assert "traces=2" in out
+
+
+def test_emit_applies_before_limit(tiny_path, capsys):
+    # the metrics batch is the 3rd; --limit 1 alone would never reach it
+    assert main(["replay", str(tiny_path), "--dry-run", "--emit", "metric", "--limit", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "batches: 1" in out
+    assert "metrics=1" in out
+
+
+def test_emit_signal_absent_from_capture_exits_1(tiny_path, capsys):
+    assert main(["replay", str(tiny_path), "--dry-run", "--emit", "trace"]) == 1
+    err = capsys.readouterr().err
+    assert "no batches left after --emit trace" in err
+    assert "only holds log,metric" in err
+    assert "Traceback" not in err
+
+
+def test_emit_unknown_signal_friendly_error(tiny_path, capsys):
+    # plural is the likely typo — the CLI names are singular
+    with pytest.raises(SystemExit) as excinfo:
+        main(["replay", str(tiny_path), "--dry-run", "--emit", "logs"])
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert "unknown signal(s) 'logs'" in err
+    assert "Traceback" not in err
