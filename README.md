@@ -60,8 +60,9 @@ The default is every signal the capture holds. Note that the committed sample
 has **no traces**: Claude Code emits logs and metrics by default, and spans only
 when the opt-in beta is enabled (see
 [`oteru-collector/README.md`](oteru-collector/README.md#traces-opt-in-beta)).
-Until a real span capture exists, the trace path is exercised with the synthetic
-`oteru-emitter/tests/fixtures/traces-capture.json`.
+The trace path is exercised with an OTLP payload the test suite builds in
+`oteru-emitter/tests/factories.py` — captures are never committed, only the code
+to run things locally.
 See [`oteru-emitter/README.md`](oteru-emitter/README.md#choosing-which-signals-to-send---emit).
 
 To also forward everything to a ClickStack (ClickHouse + HyperDX) backend, set

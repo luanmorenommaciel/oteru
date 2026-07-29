@@ -62,9 +62,8 @@ CI (`.github/workflows/ci.yml`): lint + tests on ubuntu/windows × Python
   payloads by construction (per-signal pipelines) — no normalization layer
   needed. Claude Code emits logs + metrics by default and **spans only under an
   opt-in beta** (`CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1` +
-  `OTEL_TRACES_EXPORTER=otlp`), so no real span capture exists yet — the trace
-  path is exercised by the synthetic
-  `oteru-emitter/tests/fixtures/traces-capture.json`.
+  `OTEL_TRACES_EXPORTER=otlp`). Captures are never committed — the trace path is
+  exercised by an OTLP payload built in `oteru-emitter/tests/factories.py`.
 - **Live + synthetic traffic coexist.** A live Claude Code session with
   `CLAUDE_CODE_ENABLE_TELEMETRY=1` and the emitter's replays land on the same
   collector and are indistinguishable at the OTLP envelope. A clean separation

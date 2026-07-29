@@ -56,6 +56,20 @@ Key design decisions:
   parse the captured OTLP/JSON straight into the proto message
   (`google.protobuf.json_format.ParseDict`) and serialize it for either
   transport — same message, two channels.
+- **Two kinds of ID, two rotation paths.** OTLP carries identity in two
+  distinct places, and restamp has to cover both. *Attributes*
+  (`session.id`, `prompt.id`, `request_id`) live inside `{"key":…,"value":…}`
+  entries and are profile-specific — `profiles/` declares which ones rotate.
+  *Structural fields* (`traceId`, `spanId`, `parentSpanId` on spans, log
+  records and links) are plain keys on the OTLP object, universal to the
+  protocol, and no profile governs them. An attribute-walking rotation cannot
+  reach them: that is why every replay used to re-send the same `traceId`,
+  producing one backend trace holding spans from several runs with conflicting
+  `session.id`s. `_rotate_structural_ids` keys its mapping by *byte length*,
+  not field name, so a `parentSpanId` maps to the same new value as the
+  `spanId` it points at and the span tree survives — and one mapping is shared
+  across every batch of the run, which is what keeps a log record's `traceId`
+  pointing at the same trace as its span.
 - **Restamp separates identity from structure** (`rewrite/restamp.py`). Faithful
   replay ≠ blind replay: timestamps shift to "now" and per-run correlation IDs
   (`session.id`, `prompt.id`, `request_id`) rotate consistently so re-sends don't
@@ -105,17 +119,15 @@ Key design decisions:
   `tests/fixtures/tiny-capture.json` must stay clean under the PII guard
   (`python ../scripts/check_pii.py`) — placeholder identity values and
   `user@example.com` only.
-- **`tests/fixtures/traces-capture.json` is synthetic, not a capture.** Claude
-  Code's spans are an opt-in beta (`CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1` +
-  `OTEL_TRACES_EXPORTER=otlp`), so nobody has produced a real one here yet. The
-  fixture is hand-authored against the documented schema —
-  `claude_code.interaction` → `claude_code.llm_request` / `claude_code.tool` →
-  `claude_code.tool.execution` — with placeholder identity, and exists to
-  exercise the trace path (ingress → `otel_traces`); `make e2e-signals` verifies
-  it end to end. **Unverified guesses inside it:** the scope name
-  (`com.anthropic.claude_code.traces`) and the exact attribute value formats.
-  Swap it for a redacted real capture as soon as one exists — this repo's whole
-  premise is fidelity, and a hand-authored fixture is the weakest link in it.
+- **Trace captures are built, not committed** (`tests/factories.py`). The repo
+  ships code to run locally, never captured telemetry — no emitted or collected
+  data is versioned. `conftest.py` writes the built payload to `tmp_path`, and
+  `scripts/check_signals_e2e.sh` builds it into a temp file the same way. The
+  schema (span names, attribute keys, hierarchy) was read off a real capture on
+  2026-07-29 under Claude Code 2.1.191 and 2.1.220, so it is observed fact; the
+  values are fabricated and identity is placeholder-only. When the schema
+  changes, re-read it from a live capture and update the factory — do not commit
+  the capture.
 - **Live Claude Code may be emitting to the same collector.** If
   `CLAUDE_CODE_ENABLE_TELEMETRY=1` is set, the active Claude Code session sends
   real `claude_code.*` telemetry to the same endpoint. Since the emitter replays

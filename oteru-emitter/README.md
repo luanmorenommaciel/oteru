@@ -140,7 +140,7 @@ narrows that to a comma-separated list of `log`, `metric` and `trace`:
 ```powershell
 oteru-emitter replay samples\telemetry-sample.json --emit log            # logs only
 oteru-emitter replay samples\telemetry-sample.json --emit metric         # metrics only
-oteru-emitter replay tests\fixtures\traces-capture.json --emit trace     # traces only
+oteru-emitter replay my-capture.json --emit trace                       # traces only
 oteru-emitter replay samples\telemetry-sample.json --emit log,metric     # both
 ```
 
@@ -156,32 +156,29 @@ Two things `--emit` deliberately does *not* do:
 - It **selects, never fabricates.** Asking for a signal the capture does not
   hold is an error (exit 1), not an empty send — `samples/telemetry-sample.json`
   is a real Claude Code capture, so it has logs and metrics but **no traces**.
-  For the trace signal, use `tests/fixtures/traces-capture.json` (synthetic,
-  fictitious IDs).
+  For the trace signal, point it at a capture of your own taken with the traces
+  beta on (see below).
 - It **is applied before `--limit`**, so `--emit metric --limit 5` sends five
   *metric* batches rather than the metrics among the first five batches.
 
 ## Signals: what Claude Code actually emits
 
-| Signal | Claude Code | In `samples/telemetry-sample.json` | Fixture for testing |
-|---|---|---|---|
-| `log` | yes (`claude_code.*` events) | 348 batches | `tests/fixtures/tiny-capture.json` |
-| `metric` | yes (`claude_code.*` counters) | 175 batches | `tests/fixtures/tiny-capture.json` |
-| `trace` | **opt-in beta** — off unless `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1` + `OTEL_TRACES_EXPORTER=otlp` | none | `tests/fixtures/traces-capture.json` |
+| Signal | Claude Code | In `samples/telemetry-sample.json` |
+|---|---|---|
+| `log` | yes (`claude_code.*` events) | 348 batches |
+| `metric` | yes (`claude_code.*` counters) | 175 batches |
+| `trace` | **opt-in beta** — off unless `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1` + `OTEL_TRACES_EXPORTER=otlp` | none |
 
 The sample predates the traces beta, so it has none. Logs and metrics carry
-empty trace IDs regardless — those records correlate via `session.id` /
-`prompt.id`, not spans.
+empty trace IDs unless the beta is on; without it those records correlate via
+`session.id` / `prompt.id`, not spans.
 
-`tests/fixtures/traces-capture.json` fills the gap so the trace path (collector
-ingress → ClickHouse `otel_traces`) can be exercised at all. It is **synthetic**
-but modelled on the documented span schema — `claude_code.interaction` (root) →
-`claude_code.llm_request` / `claude_code.tool` → `claude_code.tool.execution`,
-with the documented attributes (`model`, `gen_ai.system`, `input_tokens`,
-`tool_name`, `tool_use_id`, ...) and placeholder identity. Two things in it are
-**not** verified against a real capture: the instrumentation scope name
-(`com.anthropic.claude_code.traces`) and the exact attribute value formats.
-Replace it with a redacted real capture once someone runs the beta.
+To get a capture with traces, enable the beta (see
+[`oteru-collector/README.md`](../oteru-collector/README.md#traces-opt-in-beta)),
+work for a while, and point the emitter at the collector's
+`telemetry/telemetry.json`. Captures are **never committed** — this repo ships
+only the code needed to run it locally. The test suite builds the OTLP payloads
+it needs in `tests/factories.py` instead of reading a fixture file.
 
 ## Development (tests and lint)
 
