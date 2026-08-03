@@ -108,9 +108,27 @@ def test_emit_applies_before_limit(tiny_path, capsys):
 def test_emit_signal_absent_from_capture_exits_1(tiny_path, capsys):
     assert main(["replay", str(tiny_path), "--dry-run", "--emit", "trace"]) == 1
     err = capsys.readouterr().err
-    assert "no batches left after --emit trace" in err
-    assert "only holds log,metric" in err
+    # naming the missing signal is the point: "it failed" alone is what let the
+    # mixed case below slip through
+    assert "the capture holds no trace batches" in err
+    assert "it holds log,metric" in err
     assert "Traceback" not in err
+
+
+def test_emit_mixed_present_and_absent_exits_1(tiny_path, capsys):
+    """A capture holding some of the requested signals is still an error.
+
+    tiny-capture.json has logs and metrics but no spans. Selecting log+trace
+    used to succeed and send the logs alone, silently dropping trace: the guard
+    fired on "no batches left", which a present signal keeps from ever
+    happening.
+    """
+    assert main(["replay", str(tiny_path), "--dry-run", "--emit", "log,trace"]) == 1
+    captured = capsys.readouterr()
+    assert "the capture holds no trace batches" in captured.err
+    assert "Traceback" not in captured.err
+    # and nothing was reported as replayed
+    assert "batches:" not in captured.out
 
 
 def test_emit_unknown_signal_friendly_error(tiny_path, capsys):

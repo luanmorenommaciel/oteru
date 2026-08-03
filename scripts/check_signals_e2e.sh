@@ -41,6 +41,34 @@ counts() {
     FORMAT TSV"
 }
 
+# The mirror of case_emit: --emit naming a signal the capture lacks has to fail
+# *and* send nothing. A partially-available selection (log,trace on a capture
+# with no spans) is the case that used to slip through — it left batches behind,
+# so the old "nothing survived the filter" guard never fired.
+# case_emit_rejects <description> <capture> <emit>
+case_emit_rejects() {
+  local desc="$1" capture="$2" emit="$3"
+  local before after
+  before="$(counts)" || { fail "$desc: ClickHouse unreachable at $CH"; return; }
+  IFS=$'\t' read -r l0 t0 m0 <<<"$before"
+
+  if "$PY" -m oteru_emitter.cli replay "$capture" \
+      --transport http --max-gap 0.2 --emit "$emit" >/dev/null 2>&1; then
+    fail "$desc: --emit $emit should have exited non-zero"
+    return
+  fi
+  sleep "$SETTLE"
+
+  after="$(counts)"
+  IFS=$'\t' read -r l1 t1 m1 <<<"$after"
+  local got="$((l1 - l0))/$((t1 - t0))/$((m1 - m0))"
+  if [ "$got" = "0/0/0" ]; then
+    echo "  ok   --emit $emit -> rejected, nothing sent"
+  else
+    fail "--emit $emit was rejected but still sent +$got"
+  fi
+}
+
 # case <description> <capture> <emit> <expect-logs> <expect-traces> <expect-metrics>
 case_emit() {
   local desc="$1" capture="$2" emit="$3" exp_l="$4" exp_t="$5" exp_m="$6"
@@ -83,6 +111,7 @@ case_emit "logs only"    "$TINY"   "log"        3 0 0
 case_emit "metrics only" "$TINY"   "metric"     0 0 1
 case_emit "traces only"  "$TRACES" "trace"      0 6 0
 case_emit "combined"     "$TINY"   "log,metric" 3 0 1
+case_emit_rejects "partially absent" "$TINY" "log,trace"
 
 # Replaying the same capture twice must yield two distinct traces. Trace/span
 # IDs are structural OTLP fields, so nothing rotated them before and every

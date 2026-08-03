@@ -128,15 +128,22 @@ def cmd_replay(args) -> int:
     # subset of the first 5 batches.
     selected = sorted({s for group in (args.emit or []) for s in group}) or None
     if selected is not None:
+        # Every requested signal has to be in the capture, not just one of them:
+        # `--emit log,trace` on a logs+metrics capture must fail rather than
+        # quietly send the logs alone. Checking what is missing (rather than
+        # whether anything survived the filter) is what makes the mixed case an
+        # error too.
         available = sorted({b.signal for b in batches})
-        batches = select_signals(batches, set(selected))
-        if not batches:
+        missing = [s for s in selected if s not in available]
+        if missing:
             print(
-                f"no batches left after --emit {','.join(_cli_names(selected))}: "
-                f"the capture only holds {','.join(_cli_names(available))}.",
+                f"error: --emit {','.join(_cli_names(selected))}: the capture holds no "
+                f"{','.join(_cli_names(missing))} batches "
+                f"(it holds {','.join(_cli_names(available))}).",
                 file=sys.stderr,
             )
             return 1
+        batches = select_signals(batches, set(selected))
 
     if args.limit:
         batches = batches[: args.limit]
