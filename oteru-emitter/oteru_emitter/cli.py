@@ -26,6 +26,7 @@ from .sources.replay import (
     CLI_SIGNAL_NAMES,
     SIGNAL_BY_CLI_NAME,
     Batch,
+    iter_scope_names,
     load_batches,
     select_signals,
 )
@@ -144,6 +145,19 @@ def cmd_replay(args) -> int:
             )
             return 1
         batches = select_signals(batches, set(selected))
+
+    # A scope the profile does not recognise usually means the upstream tool
+    # renamed or added one. Warn, never fail: a new scope is information, not a
+    # broken capture — and replay stays faithful either way.
+    if profile.known_scopes:
+        unknown = sorted({n for b in batches for n in iter_scope_names(b)} - profile.known_scopes)
+        if unknown:
+            print(
+                f"warning: scope(s) unknown to profile '{profile.name}': "
+                f"{', '.join(unknown)}. Queries filtering on ScopeName may return "
+                f"nothing without erroring — check profiles/base.py.",
+                file=sys.stderr,
+            )
 
     if args.limit:
         batches = batches[: args.limit]

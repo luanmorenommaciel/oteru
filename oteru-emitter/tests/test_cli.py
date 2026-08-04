@@ -2,9 +2,79 @@
 
 from __future__ import annotations
 
+import json
+from itertools import combinations
+
 import pytest
 
 from oteru_emitter.cli import main
+
+# --- --emit contract matrix -------------------------------------------------
+#
+# Three signals means seven non-empty selections, and the capture shapes below
+# cover every interesting availability pattern. Enumerating 21 cases costs
+# nothing and removes the choice of *which* combinations to trust: sampling two
+# of them is how `--emit log,trace` shipped returning 0 while dropping trace.
+#
+# The expectation is computed from the documented contract (set containment),
+# never from running the CLI first. A test whose expectation is read off the
+# current behaviour cannot, by construction, notice that the current behaviour
+# is wrong — that is exactly how the earlier regression test stayed green.
+
+SIGNALS = ("log", "metric", "trace")
+
+# fixture name -> signals the capture actually holds
+CAPTURE_SHAPES = {
+    "tiny_path": frozenset({"log", "metric"}),
+    "traces_path": frozenset({"trace"}),
+    "correlated_path": frozenset({"log", "trace"}),
+}
+
+SELECTIONS = [combo for size in (1, 2, 3) for combo in combinations(SIGNALS, size)]
+
+EMIT_MATRIX = [
+    pytest.param(shape, available, selection, id=f"{shape}-{'+'.join(selection)}")
+    for shape, available in CAPTURE_SHAPES.items()
+    for selection in SELECTIONS
+]
+
+
+def _canonical(signals) -> str:
+    """Signal names joined in the CLI's canonical log,metric,trace order."""
+    return ",".join(name for name in SIGNALS if name in signals)
+
+
+@pytest.mark.parametrize(("shape", "available", "selection"), EMIT_MATRIX)
+def test_emit_contract_matrix(shape, available, selection, request, capsys):
+    """Every requested signal must be present, or the run is an error.
+
+    Documented in README.md and CLAUDE.md: asking for a signal the capture
+    lacks exits 1 rather than sending a subset.
+    """
+    capture = request.getfixturevalue(shape)
+    requested = frozenset(selection)
+    missing = requested - available
+
+    code = main(["replay", str(capture), "--dry-run", "--emit", ",".join(selection)])
+    captured = capsys.readouterr()
+
+    if missing:
+        assert code == 1, f"{sorted(missing)} absent from the capture, but the run succeeded"
+        # Naming what is missing is part of the contract, not decoration:
+        # "it failed" alone is the weak assertion that let the mixed case
+        # through. Calibrating against the pre-fix code, this line caught the
+        # 5 disjoint selections that exited 1 for the wrong reason, on top of
+        # the 9 the exit code caught.
+        assert f"holds no {_canonical(missing)} batches" in captured.err
+        assert "batches:" not in captured.out
+        assert "Traceback" not in captured.err
+    else:
+        assert code == 0, captured.err
+        assert f"emit:      {_canonical(requested)}" in captured.out
+        # and only the requested signals were replayed
+        for name in SIGNALS:
+            plural = {"log": "logs", "metric": "metrics", "trace": "traces"}[name]
+            assert (f"{plural}=" in captured.out) == (name in requested)
 
 
 def test_dry_run_exit_0_and_summary(tiny_path, capsys):
@@ -129,6 +199,50 @@ def test_emit_mixed_present_and_absent_exits_1(tiny_path, capsys):
     assert "Traceback" not in captured.err
     # and nothing was reported as replayed
     assert "batches:" not in captured.out
+
+
+def test_unknown_scope_warns_but_still_replays(tmp_path, capsys):
+    """A scope the profile does not know is a warning, never an error.
+
+    Claude Code renamed the trace scope once already. Replay has to stay
+    faithful to whatever the capture holds — the point is to make the rename
+    visible, not to refuse the file.
+    """
+    capture = tmp_path / "odd-scope.json"
+    capture.write_text(
+        json.dumps(
+            {
+                "resourceLogs": [
+                    {
+                        "resource": {"attributes": []},
+                        "scopeLogs": [
+                            {
+                                "scope": {"name": "com.anthropic.claude_code.brand_new"},
+                                "logRecords": [
+                                    {
+                                        "timeUnixNano": "1752620000000000000",
+                                        "body": {"stringValue": "claude_code.whatever"},
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert main(["replay", str(capture), "--dry-run"]) == 0
+    captured = capsys.readouterr()
+    assert "warning" in captured.err
+    assert "com.anthropic.claude_code.brand_new" in captured.err
+    assert "batches: 1" in captured.out  # replayed anyway
+
+
+def test_known_scopes_do_not_warn(tiny_path, capsys):
+    assert main(["replay", str(tiny_path), "--dry-run"]) == 0
+    assert "warning" not in capsys.readouterr().err
 
 
 def test_emit_unknown_signal_friendly_error(tiny_path, capsys):

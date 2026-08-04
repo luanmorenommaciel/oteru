@@ -45,6 +45,15 @@ ANCHOR_TIME_KEYS = {"timeUnixNano", "observedTimeUnixNano"}
 ANCHOR_TIME_KEYS_TRACES = ANCHOR_TIME_KEYS | {"startTimeUnixNano"}
 
 
+# Where the instrumentation scope sits, per signal. Same shape as
+# SIGNAL_BY_KEY, one level deeper.
+SCOPE_KEYS_BY_SIGNAL = {
+    "logs": ("resourceLogs", "scopeLogs"),
+    "metrics": ("resourceMetrics", "scopeMetrics"),
+    "traces": ("resourceSpans", "scopeSpans"),
+}
+
+
 def anchor_keys_for(signal: str) -> set[str]:
     """Timestamp keys usable as a pacing anchor for the given signal."""
     return ANCHOR_TIME_KEYS_TRACES if signal == "traces" else ANCHOR_TIME_KEYS
@@ -90,6 +99,24 @@ def select_signals(batches: list[Batch], signals: set[str]) -> list[Batch]:
     selecting a signal never fabricates one.
     """
     return [b for b in batches if b.signal in signals]
+
+
+def iter_scope_names(batch: Batch) -> Iterator[str]:
+    """Yields the instrumentation scope names carried by the batch.
+
+    The scope name is how a backend tells signal families apart, so a rename
+    upstream silently empties any query filtering on it. Surfacing it is the
+    cheapest drift signal the emitter has.
+    """
+    keys = SCOPE_KEYS_BY_SIGNAL.get(batch.signal)
+    if keys is None:
+        return
+    resource_key, scope_key = keys
+    for resource in batch.payload.get(resource_key, []):
+        for scope in resource.get(scope_key, []):
+            name = scope.get("scope", {}).get("name")
+            if name:
+                yield name
 
 
 def load_batches(path: str) -> list[Batch]:

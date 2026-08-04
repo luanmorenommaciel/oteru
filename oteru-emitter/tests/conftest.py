@@ -50,17 +50,25 @@ def traces_batches(traces_path: Path) -> list[Batch]:
 
 
 @pytest.fixture
-def trace_correlated_batches(tmp_path: Path) -> list[Batch]:
+def correlated_path(tmp_path: Path) -> Path:
+    """A capture holding spans *and* log records sharing their trace context.
+
+    The third capture shape the CLI has to handle: logs+traces, no metrics.
+    """
+    return _write_capture(
+        tmp_path / "correlated.json",
+        [*traces_capture(), *logs_sharing_trace_context()],
+    )
+
+
+@pytest.fixture
+def trace_correlated_batches(correlated_path: Path) -> list[Batch]:
     """Spans plus log records that share the same trace context.
 
     Rotating trace IDs must keep these two in sync, or the log/trace join
     that makes the telemetry useful silently breaks.
     """
-    path = _write_capture(
-        tmp_path / "correlated.json",
-        [*traces_capture(), *logs_sharing_trace_context()],
-    )
-    return load_batches(str(path))
+    return load_batches(str(correlated_path))
 
 
 @pytest.fixture

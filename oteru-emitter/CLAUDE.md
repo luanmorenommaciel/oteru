@@ -113,6 +113,21 @@ Key design decisions:
   there it marks the cumulative-series start and would distort the pacing.
   `endTimeUnixNano` is in `SHIFT_TIME_KEYS` for the same reason: shifting only a
   span's start corrupts its duration.
+- **A regression test must be seen red before the fix.** Reproduce the defect
+  first, watch the new test fail against the unfixed code, then fix. A test
+  written after the fact agrees with whatever the code already does — which is
+  exactly how `--emit log,trace` shipped returning 0 while dropping trace, with
+  a green test standing guard. Put the reproduction command in the commit body:
+  that is the evidence it was actually seen failing.
+- **Test expectations come from the documented contract, not from observed
+  behaviour.** If this file or a README states a promise, there is a test whose
+  name is that promise, and whose expected value is derived independently of
+  the implementation. `test_emit_contract_matrix` computes it from set
+  containment; running the CLI to learn what to assert defeats the purpose.
+- **Enumerate small input spaces; do not sample them.** Three signals are seven
+  non-empty selections, and `--emit` crosses those with the capture shapes —
+  21 cases that cost nothing to run. Picking two is choosing which bugs not to
+  find. Same applies to `--transport` × signal and `--no-restamp` × `--seed`.
 - **Tests are Windows-safe and proto-optional.** `tests/` uses `pathlib` only;
   protobuf tests guard with `pytest.importorskip("opentelemetry.proto")` and
   `grpcio` is never required by the suite. The committed fixture
@@ -128,15 +143,21 @@ Key design decisions:
   values are fabricated and identity is placeholder-only. When the schema
   changes, re-read it from a live capture and update the factory — do not commit
   the capture.
-- **Scope names drift across versions — bump them together with the version.**
+- **Scope names drift across versions — the profile maps version to scope.**
   The trace scope is `com.anthropic.claude_code.traces` up to 2.1.170 and
   `com.anthropic.claude_code.tracing` from 2.1.191 on. The factory got this
   wrong exactly once, and instructively: it grew out of a 2.1.170 capture where
   `.traces` was correct, the `service.version` strings were bumped to 2.1.220,
   and the scope name rode along unreviewed. Nothing failed — the payload is
   well-formed OTLP either way, so it took querying real traffic to notice. A
-  rename like this makes a `WHERE ScopeName = …` return nothing without erroring;
-  `profiles/base.py::expected_scopes` lists both spellings for that reason.
+  rename like this makes a `WHERE ScopeName = …` return nothing without erroring.
+  Two guards now exist: `Profile.trace_scope_for(version)` (`profiles/base.py`)
+  is the single source of truth, asserted against the factory by
+  `test_factory_scope_matches_the_version_it_claims`; and `replay` warns on
+  stderr about any scope outside `Profile.known_scopes`. **A membership check
+  would not have caught the original defect** — both spellings are legitimate,
+  so the version has to pick. The warning is a warning, never an error: a new
+  scope from a new version is information, and replay stays faithful regardless.
 - **Live Claude Code may be emitting to the same collector.** If
   `CLAUDE_CODE_ENABLE_TELEMETRY=1` is set, the active Claude Code session sends
   real `claude_code.*` telemetry to the same endpoint. Since the emitter replays
