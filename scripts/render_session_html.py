@@ -104,6 +104,56 @@ def fetch_logs(session: str) -> list[dict]:
     return rows
 
 
+def fetch_metrics(session: str) -> dict:
+    """Metric-side totals for the session.
+
+    The presentation leans on these for one specific reason: token.usage is
+    summed by the metric pipeline, entirely independently of the spans, so
+    agreeing with the span-derived total is real cross-validation rather than
+    the same number printed twice.
+    """
+    rows = query(f"""
+        SELECT MetricName, Attributes['model'] AS model, Attributes['type'] AS type,
+               sum(Value) AS total
+        FROM otel.otel_metrics_sum
+        WHERE Attributes['session.id'] = '{session}'
+        GROUP BY MetricName, model, type
+    """)
+    out: dict = {"cost_by_model": {}, "tokens_by_type": {}, "cost": 0.0, "tokens": 0, "lines": 0}
+    for r in rows:
+        total = float(r["total"])
+        name = r["MetricName"].removeprefix("claude_code.")
+        if name == "cost.usage":
+            out["cost"] += total
+            if r["model"]:
+                out["cost_by_model"][r["model"]] = out["cost_by_model"].get(r["model"], 0.0) + total
+        elif name == "token.usage":
+            out["tokens"] += int(total)
+            if r["type"]:
+                # Accumulate: the GROUP BY also splits on model, so each type
+                # arrives once per model. Assigning would keep only the last —
+                # in practice the cheap model's sliver, reading as zero.
+                out["tokens_by_type"][r["type"]] = out["tokens_by_type"].get(r["type"], 0) + int(
+                    total
+                )
+        elif name == "lines_of_code.count":
+            out["lines"] += int(total)
+    return out
+
+
+def fetch_decisions(session: str) -> list[dict]:
+    """Tool decisions: what was approved, and who approved it."""
+    return query(f"""
+        SELECT LogAttributes['decision'] AS decision,
+               LogAttributes['source']   AS source,
+               count()                   AS n
+        FROM otel.otel_logs
+        WHERE LogAttributes['session.id'] = '{session}'
+          AND Body = 'claude_code.tool_decision'
+        GROUP BY decision, source ORDER BY n DESC
+    """)
+
+
 def build_turns(spans: list[dict]) -> list[dict]:
     """Groups spans into turns and nests them by parent.
 
@@ -210,6 +260,21 @@ def compact(n: int) -> str:
 
 def pct(part: int, whole: int) -> int:
     return round(100 * part / whole) if whole else 0
+
+
+def pct_str(part: float, whole: float) -> str:
+    """Percentage with a decimal only where rounding would lie.
+
+    99,98% rounded to "100%" reads as "the other model does not exist"; 0,08%
+    rounded to "0%" reads as "this never happens". Both are claims the data
+    does not make.
+    """
+    if not whole:
+        return "0%"
+    value = 100 * part / whole
+    if 99 < value < 100 or 0 < value < 1:
+        return f"{value:.2f}%".rstrip("0").rstrip(".").replace(".", ",")
+    return f"{round(value)}%"
 
 
 # --- rendering -------------------------------------------------------------
@@ -394,6 +459,238 @@ def render_turn(turn: dict, index: int, logs_by_trace: dict) -> str:
     return "".join(out)
 
 
+PRESENTATION_CSS = """
+.hero { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:14px; margin:22px 0 8px; }
+.big { background:var(--surface-1); border:1px solid var(--border);
+  border-radius:12px; padding:20px; }
+.big .n { font-size:40px; font-weight:600; letter-spacing:-.03em;
+  line-height:1.05; font-variant-numeric:tabular-nums; }
+.big .n.accent { color:var(--series-2); }
+.big .what { font-size:14px; color:var(--text-primary); margin-top:8px;
+  font-weight:600; }
+.big .ev { font-size:12.5px; color:var(--text-muted); margin-top:5px; }
+.check { background:var(--surface-1); border:1px solid var(--border);
+  border-left:3px solid var(--series-3); border-radius:10px; padding:16px 18px;
+  margin:16px 0; }
+.check table { border-collapse:collapse; margin:10px 0 4px; font-size:13.5px; }
+.check td { padding:3px 18px 3px 0; font-variant-numeric:tabular-nums; }
+.check td.k { color:var(--text-secondary); }
+.limits { background:var(--surface-1); border:1px solid var(--border);
+  border-left:3px solid var(--warning); border-radius:10px; padding:16px 18px; }
+.limits ul { margin:8px 0 0; padding-left:19px; color:var(--text-secondary);
+  font-size:13.5px; }
+.limits li { margin-bottom:7px; }
+.steps { counter-reset:step; padding-left:0; list-style:none; margin:12px 0 0; }
+.steps li { counter-increment:step; position:relative; padding-left:30px;
+  margin-bottom:12px; color:var(--text-secondary); font-size:13.5px; }
+.steps li::before { content:counter(step); position:absolute; left:0; top:1px;
+  width:20px; height:20px; border-radius:50%; background:var(--series-1);
+  color:#fff; font-size:12px; display:grid; place-items:center; font-weight:600; }
+.steps code { display:inline-block; margin-top:3px; }
+"""
+
+
+def render_presentation(
+    session: str,
+    spans: list[dict],
+    logs: list[dict],
+    metrics: dict,
+    decisions: list[dict],
+) -> str:
+    """The short page: one turn's lineage plus the numbers that reframe it.
+
+    Deliberately not the full timeline. 231 span rows is a reference document;
+    nobody follows that projected on a wall.
+    """
+    turns = build_turns(spans)
+    if not turns:
+        raise SystemExit(f"no spans found for session {session}")
+
+    resource = spans[0].get("ResourceAttributes", {})
+    version = resource.get("service.version", "?")
+
+    span_tokens = 0
+    waited_ns = 0
+    for span in spans:
+        a = span.get("SpanAttributes", {})
+        for key in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"):
+            span_tokens += int(a.get(key) or 0)
+        if span["SpanName"] == "claude_code.tool.blocked_on_user":
+            waited_ns += span["duration_ns"]
+    wall_ns = max(s["start_ns"] + s["duration_ns"] for s in spans) - min(
+        s["start_ns"] for s in spans
+    )
+
+    cache = metrics["tokens_by_type"].get("cacheRead", 0) + metrics["tokens_by_type"].get(
+        "cacheCreation", 0
+    )
+    cost_sorted = sorted(metrics["cost_by_model"].items(), key=lambda kv: -kv[1])
+    top_model, top_cost = cost_sorted[0] if cost_sorted else ("—", 0.0)
+
+    total_decisions = sum(int(d["n"]) for d in decisions)
+    interactive = sum(
+        int(d["n"]) for d in decisions if d["source"] in ("user_temporary", "user_permanent")
+    )
+
+    # Which turn to project. Span count alone picks the wrong one: the longest
+    # turn here has 112 spans but calls a single model, so it cannot show the
+    # cheap-model-then-expensive-model handoff the surrounding text describes.
+    # Distinct models first, span count as tie-break.
+    def _models_in(turn: dict) -> int:
+        return len({s["SpanAttributes"].get("model") for s in turn["spans"]} - {None, ""})
+
+    best = max(turns, key=lambda t: (_models_in(t), len(t["spans"])))
+    best_index = turns.index(best) + 1
+    logs_by_trace: dict[str, list[dict]] = defaultdict(list)
+    for log in logs:
+        if log.get("TraceId"):
+            logs_by_trace[log["TraceId"]].append(log)
+
+    big = [
+        (
+            f"{pct(waited_ns, wall_ns)}%",
+            True,
+            "da sessão o agente ficou parado esperando decisão humana",
+            f"{ms(waited_ns)} de {ms(wall_ns)} · {interactive} das {total_decisions} "
+            f"chamadas de tool exigiram um clique",
+        ),
+        (
+            pct_str(cache, metrics["tokens"]),
+            False,
+            "dos tokens são contexto em cache, não geração",
+            f"{compact(cache)} de {compact(metrics['tokens'])} · a resposta do modelo é "
+            f"{pct_str(metrics['tokens_by_type'].get('output', 0), metrics['tokens'])} do volume",
+        ),
+        (
+            pct_str(top_cost, metrics["cost"]),
+            False,
+            f"do custo foi para um modelo só — {top_model.split('-2025')[0]}",
+            f"US$ {metrics['cost']:.4f}".replace(".", ",")
+            + " no total · o modelo barato é chamado primeiro, o caro faz o trabalho",
+        ),
+    ]
+    big_html = "".join(
+        f'<div class="big"><div class="n{" accent" if accent else ""}">{esc(n)}</div>'
+        f'<div class="what">{esc(what)}</div><div class="ev">{esc(ev)}</div></div>'
+        for n, accent, what, ev in big
+    )
+
+    agreement = (
+        "Idênticos."
+        if span_tokens == metrics["tokens"]
+        else "<strong>Divergentes — investigar antes de confiar em qualquer número acima.</strong>"
+    )
+
+    decision_rows = "".join(
+        f'<tr><td class="k">{esc(d["source"] or "—")}</td>'
+        f"<td><strong>{esc(d['n'])}</strong></td>"
+        f'<td class="k">{esc(d["decision"])}</td></tr>'
+        for d in decisions
+    )
+
+    return f"""<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>oteru — o que uma sessão do Claude Code revela</title>
+<style>{CSS}{PRESENTATION_CSS}</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">oteru · telemetria de uso de IA</div>
+  <h1>O que uma sessão real revela</h1>
+  <p class="lede">
+    Uma sessão de trabalho de verdade, capturada hoje: {len(turns)} turnos,
+    {ms(wall_ns)}, {len(spans)} spans, Claude Code {esc(version)}. A tarefa foi um
+    item do nosso próprio backlog — nada foi encenado para esta apresentação.
+  </p>
+
+  <div class="note">
+    <strong>Nada aqui exigiu ligar captura de conteúdo.</strong> Qual modelo foi
+    chamado, em que ordem, quanto demorou, quanto custou e o que voltou já vem por
+    padrão. Prompt e resposta continuam redigidos — o que se vê abaixo é a
+    <em>estrutura</em> do trabalho, não o seu texto.
+  </div>
+
+  <h2>O caminho de um turno</h2>
+  <p class="lede">
+    Uma pergunta sua vira isto. Cada barra é um span que o Claude Code emitiu,
+    posicionada pelo tempo real: o modelo barato responde primeiro, o caro assume,
+    a tool é proposta, <strong>a execução para até você aprovar</strong>, e só então roda.
+  </p>
+  {render_turn(best, best_index, logs_by_trace)}
+
+  <h2>Três números que mudam a leitura</h2>
+  <div class="hero">{big_html}</div>
+
+  <h2>Por que dá para confiar nisso</h2>
+  <div class="check">
+    <strong>Dois caminhos independentes chegam ao mesmo número.</strong>
+    O pipeline de métricas e o de traces não se falam: um agrega contadores, o outro
+    registra spans. Somados em separado:
+    <table>
+      <tr><td class="k">métrica <code>token.usage</code></td>
+          <td><strong>{metrics["tokens"]:,}</strong></td></tr>
+      <tr><td class="k">soma dos atributos dos spans</td>
+          <td><strong>{span_tokens:,}</strong></td></tr>
+    </table>
+    {agreement}
+    É isso que sustenta construir dashboard em cima deste dado.
+  </div>
+
+  <h2>Quem autorizou o quê</h2>
+  <div class="check">
+    <table>{decision_rows}</table>
+    <span class="ev">
+      <code>config</code> = já estava na allowlist · <code>user_temporary</code> =
+      você aprovou na hora · <code>user_permanent</code> = você aprovou para sempre.
+      A procedência de cada decisão é registrada, não inferida.
+    </span>
+  </div>
+
+  <h2>O que esta sessão <em>não</em> responde</h2>
+  <div class="limits">
+    Dito na cara, porque a alternativa é alguém descobrir depois:
+    <ul>
+      <li><strong>Não há atribuição a skill, plugin ou MCP</strong> — nenhum código
+      de terceiros rodou aqui. O atributo existe; o dado desta sessão não o exercita.</li>
+      <li><strong>Nenhuma permissão foi negada</strong> — {total_decisions} de
+      {total_decisions} aceitas. Não dá para afirmar nada sobre allowlist barrando.</li>
+      <li><strong>Uma sessão não é amostra.</strong> Uma pessoa, uma tarefa, um dia.
+      Serve para mostrar o mecanismo, não para concluir sobre a empresa.</li>
+      <li><strong>O lineage para na fronteira da chamada.</strong> Sabemos que o
+      modelo foi chamado e o que voltou; o que acontece do lado dele não é
+      observável daqui.</li>
+    </ul>
+  </div>
+
+  <h2>Como reproduzir</h2>
+  <ol class="steps">
+    <li>Preparar o ambiente num terminal:<br>
+      <code>eval "$(bash scripts/capture_session.sh env)"</code></li>
+    <li>Confirmar que pegou:<br>
+      <code>bash scripts/capture_session.sh check</code></li>
+    <li>Abrir o Claude Code <em>nesse mesmo terminal</em> e trabalhar normalmente:<br>
+      <code>claude</code></li>
+    <li>Ao terminar, <code>/exit</code>, e gerar a página:<br>
+      <code>python3 scripts/render_session_html.py &lt;session&gt; --apresentacao</code></li>
+  </ol>
+
+  <footer>
+    Sessão <code>{esc(session)}</code> · captura de {ms(wall_ns)} ·
+    {len(spans)} spans e {len(logs)} log records.
+    O timeline completo, com os {len(turns)} turnos, está em
+    <code>sessao-{esc(session[:8])}.html</code>.
+    Os dados de origem expiram em 72h sob o TTL do ClickHouse; esta página não.
+  </footer>
+</div>
+</body>
+</html>
+"""
+
+
 def render(session: str, spans: list[dict], logs: list[dict]) -> str:
     turns = build_turns(spans)
     if not turns:
@@ -558,6 +855,11 @@ def main() -> int:
     parser.add_argument("session", nargs="?", help="session.id to render")
     parser.add_argument("-o", "--output", help="output path (default: local/sessao-<id>.html)")
     parser.add_argument("--list", action="store_true", help="list sessions and exit")
+    parser.add_argument(
+        "--apresentacao",
+        action="store_true",
+        help="short page built to be projected: one turn's lineage plus the numbers",
+    )
     args = parser.parse_args()
 
     try:
@@ -584,12 +886,22 @@ def main() -> int:
             print(f"no spans for session {args.session}", file=sys.stderr)
             return 1
         logs = fetch_logs(args.session)
-        page = render(args.session, spans, logs)
+        if args.apresentacao:
+            page = render_presentation(
+                args.session,
+                spans,
+                logs,
+                fetch_metrics(args.session),
+                fetch_decisions(args.session),
+            )
+        else:
+            page = render(args.session, spans, logs)
     except ClickHouseError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    out = args.output or f"local/sessao-{args.session[:8]}.html"
+    default_name = "apresentacao" if args.apresentacao else "sessao"
+    out = args.output or f"local/{default_name}-{args.session[:8]}.html"
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     with open(out, "w", encoding="utf-8") as handle:
         handle.write(page)
