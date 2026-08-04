@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>oteru — o que uma sessão do Claude Code revela</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-1:#fcfcfb; --page:#f9f9f7;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#898781;
+  --gridline:#e1e0d9; --border:rgba(11,11,11,0.10);
+  --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a;
+  --warning:#fab219; --critical:#d03b3b; --mark-muted:#c3c2b7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface-1:#1a1a19; --page:#0d0d0d;
+    --text-primary:#fff; --text-secondary:#c3c2b7; --text-muted:#898781;
+    --gridline:#2c2c2a; --border:rgba(255,255,255,0.10);
+    --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70;
+    --mark-muted:#52514e;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-1:#1a1a19; --page:#0d0d0d;
+  --text-primary:#fff; --text-secondary:#c3c2b7; --text-muted:#898781;
+  --gridline:#2c2c2a; --border:rgba(255,255,255,0.10);
+  --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70;
+  --mark-muted:#52514e;
+}
+* { box-sizing: border-box; }
+body {
+  margin:0; background:var(--page); color:var(--text-primary);
+  font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 48px 28px 72px; }
+.eyebrow { font-size:12px; letter-spacing:.10em; text-transform:uppercase;
+  color:var(--text-muted); margin-bottom:10px; }
+h1 { font-size:31px; line-height:1.2; letter-spacing:-.02em; margin:0 0 10px; }
+h2 { font-size:12px; letter-spacing:.10em; text-transform:uppercase;
+  color:var(--text-muted); margin:52px 0 14px; padding-bottom:9px;
+  border-bottom:1px solid var(--gridline); font-weight:600; }
+.lede { color:var(--text-secondary); max-width:70ch; margin:0 0 6px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.88em;
+  background:var(--surface-1); border:1px solid var(--border);
+  border-radius:4px; padding:1px 5px; }
+.tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:12px; margin-bottom:8px; }
+.tile { background:var(--surface-1); border:1px solid var(--border);
+  border-radius:10px; padding:14px 16px; }
+.tile .label { font-size:12.5px; color:var(--text-muted); }
+.tile .value { font-size:26px; font-weight:600; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; margin:2px 0; }
+.tile .sub { font-size:12px; color:var(--text-muted); }
+.turn { background:var(--surface-1); border:1px solid var(--border);
+  border-radius:12px; padding:18px 20px; margin-bottom:16px; }
+.turn h3 { margin:0 0 2px; font-size:16px; }
+.turn .meta { font-size:12.5px; color:var(--text-muted); margin-bottom:14px;
+  font-variant-numeric:tabular-nums; }
+.row { display:grid; grid-template-columns:270px 1fr; align-items:center;
+  gap:12px; margin-bottom:6px; }
+.name { font-size:12.5px; color:var(--text-secondary); text-align:right;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.name.d1 { padding-left:10px; } .name.d2 { padding-left:20px; }
+.name .dim { color:var(--text-muted); }
+.track { position:relative; height:22px;
+  background:linear-gradient(to right, var(--gridline) 1px, transparent 1px) repeat-x;
+  background-size:10% 100%; }
+.bar { position:absolute; top:3px; height:16px; border-radius:4px; min-width:2px;
+  box-shadow:0 0 0 2px var(--surface-1); }
+.bar.model { background:var(--series-1); }
+.bar.work { background:var(--series-3); }
+.bar.wait { background:var(--series-2); }
+.bar.container { background:var(--mark-muted); }
+.dur { position:absolute; top:2px; font-size:11.5px; color:var(--text-secondary);
+  white-space:nowrap; font-variant-numeric:tabular-nums; }
+.dur.inside { text-align:right; padding-right:7px; color:#fff;
+  text-shadow:0 0 3px rgba(0,0,0,.30); overflow:hidden; }
+.dur.inside.on-muted { color:var(--text-primary); text-shadow:none; }
+.detail { grid-column:2; font-size:11.5px; color:var(--text-muted);
+  margin:-3px 0 7px; font-variant-numeric:tabular-nums; }
+.axis { display:grid; grid-template-columns:270px 1fr; gap:12px; margin-top:6px; }
+.ticks { display:flex; justify-content:space-between; font-size:11.5px;
+  color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.legend { display:flex; flex-wrap:wrap; gap:16px; margin:0 0 18px;
+  font-size:12.5px; color:var(--text-secondary); }
+.legend span { display:inline-flex; align-items:center; gap:7px; }
+.swatch { width:11px; height:11px; border-radius:3px; display:inline-block; }
+.events { margin-top:14px; border-top:1px solid var(--gridline); padding-top:12px; }
+.events table { border-collapse:collapse; width:100%; font-size:12.5px; }
+.events td { padding:3px 8px 3px 0; color:var(--text-secondary);
+  vertical-align:top; }
+.events td.seq { color:var(--text-muted); font-variant-numeric:tabular-nums;
+  width:44px; }
+.events td.body { white-space:nowrap; }
+.note { background:var(--surface-1); border:1px solid var(--border);
+  border-left:3px solid var(--series-1); border-radius:8px;
+  padding:13px 16px; font-size:13.5px; color:var(--text-secondary);
+  margin:16px 0; }
+.note.warn { border-left-color:var(--warning); }
+.scroll { overflow-x:auto; }
+footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--gridline);
+  font-size:12.5px; color:var(--text-muted); }
+
+.hero { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:14px; margin:22px 0 8px; }
+.big { background:var(--surface-1); border:1px solid var(--border);
+  border-radius:12px; padding:20px; }
+.big .n { font-size:40px; font-weight:600; letter-spacing:-.03em;
+  line-height:1.05; font-variant-numeric:tabular-nums; }
+.big .n.accent { color:var(--series-2); }
+.big .what { font-size:14px; color:var(--text-primary); margin-top:8px;
+  font-weight:600; }
+.big .ev { font-size:12.5px; color:var(--text-muted); margin-top:5px; }
+.check { background:var(--surface-1); border:1px solid var(--border);
+  border-left:3px solid var(--series-3); border-radius:10px; padding:16px 18px;
+  margin:16px 0; }
+.check table { border-collapse:collapse; margin:10px 0 4px; font-size:13.5px; }
+.check td { padding:3px 18px 3px 0; font-variant-numeric:tabular-nums; }
+.check td.k { color:var(--text-secondary); }
+.limits { background:var(--surface-1); border:1px solid var(--border);
+  border-left:3px solid var(--warning); border-radius:10px; padding:16px 18px; }
+.limits ul { margin:8px 0 0; padding-left:19px; color:var(--text-secondary);
+  font-size:13.5px; }
+.limits li { margin-bottom:7px; }
+.steps { counter-reset:step; padding-left:0; list-style:none; margin:12px 0 0; }
+.steps li { counter-increment:step; position:relative; padding-left:30px;
+  margin-bottom:12px; color:var(--text-secondary); font-size:13.5px; }
+.steps li::before { content:counter(step); position:absolute; left:0; top:1px;
+  width:20px; height:20px; border-radius:50%; background:var(--series-1);
+  color:#fff; font-size:12px; display:grid; place-items:center; font-weight:600; }
+.steps code { display:inline-block; margin-top:3px; }
+.panel { background:var(--surface-1); border:1px solid var(--border);
+  border-radius:12px; padding:18px 20px; }
+.panel h3 { margin:0 0 3px; font-size:15.5px; }
+.panel .q { margin:0 0 14px; font-size:13px; color:var(--text-muted);
+  font-style:italic; }
+.grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+  gap:14px; }
+.hb { display:grid; grid-template-columns:150px 1fr 92px; align-items:center;
+  gap:10px; margin-bottom:7px; font-size:12.5px; }
+.hb-l { color:var(--text-secondary); text-align:right; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.hb-t { height:15px; }
+.hb-b { height:15px; border-radius:3px; min-width:2px; }
+.hb-v { color:var(--text-primary); font-variant-numeric:tabular-nums;
+  font-weight:600; }
+table.data { border-collapse:collapse; width:100%; font-size:13px; }
+table.data th { text-align:left; font-weight:600; color:var(--text-muted);
+  font-size:11.5px; text-transform:uppercase; letter-spacing:.06em;
+  padding:0 12px 7px 0; border-bottom:1px solid var(--gridline); }
+table.data td { padding:6px 12px 6px 0; font-variant-numeric:tabular-nums;
+  border-bottom:1px solid var(--gridline); }
+table.data td.k { color:var(--text-secondary); }
+.wait { color:var(--series-2); font-weight:600; }
+.more { margin-top:10px; padding-top:10px; border-top:1px dashed var(--gridline);
+  font-size:12.5px; color:var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">oteru · telemetria de uso de IA</div>
+  <h1>O que uma sessão real revela</h1>
+  <p class="lede">
+    Uma sessão de trabalho de verdade, capturada hoje: 5 turnos,
+    28 min 27 s, 231 spans, Claude Code 2.1.221. A tarefa foi um
+    item do nosso próprio backlog — nada foi encenado para esta apresentação.
+  </p>
+
+  <div class="note">
+    <strong>Nada aqui exigiu ligar captura de conteúdo.</strong> Qual modelo foi
+    chamado, em que ordem, quanto demorou, quanto custou e o que voltou já vem por
+    padrão. Prompt e resposta continuam redigidos — o que se vê abaixo é a
+    <em>estrutura</em> do trabalho, não o seu texto.
+  </div>
+
+  <h2>Três números que mudam a leitura</h2>
+  <div class="hero"><div class="big"><div class="n accent">46%</div><div class="what">da sessão o agente ficou parado esperando decisão humana</div><div class="ev">13 min 13 s de 28 min 27 s · 38 das 57 chamadas de tool exigiram um clique</div></div><div class="big"><div class="n">99%</div><div class="what">dos tokens são contexto em cache, não geração</div><div class="ev">3,4 M de 3,5 M · a resposta do modelo é 1% do volume</div></div><div class="big"><div class="n">99,98%</div><div class="what">do custo foi para um modelo só — claude-opus-5</div><div class="ev">US$ 3,6378 no total · o modelo barato é chamado primeiro, o caro faz o trabalho</div></div></div>
+
+  <h2>Onde vai o dinheiro</h2>
+  <div class="grid2">
+    <div class="panel">
+      <h3>Por modelo</h3>
+      <p class="q">"Qual modelo consome o orçamento?"</p>
+      <div class="hb"><div class="hb-l">claude-opus-5</div><div class="hb-t"><div class="hb-b" style="width:100.0%;background:var(--series-1)"></div></div><div class="hb-v">US$ 3,6371</div></div><div class="hb"><div class="hb-l">claude-haiku-4-5-20251001</div><div class="hb-t"><div class="hb-b" style="width:0.0%;background:var(--series-1)"></div></div><div class="hb-v">US$ 0,0007</div></div>
+      <div class="more">O modelo barato é chamado <strong>primeiro</strong> em cada
+        turno e responde por uma fração ínfima. Roteamento barato, trabalho caro.</div>
+    </div>
+    <div class="panel">
+      <h3>Por origem da chamada</h3>
+      <p class="q">"Quanto do custo não é a conversa principal?"</p>
+      <div class="hb"><div class="hb-l">main</div><div class="hb-t"><div class="hb-b" style="width:100.0%;background:var(--series-2)"></div></div><div class="hb-v">US$ 3,4251</div></div><div class="hb"><div class="hb-l">auxiliary</div><div class="hb-t"><div class="hb-b" style="width:6.2%;background:var(--series-2)"></div></div><div class="hb-v">US$ 0,2127</div></div>
+      <div class="more"><code>auxiliary</code> é <strong>subagente</strong> — trabalho
+        que o agente delega a si mesmo. Não aparece no chat, aparece na fatura.</div>
+    </div>
+  </div>
+
+  <h2>Onde vai o tempo</h2>
+  <div class="panel">
+    <h3>Trabalho contra espera humana, turno a turno</h3>
+    <p class="q">"O gargalo é o modelo ou somos nós?"</p>
+    <div class="scroll">
+    <table class="data">
+      <thead><tr><th>Turno</th><th>Duração</th><th>Esperando humano</th>
+        <th>Tokens</th><th>Chamadas</th><th>Tools</th></tr></thead>
+      <tbody><tr><td class="k">Turno 1</td><td>8 min 20 s</td><td><span class="wait">3 min 26 s</span> <span class="k">(41%)</span></td><td>868 k</td><td>23</td><td>28</td></tr><tr><td class="k">Turno 2</td><td>16 min 07 s</td><td><span class="wait">9 min 44 s</span> <span class="k">(60%)</span></td><td>2,1 M</td><td>27</td><td>28</td></tr><tr><td class="k">Turno 3</td><td>21.72 s</td><td><span class="wait">1.96 s</span> <span class="k">(9%)</span></td><td>273 k</td><td>3</td><td>1</td></tr><tr><td class="k">Turno 4</td><td>6.52 s</td><td><span class="wait">0 ms</span> <span class="k">(0%)</span></td><td>183 k</td><td>2</td><td>0</td></tr><tr><td class="k">Turno 5</td><td>15 ms</td><td><span class="wait">0 ms</span> <span class="k">(0%)</span></td><td>0</td><td>0</td><td>0</td></tr></tbody>
+    </table>
+    </div>
+    <div class="more">Custo por turno <strong>não</strong> aparece aqui de propósito:
+      <code>cost.usage</code> tem <code>model</code> e <code>session.id</code>, mas não
+      <code>prompt.id</code>. Ratear pelos tokens seria estimativa vestida de medição.</div>
+  </div>
+
+  <h2>O que foi produzido</h2>
+  <div class="grid2">
+    <div class="panel">
+      <h3>Linhas de código</h3>
+      <p class="q">"O que saiu disso, concretamente?"</p>
+      <div class="hb"><div class="hb-l">added</div><div class="hb-t"><div class="hb-b" style="width:100.0%;background:var(--series-3)"></div></div><div class="hb-v">508</div></div><div class="hb"><div class="hb-l">removed</div><div class="hb-t"><div class="hb-b" style="width:7.3%;background:var(--series-3)"></div></div><div class="hb-v">37</div></div>
+    </div>
+    <div class="panel">
+      <h3>Edições por linguagem</h3>
+      <p class="q">"Em que a IA mexeu?"</p>
+      <div class="hb"><div class="hb-l">Python</div><div class="hb-t"><div class="hb-b" style="width:100.0%;background:var(--series-3)"></div></div><div class="hb-v">10</div></div><div class="hb"><div class="hb-l">Markdown</div><div class="hb-t"><div class="hb-b" style="width:10.0%;background:var(--series-3)"></div></div><div class="hb-v">1</div></div>
+    </div>
+  </div>
+
+  <h2>O caminho de um turno</h2>
+  <p class="lede">
+    De onde os números acima saem. Cada barra é um span que o Claude Code emitiu,
+    posicionada pelo tempo real: o modelo barato responde primeiro, o caro assume,
+    a tool é proposta, <strong>a execução para até você aprovar</strong>, e só então roda.
+  </p>
+  <div class="turn"><h3>Turno 1</h3><div class="meta">trace <code>13b5365e7868669d…</code> · 8 min 20 s · pergunta: 306 caracteres</div><div class="scroll"><div class="row"><div class="name d0">interaction</div><div class="track"><div class="bar container" style="left:0.00%;width:99.54%"></div><div class="dur inside on-muted" style="left:0.00%;width:99.54%">8 min 17 s</div></div></div><div class="row"><div class="name d1">llm_request · claude-haiku-4-5-20251001</div><div class="track"><div class="bar model" style="left:0.00%;width:0.40%"></div><div class="dur" style="left:0.40%;padding-left:7px">1.18 s</div></div></div><div class="detail">in 608 / out 22 tok · ttft 881ms · finish_reasons=[&quot;end_turn&quot;] · stop_reason=end_turn</div><div class="row"><div class="name d1">llm_request · claude-opus-5</div><div class="track"><div class="bar model" style="left:0.00%;width:0.81%"></div><div class="dur" style="left:0.82%;padding-left:7px">4.07 s</div></div></div><div class="detail">in 2 / out 246 tok · cache 12826 · ttft 1406ms · finish_reasons=[&quot;tool_use&quot;] · stop_reason=tool_use</div><div class="row"><div class="name d1">tool · Bash</div><div class="track"><div class="bar container" style="left:0.66%;width:0.77%"></div><div class="dur" style="left:1.43%;padding-left:7px">3.83 s</div></div></div><div class="row"><div class="name d2">tool.blocked_on_user</div><div class="track"><div class="bar wait" style="left:0.66%;width:0.74%"></div><div class="dur" style="left:1.40%;padding-left:7px">3.69 s</div></div></div><div class="detail">decision=accept · source=user_temporary</div><div class="row"><div class="name d2">tool.execution</div><div class="track"><div class="bar work" style="left:1.40%;width:0.40%"></div><div class="dur" style="left:1.80%;padding-left:7px">134 ms</div></div></div><div class="row"><div class="name d1">tool · Bash</div><div class="track"><div class="bar container" style="left:1.43%;width:0.40%"></div><div class="dur" style="left:1.83%;padding-left:7px">17 ms</div></div></div><div class="row"><div class="name d2">tool.blocked_on_user</div><div class="track"><div class="bar wait" style="left:1.43%;width:0.40%"></div><div class="dur" style="left:1.83%;padding-left:7px">1 ms</div></div></div><div class="detail">decision=accept · source=config</div><div class="row"><div class="name d2">tool.execution</div><div class="track"><div class="bar work" style="left:1.43%;width:0.40%"></div><div class="dur" style="left:1.83%;padding-left:7px">15 ms</div></div></div><div class="row"><div class="name d1">llm_request · claude-opus-5</div><div class="track"><div class="bar model" style="left:1.43%;width:0.91%"></div><div class="dur" style="left:2.34%;padding-left:7px">4.55 s</div></div></div><div class="detail">in 2 / out 390 tok · cache 22388 · ttft 1441ms · finish_reasons=[&quot;tool_use&quot;] · stop_reason=tool_use</div><div class="row"><div class="name d1">tool · Bash</div><div class="track"><div class="bar container" style="left:2.20%;width:1.22%"></div><div class="dur" style="left:3.43%;padding-left:7px">6.12 s</div></div></div><div class="row"><div class="name d2">tool.blocked_on_user</div><div class="track"><div class="bar wait" style="left:2.20%;width:1.21%"></div><div class="dur" style="left:3.41%;padding-left:7px">6.06 s</div></div></div><div class="detail">decision=accept · source=user_temporary</div><div class="row"><div class="name d2">tool.execution</div><div class="track"><div class="bar work" style="left:3.41%;width:0.40%"></div><div class="dur" style="left:3.81%;padding-left:7px">62 ms</div></div></div><div class="row"><div class="name d1">tool · Bash</div><div class="track"><div class="bar container" style="left:3.43%;width:0.69%"></div><div class="dur" style="left:4.11%;padding-left:7px">3.43 s</div></div></div><div class="axis"><div></div><div class="ticks"><span>0</span><span>4 min 10 s</span><span>8 min 20 s</span></div></div></div><div class="more">+94 spans não desenhados — mais 24× o mesmo ciclo <code>tool → decisão → execução</code>. A repetição é o achado; o timeline completo tem todos.</div><div class="events"><table><tr><td class="seq">3</td><td class="body"><code>claude_code.user_prompt</code></td><td></td></tr><tr><td class="seq">4</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-haiku-4-5-20251001</td></tr><tr><td class="seq">5</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-haiku-4-5-20251001</td></tr><tr><td class="seq">6</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">7</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">8</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=user_temporary</td></tr><tr><td class="seq">9</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">10</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">11</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">12</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">13</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=user_temporary</td></tr><tr><td class="seq">14</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">15</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=user_permanent</td></tr><tr><td class="seq">16</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">17</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">18</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">19</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">20</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">21</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">22</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">23</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">24</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">25</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">26</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">27</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">28</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">29</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">30</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=user_temporary</td></tr><tr><td class="seq">31</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">32</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">33</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">34</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">35</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">36</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">37</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">38</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">39</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">40</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">41</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">42</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">43</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">44</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">45</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">46</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">47</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">48</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=user_temporary</td></tr><tr><td class="seq">49</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=false</td></tr><tr><td class="seq">50</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">51</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">52</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">53</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=user_temporary</td></tr><tr><td class="seq">54</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">55</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">56</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">57</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=user_temporary</td></tr><tr><td class="seq">58</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">59</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">60</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">61</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=user_temporary</td></tr><tr><td class="seq">62</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">63</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">64</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">65</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=user_temporary</td></tr><tr><td class="seq">66</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">67</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">68</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">69</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=user_temporary</td></tr><tr><td class="seq">70</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">71</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">72</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">73</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">74</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">75</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">76</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">77</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">78</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=config</td></tr><tr><td class="seq">79</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">80</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">81</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Read · decision=accept · source=config</td></tr><tr><td class="seq">82</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">83</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Read · success=true</td></tr><tr><td class="seq">84</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">85</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Edit · decision=accept · source=user_temporary</td></tr><tr><td class="seq">86</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Edit · success=true</td></tr><tr><td class="seq">87</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">88</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=user_temporary</td></tr><tr><td class="seq">89</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">90</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">91</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">92</td><td class="body"><code>claude_code.tool_decision</code></td><td>tool_name=Bash · decision=accept · source=user_temporary</td></tr><tr><td class="seq">93</td><td class="body"><code>claude_code.tool_result</code></td><td>tool_name=Bash · success=true</td></tr><tr><td class="seq">94</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">95</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">96</td><td class="body"><code>claude_code.api_request</code></td><td>model=claude-opus-5</td></tr><tr><td class="seq">97</td><td class="body"><code>claude_code.assistant_response</code></td><td>model=claude-opus-5</td></tr></table></div></div>
+
+  <h2>Por que dá para confiar nisso</h2>
+  <div class="check">
+    <strong>Dois caminhos independentes chegam ao mesmo número.</strong>
+    O pipeline de métricas e o de traces não se falam: um agrega contadores, o outro
+    registra spans. Somados em separado:
+    <table>
+      <tr><td class="k">métrica <code>token.usage</code></td>
+          <td><strong>3,450,821</strong></td></tr>
+      <tr><td class="k">soma dos atributos dos spans</td>
+          <td><strong>3,450,821</strong></td></tr>
+    </table>
+    Idênticos.
+    É isso que sustenta construir dashboard em cima deste dado.
+  </div>
+
+  <h2>Quem autorizou o quê</h2>
+  <div class="check">
+    <table><tr><td class="k">user_temporary</td><td><strong>36</strong></td><td class="k">accept</td></tr><tr><td class="k">config</td><td><strong>19</strong></td><td class="k">accept</td></tr><tr><td class="k">user_permanent</td><td><strong>2</strong></td><td class="k">accept</td></tr></table>
+    <span class="ev">
+      <code>config</code> = já estava na allowlist · <code>user_temporary</code> =
+      você aprovou na hora · <code>user_permanent</code> = você aprovou para sempre.
+      A procedência de cada decisão é registrada, não inferida.
+    </span>
+  </div>
+
+  <h2>O que esta sessão <em>não</em> responde</h2>
+  <div class="limits">
+    Dito na cara, porque a alternativa é alguém descobrir depois:
+    <ul>
+      <li><strong>Não há atribuição a skill, plugin ou MCP</strong> — nenhum código
+      de terceiros rodou aqui. O atributo existe; o dado desta sessão não o exercita.</li>
+      <li><strong>Nenhuma permissão foi negada</strong> — 57 de
+      57 aceitas. Não dá para afirmar nada sobre allowlist barrando.</li>
+      <li><strong>Uma sessão não é amostra.</strong> Uma pessoa, uma tarefa, um dia.
+      Serve para mostrar o mecanismo, não para concluir sobre a empresa.</li>
+      <li><strong>O lineage para na fronteira da chamada.</strong> Sabemos que o
+      modelo foi chamado e o que voltou; o que acontece do lado dele não é
+      observável daqui.</li>
+    </ul>
+  </div>
+
+  <h2>O que dá para perguntar com este dado</h2>
+  <div class="panel">
+    <p class="q">A ponte entre uma sessão e um dashboard de verdade.</p>
+    <ul>
+      <li><strong>Quanto custa cada pessoa, time ou organização</strong> — identidade
+      viaja nos três sinais, sem join.</li>
+      <li><strong>Quanto do orçamento vai para subagente</strong> — aqui foram 5,8%,
+      e ninguém enxerga isso lendo o chat.</li>
+      <li><strong>Quanto tempo a IA passa esperando gente</strong> — e se a allowlist
+      está trabalhando ou virou carimbo.</li>
+      <li><strong>Se uma versão nova quebrou a correlação</strong> — a cobertura de
+      <code>TraceId</code> muda entre versões, em silêncio.</li>
+      <li><strong>Se algo se perdeu no caminho</strong> — <code>event.sequence</code>
+      detecta buraco por execução.</li>
+    </ul>
+    <div class="more">Tudo isso já está no dado coletado. O que falta é o painel,
+      não a instrumentação.</div>
+  </div>
+
+  <h2>Como reproduzir</h2>
+  <ol class="steps">
+    <li>Preparar o ambiente num terminal:<br>
+      <code>eval "$(bash scripts/capture_session.sh env)"</code></li>
+    <li>Confirmar que pegou:<br>
+      <code>bash scripts/capture_session.sh check</code></li>
+    <li>Abrir o Claude Code <em>nesse mesmo terminal</em> e trabalhar normalmente:<br>
+      <code>claude</code></li>
+    <li>Ao terminar, <code>/exit</code>, e gerar tudo:<br>
+      <code>python3 scripts/render_session_html.py &lt;session&gt; --apresentacao</code><br>
+      <code>python3 scripts/render_session_html.py &lt;session&gt; --dump demo-lineage/</code></li>
+  </ol>
+  <div class="check">
+    <strong>Cada número desta página é conferível.</strong> O dump em
+    <code>dados/*.jsonl</code> traz todos os atributos de logs, spans e métricas —
+    dá para refazer as contas sem acesso ao banco. Identidade vai
+    <strong>mascarada</strong>, não removida: as chaves continuam lá com valor
+    de placeholder, porque o fato de identidade viajar nos três sinais é parte do
+    achado.
+  </div>
+
+  <footer>
+    Sessão <code>8cd30116-260d-49d5-9f80-138630a7a155</code> · captura de 28 min 27 s ·
+    231 spans e 211 log records.
+    O timeline completo, com os 5 turnos, está em
+    <code>sessao-8cd30116.html</code>.
+    Os dados de origem expiram em 72h sob o TTL do ClickHouse; esta página não.
+  </footer>
+</div>
+</body>
+</html>

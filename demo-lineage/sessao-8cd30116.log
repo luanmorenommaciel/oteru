@@ -1,0 +1,458 @@
+# oteru — sessão 8cd30116-260d-49d5-9f80-138630a7a155
+# Claude Code 2.1.221 · captura lineage-demo
+# 211 log records + 231 spans, em ordem cronológica.
+# Sem captura de conteúdo: prompt e resposta seguem redigidos.
+# Identidade mascarada. Fonte fiel e completa: dados/*.jsonl
+
+13:39:40.778  LOG   claude_code.hook_execution_start                            seq=0
+13:39:40.975  LOG   claude_code.hook_registered                                 seq=1
+13:39:40.992  LOG   claude_code.hook_execution_complete                         seq=2
+
+──── Turno 1 · trace 13b5365e7868669d… · 8 min 20 s ────
+13:39:44.486  SPAN  claude_code.interaction                                8 min 17 s
+13:39:44.494  LOG   claude_code.user_prompt                                     seq=3  prompt_length=306
+13:39:44.499  SPAN    claude_code.llm_request                                  1.18 s  in 608 / out 22 tok · ttft 881ms · finish_reasons=["end_turn"] · stop_reason=end_turn
+13:39:44.510  SPAN    claude_code.llm_request                                  4.07 s  in 2 / out 246 tok · cache 12826 · ttft 1406ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:39:45.675  LOG   claude_code.api_request                                     seq=4  model=claude-haiku-4-5-20251001 cost_usd=0.000718
+13:39:45.675  LOG   claude_code.assistant_response                              seq=5  model=claude-haiku-4-5-20251001
+13:39:47.799  SPAN    claude_code.tool                                         3.83 s
+13:39:47.799  SPAN      claude_code.tool.blocked_on_user                       3.69 s  decision=accept · source=user_temporary
+13:39:48.578  LOG   claude_code.api_request                                     seq=6  model=claude-opus-5 cost_usd=0.108193
+13:39:48.578  LOG   claude_code.assistant_response                              seq=7  model=claude-opus-5
+13:39:51.491  LOG   claude_code.tool_decision                                   seq=8  tool_name=Bash decision=accept source=user_temporary
+13:39:51.492  SPAN      claude_code.tool.execution                             134 ms
+13:39:51.626  LOG   claude_code.tool_result                                     seq=9  tool_name=Bash
+13:39:51.627  SPAN    claude_code.tool                                          17 ms
+13:39:51.627  SPAN      claude_code.tool.blocked_on_user                         1 ms  decision=accept · source=config
+13:39:51.628  SPAN      claude_code.tool.execution                              15 ms
+13:39:51.628  LOG   claude_code.tool_decision                                  seq=10  tool_name=Bash decision=accept source=config
+13:39:51.644  LOG   claude_code.tool_result                                    seq=11  tool_name=Bash
+13:39:51.646  SPAN    claude_code.llm_request                                  4.55 s  in 2 / out 390 tok · cache 22388 · ttft 1441ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:39:55.497  SPAN    claude_code.tool                                         6.12 s
+13:39:55.497  SPAN      claude_code.tool.blocked_on_user                       6.06 s  decision=accept · source=user_temporary
+13:39:56.200  LOG   claude_code.api_request                                    seq=12  model=claude-opus-5 cost_usd=0.025814
+13:40:01.558  SPAN      claude_code.tool.execution                              62 ms
+13:40:01.558  LOG   claude_code.tool_decision                                  seq=13  tool_name=Bash decision=accept source=user_temporary
+13:40:01.621  SPAN    claude_code.tool                                         3.43 s
+13:40:01.621  SPAN      claude_code.tool.blocked_on_user                       3.37 s  decision=accept · source=user_permanent
+13:40:01.621  LOG   claude_code.tool_result                                    seq=14  tool_name=Bash
+13:40:04.995  SPAN      claude_code.tool.execution                              55 ms
+13:40:04.995  LOG   claude_code.tool_decision                                  seq=15  tool_name=Bash decision=accept source=user_permanent
+13:40:05.050  LOG   claude_code.tool_result                                    seq=16  tool_name=Bash
+13:40:05.053  SPAN    claude_code.llm_request                                  7.63 s  in 2 / out 604 tok · cache 22874 · ttft 1334ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:40:11.604  SPAN    claude_code.tool                                          71 ms
+13:40:11.604  SPAN      claude_code.tool.blocked_on_user                         5 ms  decision=accept · source=config
+13:40:11.608  LOG   claude_code.tool_decision                                  seq=17  tool_name=Bash decision=accept source=config
+13:40:11.609  SPAN      claude_code.tool.execution                              66 ms
+13:40:11.675  LOG   claude_code.tool_result                                    seq=18  tool_name=Bash
+13:40:12.665  SPAN    claude_code.tool                                          49 ms
+13:40:12.665  SPAN      claude_code.tool.blocked_on_user                         3 ms  decision=accept · source=config
+13:40:12.667  LOG   claude_code.tool_decision                                  seq=19  tool_name=Bash decision=accept source=config
+13:40:12.668  SPAN      claude_code.tool.execution                              46 ms
+13:40:12.678  LOG   claude_code.api_request                                    seq=20  model=claude-opus-5 cost_usd=0.043887
+13:40:12.678  LOG   claude_code.assistant_response                             seq=21  model=claude-opus-5
+13:40:12.714  LOG   claude_code.tool_result                                    seq=22  tool_name=Bash
+13:40:12.717  SPAN    claude_code.llm_request                                 10.98 s  in 2 / out 846 tok · cache 24608 · ttft 1422ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:40:22.093  SPAN    claude_code.tool                                          62 ms
+13:40:22.094  SPAN      claude_code.tool.blocked_on_user                         3 ms  decision=accept · source=config
+13:40:22.096  SPAN      claude_code.tool.execution                              59 ms
+13:40:22.096  LOG   claude_code.tool_decision                                  seq=23  tool_name=Bash decision=accept source=config
+13:40:22.156  LOG   claude_code.tool_result                                    seq=24  tool_name=Bash
+13:40:23.693  SPAN      claude_code.tool.blocked_on_user                         3 ms  decision=accept · source=config
+13:40:23.693  SPAN    claude_code.tool                                          59 ms
+13:40:23.696  SPAN      claude_code.tool.execution                              55 ms
+13:40:23.696  LOG   claude_code.tool_decision                                  seq=25  tool_name=Bash decision=accept source=config
+13:40:23.698  LOG   claude_code.api_request                                    seq=26  model=claude-opus-5 cost_usd=0.051734
+13:40:23.751  LOG   claude_code.tool_result                                    seq=27  tool_name=Bash
+13:40:23.754  SPAN    claude_code.llm_request                                 12.05 s  in 1 / out 841 tok · cache 26435 · ttft 1569ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:40:34.364  SPAN      claude_code.tool.blocked_on_user                      37.53 s  decision=accept · source=user_temporary
+13:40:34.364  SPAN    claude_code.tool                                        37.69 s
+13:40:35.804  LOG   claude_code.api_request                                    seq=28  model=claude-opus-5 cost_usd=0.0576675
+13:40:35.804  LOG   claude_code.assistant_response                             seq=29  model=claude-opus-5
+13:41:11.897  LOG   claude_code.tool_decision                                  seq=30  tool_name=Bash decision=accept source=user_temporary
+13:41:11.898  SPAN      claude_code.tool.execution                             152 ms
+13:41:12.050  LOG   claude_code.tool_result                                    seq=31  tool_name=Bash
+13:41:12.051  SPAN      claude_code.tool.blocked_on_user                         3 ms  decision=accept · source=config
+13:41:12.051  SPAN    claude_code.tool                                          30 ms
+13:41:12.053  LOG   claude_code.tool_decision                                  seq=32  tool_name=Bash decision=accept source=config
+13:41:12.054  SPAN      claude_code.tool.execution                              27 ms
+13:41:12.081  LOG   claude_code.tool_result                                    seq=33  tool_name=Bash
+13:41:12.084  SPAN    claude_code.llm_request                                 19.87 s  in 2 / out 1639 tok · cache 28777 · ttft 1045ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:41:28.174  SPAN    claude_code.tool                                          78 ms
+13:41:28.175  SPAN      claude_code.tool.blocked_on_user                         5 ms  decision=accept · source=config
+13:41:28.179  SPAN      claude_code.tool.execution                              74 ms
+13:41:28.179  LOG   claude_code.tool_decision                                  seq=34  tool_name=Bash decision=accept source=config
+13:41:28.253  LOG   claude_code.tool_result                                    seq=35  tool_name=Bash
+13:41:31.930  SPAN      claude_code.tool.blocked_on_user                         8 ms  decision=accept · source=config
+13:41:31.930  SPAN    claude_code.tool                                         114 ms
+13:41:31.937  LOG   claude_code.tool_decision                                  seq=36  tool_name=Bash decision=accept source=config
+13:41:31.938  SPAN      claude_code.tool.execution                             106 ms
+13:41:31.956  LOG   claude_code.api_request                                    seq=37  model=claude-opus-5 cost_usd=0.06506350000000001
+13:41:31.956  LOG   claude_code.assistant_response                             seq=38  model=claude-opus-5
+13:41:32.044  LOG   claude_code.tool_result                                    seq=39  tool_name=Bash
+13:41:32.047  SPAN    claude_code.llm_request                                 12.25 s  in 2 / out 933 tok · cache 29746 · ttft 1382ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:41:42.844  SPAN      claude_code.tool.blocked_on_user                         7 ms  decision=accept · source=config
+13:41:42.844  SPAN    claude_code.tool                                          90 ms
+13:41:42.851  LOG   claude_code.tool_decision                                  seq=40  tool_name=Bash decision=accept source=config
+13:41:42.852  SPAN      claude_code.tool.execution                              82 ms
+13:41:42.934  LOG   claude_code.tool_result                                    seq=41  tool_name=Bash
+13:41:44.278  SPAN    claude_code.tool                                          76 ms
+13:41:44.278  SPAN      claude_code.tool.blocked_on_user                         4 ms  decision=accept · source=config
+13:41:44.282  SPAN      claude_code.tool.execution                              72 ms
+13:41:44.282  LOG   claude_code.tool_decision                                  seq=42  tool_name=Bash decision=accept source=config
+13:41:44.300  LOG   claude_code.api_request                                    seq=43  model=claude-opus-5 cost_usd=0.056768000000000006
+13:41:44.300  LOG   claude_code.assistant_response                             seq=44  model=claude-opus-5
+13:41:44.354  LOG   claude_code.tool_result                                    seq=45  tool_name=Bash
+13:41:44.358  SPAN    claude_code.llm_request                                 21.77 s  in 2 / out 1239 tok · cache 31602 · ttft 6137ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:42:04.248  SPAN    claude_code.tool                                         7.12 s
+13:42:04.248  SPAN      claude_code.tool.blocked_on_user                       7.03 s  decision=accept · source=user_temporary
+13:42:06.129  LOG   claude_code.api_request                                    seq=46  model=claude-opus-5 cost_usd=0.061296
+13:42:06.129  LOG   claude_code.assistant_response                             seq=47  model=claude-opus-5
+13:42:11.274  SPAN      claude_code.tool.execution                              94 ms  success=false
+13:42:11.274  LOG   claude_code.tool_decision                                  seq=48  tool_name=Bash decision=accept source=user_temporary
+13:42:11.369  LOG   claude_code.tool_result                                    seq=49  tool_name=Bash
+13:42:11.370  SPAN    claude_code.tool                                          55 ms
+13:42:11.370  SPAN      claude_code.tool.blocked_on_user                         2 ms  decision=accept · source=config
+13:42:11.372  SPAN      claude_code.tool.execution                              53 ms
+13:42:11.372  LOG   claude_code.tool_decision                                  seq=50  tool_name=Bash decision=accept source=config
+13:42:11.425  LOG   claude_code.tool_result                                    seq=51  tool_name=Bash
+13:42:11.428  SPAN    claude_code.llm_request                                  8.40 s  in 1 / out 665 tok · cache 33053 · ttft 1816ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:42:19.819  SPAN      claude_code.tool.blocked_on_user                       4.07 s  decision=accept · source=user_temporary
+13:42:19.819  SPAN    claude_code.tool                                         4.18 s
+13:42:19.828  LOG   claude_code.api_request                                    seq=52  model=claude-opus-5 cost_usd=0.051466500000000005
+13:42:23.893  LOG   claude_code.tool_decision                                  seq=53  tool_name=Bash decision=accept source=user_temporary
+13:42:23.894  SPAN      claude_code.tool.execution                             103 ms
+13:42:23.997  LOG   claude_code.tool_result                                    seq=54  tool_name=Bash
+13:42:23.999  SPAN    claude_code.llm_request                                 16.66 s  in 2 / out 1413 tok · cache 34884 · ttft 1087ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:42:40.653  SPAN    claude_code.tool                                        21.56 s
+13:42:40.653  SPAN      claude_code.tool.blocked_on_user                      21.42 s  decision=accept · source=user_temporary
+13:42:40.664  LOG   claude_code.api_request                                    seq=55  model=claude-opus-5 cost_usd=0.059997
+13:42:40.664  LOG   claude_code.assistant_response                             seq=56  model=claude-opus-5
+13:43:02.069  LOG   claude_code.tool_decision                                  seq=57  tool_name=Bash decision=accept source=user_temporary
+13:43:02.071  SPAN      claude_code.tool.execution                             142 ms
+13:43:02.214  LOG   claude_code.tool_result                                    seq=58  tool_name=Bash
+13:43:02.217  SPAN    claude_code.llm_request                                 17.99 s  in 2 / out 1487 tok · cache 35606 · ttft 1509ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:43:20.170  SPAN    claude_code.tool                                        31.94 s
+13:43:20.170  SPAN      claude_code.tool.blocked_on_user                      31.77 s  decision=accept · source=user_temporary
+13:43:20.205  LOG   claude_code.api_request                                    seq=59  model=claude-opus-5 cost_usd=0.074228
+13:43:20.205  LOG   claude_code.assistant_response                             seq=60  model=claude-opus-5
+13:43:51.938  LOG   claude_code.tool_decision                                  seq=61  tool_name=Bash decision=accept source=user_temporary
+13:43:51.941  SPAN      claude_code.tool.execution                             165 ms
+13:43:52.106  LOG   claude_code.tool_result                                    seq=62  tool_name=Bash
+13:43:52.109  SPAN    claude_code.llm_request                                 19.03 s  in 2 / out 1366 tok · cache 37530 · ttft 1178ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:44:11.131  SPAN    claude_code.tool                                        40.70 s
+13:44:11.131  SPAN      claude_code.tool.blocked_on_user                      40.55 s  decision=accept · source=user_temporary
+13:44:11.140  LOG   claude_code.api_request                                    seq=63  model=claude-opus-5 cost_usd=0.071365
+13:44:11.140  LOG   claude_code.assistant_response                             seq=64  model=claude-opus-5
+13:44:51.681  LOG   claude_code.tool_decision                                  seq=65  tool_name=Bash decision=accept source=user_temporary
+13:44:51.683  SPAN      claude_code.tool.execution                             153 ms
+13:44:51.836  LOG   claude_code.tool_result                                    seq=66  tool_name=Bash
+13:44:51.840  SPAN    claude_code.llm_request                                 25.36 s  in 2 / out 1861 tok · cache 39374 · ttft 1874ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:45:17.168  SPAN    claude_code.tool                                         5.55 s
+13:45:17.168  SPAN      claude_code.tool.blocked_on_user                       5.43 s  decision=accept · source=user_temporary
+13:45:17.198  LOG   claude_code.api_request                                    seq=67  model=claude-opus-5 cost_usd=0.082252
+13:45:17.198  LOG   claude_code.assistant_response                             seq=68  model=claude-opus-5
+13:45:22.599  LOG   claude_code.tool_decision                                  seq=69  tool_name=Bash decision=accept source=user_temporary
+13:45:22.600  SPAN      claude_code.tool.execution                             117 ms
+13:45:22.718  LOG   claude_code.tool_result                                    seq=70  tool_name=Bash
+13:45:22.720  SPAN    claude_code.llm_request                                 11.77 s  in 2 / out 846 tok · cache 40977 · ttft 1606ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:45:34.484  SPAN    claude_code.tool                                          83 ms
+13:45:34.485  SPAN      claude_code.tool.blocked_on_user                         5 ms  decision=accept · source=config
+13:45:34.490  SPAN      claude_code.tool.execution                              77 ms
+13:45:34.490  LOG   claude_code.tool_decision                                  seq=71  tool_name=Bash decision=accept source=config
+13:45:34.494  LOG   claude_code.api_request                                    seq=72  model=claude-opus-5 cost_usd=0.0618585
+13:45:34.568  LOG   claude_code.tool_result                                    seq=73  tool_name=Bash
+13:45:34.572  SPAN    claude_code.llm_request                                  7.26 s  in 1 / out 359 tok · cache 42998 · ttft 2074ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:45:41.602  SPAN    claude_code.tool                                          49 ms
+13:45:41.602  SPAN      claude_code.tool.blocked_on_user                         9 ms  decision=accept · source=config
+13:45:41.611  SPAN      claude_code.tool.execution                              40 ms
+13:45:41.611  LOG   claude_code.tool_decision                                  seq=74  tool_name=Bash decision=accept source=config
+13:45:41.651  LOG   claude_code.tool_result                                    seq=75  tool_name=Bash
+13:45:41.831  LOG   claude_code.api_request                                    seq=76  model=claude-opus-5 cost_usd=0.040739
+13:45:41.831  LOG   claude_code.assistant_response                             seq=77  model=claude-opus-5
+13:45:41.836  SPAN    claude_code.llm_request                                  2.58 s  in 2 / out 94 tok · cache 44024 · ttft 2230ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:45:44.407  SPAN      claude_code.tool.blocked_on_user                        10 ms  decision=accept · source=config
+13:45:44.407  SPAN    claude_code.tool                                          63 ms
+13:45:44.417  LOG   claude_code.tool_decision                                  seq=78  tool_name=Bash decision=accept source=config
+13:45:44.418  SPAN      claude_code.tool.execution                              52 ms
+13:45:44.420  LOG   claude_code.api_request                                    seq=79  model=claude-opus-5 cost_usd=0.042982000000000006
+13:45:44.470  LOG   claude_code.tool_result                                    seq=80  tool_name=Bash
+13:45:44.473  SPAN    claude_code.llm_request                                  2.62 s  in 2 / out 117 tok · cache 45885 · ttft 1951ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:45:47.077  SPAN      claude_code.tool.blocked_on_user                         7 ms  decision=accept · source=config
+13:45:47.077  SPAN    claude_code.tool                                          29 ms
+13:45:47.084  LOG   claude_code.tool_decision                                  seq=81  tool_name=Read decision=accept source=config
+13:45:47.085  SPAN      claude_code.tool.execution                              21 ms
+13:45:47.088  LOG   claude_code.api_request                                    seq=82  model=claude-opus-5 cost_usd=0.029177500000000002
+13:45:47.106  LOG   claude_code.tool_result                                    seq=83  tool_name=Read
+13:45:47.120  SPAN    claude_code.llm_request                                  5.39 s  in 2 / out 284 tok · cache 46215 · ttft 3334ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:45:52.513  LOG   claude_code.api_request                                    seq=84  model=claude-opus-5 cost_usd=0.035487500000000005
+13:45:52.529  SPAN      claude_code.tool.blocked_on_user                      20.92 s  decision=accept · source=user_temporary
+13:45:52.529  SPAN    claude_code.tool                                        20.99 s
+13:46:13.453  LOG   claude_code.tool_decision                                  seq=85  tool_name=Edit decision=accept source=user_temporary
+13:46:13.454  SPAN      claude_code.tool.execution                              66 ms
+13:46:13.521  LOG   claude_code.tool_result                                    seq=86  tool_name=Edit
+13:46:13.552  SPAN    claude_code.llm_request                                 36.10 s  in 2 / out 2452 tok · cache 46742 · ttft 1787ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:46:49.624  SPAN      claude_code.tool.blocked_on_user                      16.69 s  decision=accept · source=user_temporary
+13:46:49.624  SPAN    claude_code.tool                                        16.78 s
+13:46:49.653  LOG   claude_code.api_request                                    seq=87  model=claude-opus-5 cost_usd=0.088341
+13:47:06.313  LOG   claude_code.tool_decision                                  seq=88  tool_name=Bash decision=accept source=user_temporary
+13:47:06.317  SPAN      claude_code.tool.execution                              85 ms
+13:47:06.403  LOG   claude_code.tool_result                                    seq=89  tool_name=Bash
+13:47:06.778  SPAN    claude_code.llm_request                                 22.02 s  in 2 / out 1154 tok · cache 47108 · ttft 3243ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:47:28.784  SPAN      claude_code.tool.blocked_on_user                       7.63 s  decision=accept · source=user_temporary
+13:47:28.784  SPAN    claude_code.tool                                         7.70 s
+13:47:28.800  LOG   claude_code.api_request                                    seq=90  model=claude-opus-5 cost_usd=0.11779400000000001
+13:47:28.800  LOG   claude_code.assistant_response                             seq=91  model=claude-opus-5
+13:47:36.417  LOG   claude_code.tool_decision                                  seq=92  tool_name=Bash decision=accept source=user_temporary
+13:47:36.419  SPAN      claude_code.tool.execution                              62 ms
+13:47:36.481  LOG   claude_code.tool_result                                    seq=93  tool_name=Bash
+13:47:36.497  SPAN    claude_code.llm_request                                 25.90 s  in 2 / out 1806 tok · cache 53646 · ttft 1297ms · finish_reasons=["end_turn"] · stop_reason=end_turn
+13:48:02.399  LOG   claude_code.api_request                                    seq=94  model=claude-opus-5 cost_usd=0.083593
+13:48:02.399  LOG   claude_code.assistant_response                             seq=95  model=claude-opus-5
+13:48:02.416  SPAN    claude_code.llm_request                                  2.29 s  in 504 / out 28 tok · cache 54807 · ttft 1878ms · finish_reasons=["end_turn"] · stop_reason=end_turn
+13:48:04.702  LOG   claude_code.api_request                                    seq=96  model=claude-opus-5 cost_usd=0.048683500000000005
+13:48:04.702  LOG   claude_code.assistant_response                             seq=97  model=claude-opus-5
+
+──── Turno 2 · trace c14f1be59b9230d0… · 16 min 07 s ────
+13:48:32.086  SPAN  claude_code.interaction                               16 min 04 s
+13:48:32.090  LOG   claude_code.user_prompt                                    seq=98  prompt_length=142
+13:48:32.097  SPAN    claude_code.llm_request                                 35.60 s  in 2 / out 2369 tok · cache 56613 · ttft 1344ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:49:06.867  SPAN      claude_code.tool.blocked_on_user                         7 ms  decision=accept · source=config
+13:49:06.867  SPAN    claude_code.tool                                          51 ms
+13:49:06.874  LOG   claude_code.tool_decision                                  seq=99  tool_name=Bash decision=accept source=config
+13:49:06.875  SPAN      claude_code.tool.execution                              43 ms
+13:49:06.918  LOG   claude_code.tool_result                                   seq=100  tool_name=Bash
+13:49:07.678  SPAN      claude_code.tool.blocked_on_user                         6 ms  decision=accept · source=config
+13:49:07.678  SPAN    claude_code.tool                                          46 ms
+13:49:07.683  LOG   claude_code.tool_decision                                 seq=101  tool_name=Bash decision=accept source=config
+13:49:07.684  SPAN      claude_code.tool.execution                              39 ms
+13:49:07.696  LOG   claude_code.api_request                                   seq=102  model=claude-opus-5 cost_usd=0.08809149999999999
+13:49:07.696  LOG   claude_code.assistant_response                            seq=103  model=claude-opus-5
+13:49:07.723  LOG   claude_code.tool_result                                   seq=104  tool_name=Bash
+13:49:07.727  SPAN    claude_code.llm_request                                  2.84 s  in 1 / out 166 tok · cache 56668 · ttft 1827ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:49:10.556  SPAN    claude_code.tool                                          52 ms
+13:49:10.556  SPAN      claude_code.tool.blocked_on_user                        10 ms  decision=accept · source=config
+13:49:10.566  SPAN      claude_code.tool.execution                              42 ms
+13:49:10.566  LOG   claude_code.tool_decision                                 seq=105  tool_name=Bash decision=accept source=config
+13:49:10.569  LOG   claude_code.api_request                                   seq=106  model=claude-opus-5 cost_usd=0.065469
+13:49:10.608  LOG   claude_code.tool_result                                   seq=107  tool_name=Bash
+13:49:10.610  SPAN    claude_code.llm_request                                 88.02 s  in 2 / out 7536 tok · cache 59966 · ttft 1306ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:50:38.630  LOG   claude_code.api_request                                   seq=108  model=claude-opus-5 cost_usd=0.23357300000000003
+13:50:38.630  LOG   claude_code.assistant_response                            seq=109  model=claude-opus-5
+13:50:38.633  SPAN    claude_code.tool                                        23.23 s
+13:50:38.633  SPAN      claude_code.tool.blocked_on_user                      23.16 s  decision=accept · source=user_temporary
+13:51:01.790  LOG   claude_code.tool_decision                                 seq=110  tool_name=Write decision=accept source=user_temporary
+13:51:01.791  SPAN      claude_code.tool.execution                              69 ms
+13:51:01.861  LOG   claude_code.tool_result                                   seq=111  tool_name=Write
+13:51:01.867  SPAN    claude_code.llm_request                                  4.17 s  in 2 / out 145 tok · cache 61484 · ttft 3187ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:51:05.868  SPAN    claude_code.tool                                        49.54 s
+13:51:05.869  SPAN      claude_code.tool.blocked_on_user                      49.32 s  decision=accept · source=user_temporary
+13:51:06.038  LOG   claude_code.api_request                                   seq=112  model=claude-opus-5 cost_usd=0.11033699999999999
+13:51:55.187  LOG   claude_code.tool_decision                                 seq=113  tool_name=Bash decision=accept source=user_temporary
+13:51:55.194  SPAN      claude_code.tool.execution                             215 ms
+13:51:55.409  LOG   claude_code.tool_result                                   seq=114  tool_name=Bash
+13:51:55.414  SPAN    claude_code.llm_request                                  6.67 s  in 2 / out 488 tok · cache 69080 · ttft 1265ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:52:00.501  SPAN    claude_code.tool                                        20.60 s
+13:52:00.501  SPAN      claude_code.tool.blocked_on_user                      20.45 s  decision=accept · source=user_temporary
+13:52:02.083  LOG   claude_code.api_request                                   seq=115  model=claude-opus-5 cost_usd=0.05824
+13:52:02.084  LOG   claude_code.assistant_response                            seq=116  model=claude-opus-5
+13:52:20.950  LOG   claude_code.tool_decision                                 seq=117  tool_name=Bash decision=accept source=user_temporary
+13:52:20.952  SPAN      claude_code.tool.execution                             147 ms
+13:52:21.100  LOG   claude_code.tool_result                                   seq=118  tool_name=Bash
+13:52:21.101  SPAN      claude_code.tool.blocked_on_user                       1.62 s  decision=accept · source=user_temporary
+13:52:21.101  SPAN    claude_code.tool                                         1.80 s
+13:52:22.723  LOG   claude_code.tool_decision                                 seq=119  tool_name=Bash decision=accept source=user_temporary
+13:52:22.724  SPAN      claude_code.tool.execution                             172 ms
+13:52:22.896  LOG   claude_code.tool_result                                   seq=120  tool_name=Bash
+13:52:22.899  SPAN    claude_code.llm_request                                  9.20 s  in 2 / out 734 tok · cache 70229 · ttft 1094ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:52:32.088  SPAN      claude_code.tool.blocked_on_user                         7 ms  decision=accept · source=config
+13:52:32.088  SPAN    claude_code.tool                                          97 ms
+13:52:32.095  SPAN      claude_code.tool.execution                              89 ms
+13:52:32.095  LOG   claude_code.tool_decision                                 seq=121  tool_name=Bash decision=accept source=config
+13:52:32.098  LOG   claude_code.api_request                                   seq=122  model=claude-opus-5 cost_usd=0.06243449999999999
+13:52:32.099  LOG   claude_code.assistant_response                            seq=123  model=claude-opus-5
+13:52:32.184  LOG   claude_code.tool_result                                   seq=124  tool_name=Bash
+13:52:32.187  SPAN    claude_code.llm_request                                 14.47 s  in 2 / out 1301 tok · cache 71125 · ttft 1123ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:52:46.655  SPAN    claude_code.tool                                        13.71 s
+13:52:46.656  SPAN      claude_code.tool.blocked_on_user                      13.66 s  decision=accept · source=user_temporary
+13:52:46.660  LOG   claude_code.api_request                                   seq=125  model=claude-opus-5 cost_usd=0.0765175
+13:52:46.660  LOG   claude_code.assistant_response                            seq=126  model=claude-opus-5
+13:53:00.318  LOG   claude_code.tool_decision                                 seq=127  tool_name=Edit decision=accept source=user_temporary
+13:53:00.319  SPAN      claude_code.tool.execution                              44 ms
+13:53:00.364  LOG   claude_code.tool_result                                   seq=128  tool_name=Edit
+13:53:00.368  SPAN    claude_code.llm_request                                  2.63 s  in 1 / out 107 tok · cache 71967 · ttft 2231ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:53:02.985  SPAN    claude_code.tool                                         9.17 s
+13:53:02.986  SPAN      claude_code.tool.blocked_on_user                       9.03 s  decision=accept · source=user_temporary
+13:53:02.994  LOG   claude_code.api_request                                   seq=129  model=claude-opus-5 cost_usd=0.053603500000000005
+13:53:12.010  LOG   claude_code.tool_decision                                 seq=130  tool_name=Bash decision=accept source=user_temporary
+13:53:12.011  SPAN      claude_code.tool.execution                             144 ms
+13:53:12.155  LOG   claude_code.tool_result                                   seq=131  tool_name=Bash
+13:53:12.158  SPAN    claude_code.llm_request                                 22.76 s  in 2 / out 1639 tok · cache 73461 · ttft 2596ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:53:34.855  SPAN      claude_code.tool.blocked_on_user                      34.47 s  decision=accept · source=user_temporary
+13:53:34.855  SPAN    claude_code.tool                                        34.70 s
+13:53:34.918  LOG   claude_code.api_request                                   seq=132  model=claude-opus-5 cost_usd=0.0828355
+13:53:34.918  LOG   claude_code.assistant_response                            seq=133  model=claude-opus-5
+13:54:09.321  LOG   claude_code.tool_decision                                 seq=134  tool_name=Bash decision=accept source=user_temporary
+13:54:09.322  SPAN      claude_code.tool.execution                             230 ms
+13:54:09.553  LOG   claude_code.tool_result                                   seq=135  tool_name=Bash
+13:54:09.556  SPAN    claude_code.llm_request                                 31.88 s  in 2 / out 2222 tok · cache 73973 · ttft 1428ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:54:41.440  LOG   claude_code.api_request                                   seq=136  model=claude-opus-5 cost_usd=0.1152965
+13:54:41.441  LOG   claude_code.assistant_response                            seq=137  model=claude-opus-5
+13:54:41.460  SPAN      claude_code.tool.blocked_on_user                      53.09 s  decision=accept · source=user_temporary
+13:54:41.460  SPAN    claude_code.tool                                        53.14 s
+13:55:34.547  LOG   claude_code.tool_decision                                 seq=138  tool_name=Edit decision=accept source=user_temporary
+13:55:34.550  SPAN      claude_code.tool.execution                              53 ms
+13:55:34.603  LOG   claude_code.tool_result                                   seq=139  tool_name=Edit
+13:55:34.609  SPAN    claude_code.llm_request                                 21.15 s  in 2 / out 296 tok · cache 76248 · ttft 9183ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:55:55.266  SPAN      claude_code.tool.blocked_on_user                       2.85 s  decision=accept · source=user_temporary
+13:55:55.266  SPAN    claude_code.tool                                         2.88 s
+13:55:55.760  LOG   claude_code.api_request                                   seq=140  model=claude-opus-5 cost_usd=0.068384
+13:55:58.116  LOG   claude_code.tool_decision                                 seq=141  tool_name=Edit decision=accept source=user_temporary
+13:55:58.117  SPAN      claude_code.tool.execution                              31 ms
+13:55:58.149  LOG   claude_code.tool_result                                   seq=142  tool_name=Edit
+13:55:58.155  SPAN    claude_code.llm_request                                  5.91 s  in 2 / out 309 tok · cache 78533 · ttft 3263ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:56:03.665  SPAN      claude_code.tool.blocked_on_user                      36.07 s  decision=accept · source=user_temporary
+13:56:03.665  SPAN    claude_code.tool                                        36.15 s
+13:56:04.060  LOG   claude_code.api_request                                   seq=143  model=claude-opus-5 cost_usd=0.050591500000000005
+13:56:04.060  LOG   claude_code.assistant_response                            seq=144  model=claude-opus-5
+13:56:39.725  LOG   claude_code.tool_decision                                 seq=145  tool_name=Edit decision=accept source=user_temporary
+13:56:39.734  SPAN      claude_code.tool.execution                              78 ms
+13:56:39.812  LOG   claude_code.tool_result                                   seq=146  tool_name=Edit
+13:56:39.830  SPAN    claude_code.llm_request                                  9.32 s  in 2 / out 628 tok · cache 78892 · ttft 3792ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:56:49.127  SPAN      claude_code.tool.blocked_on_user                       3.66 s  decision=accept · source=user_temporary
+13:56:49.127  SPAN    claude_code.tool                                         3.70 s
+13:56:49.152  LOG   claude_code.api_request                                   seq=147  model=claude-opus-5 cost_usd=0.058876
+13:56:52.788  LOG   claude_code.tool_decision                                 seq=148  tool_name=Edit decision=accept source=user_temporary
+13:56:52.789  SPAN      claude_code.tool.execution                              35 ms
+13:56:52.824  LOG   claude_code.tool_result                                   seq=149  tool_name=Edit
+13:56:52.829  SPAN    claude_code.llm_request                                  5.15 s  in 2 / out 450 tok · cache 79264 · ttft 1814ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:56:57.970  SPAN      claude_code.tool.blocked_on_user                      22.20 s  decision=accept · source=user_temporary
+13:56:57.970  SPAN    claude_code.tool                                        22.25 s
+13:56:57.981  LOG   claude_code.api_request                                   seq=150  model=claude-opus-5 cost_usd=0.057802
+13:57:20.164  LOG   claude_code.tool_decision                                 seq=151  tool_name=Edit decision=accept source=user_temporary
+13:57:20.169  SPAN      claude_code.tool.execution                              51 ms
+13:57:20.221  LOG   claude_code.tool_result                                   seq=152  tool_name=Edit
+13:57:20.227  SPAN    claude_code.llm_request                                  4.22 s  in 1 / out 203 tok · cache 79955 · ttft 2785ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:57:24.451  LOG   claude_code.api_request                                   seq=153  model=claude-opus-5 cost_usd=0.0514875
+13:57:24.463  SPAN      claude_code.tool.blocked_on_user                       1.99 s  decision=accept · source=user_temporary
+13:57:24.463  SPAN    claude_code.tool                                         2.02 s
+13:57:26.449  LOG   claude_code.tool_decision                                 seq=154  tool_name=Edit decision=accept source=user_temporary
+13:57:26.450  SPAN      claude_code.tool.execution                              37 ms
+13:57:26.487  LOG   claude_code.tool_result                                   seq=155  tool_name=Edit
+13:57:26.490  SPAN    claude_code.llm_request                                  3.61 s  in 2 / out 189 tok · cache 80598 · ttft 1619ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:57:30.053  SPAN    claude_code.tool                                         5.08 s
+13:57:30.053  SPAN      claude_code.tool.blocked_on_user                       4.95 s  decision=accept · source=user_temporary
+13:57:30.100  LOG   claude_code.api_request                                   seq=156  model=claude-opus-5 cost_usd=0.047684000000000004
+13:57:35.005  LOG   claude_code.tool_decision                                 seq=157  tool_name=Bash decision=accept source=user_temporary
+13:57:35.006  SPAN      claude_code.tool.execution                             124 ms
+13:57:35.130  LOG   claude_code.tool_result                                   seq=158  tool_name=Bash
+13:57:35.132  SPAN    claude_code.llm_request                                  7.14 s  in 2 / out 490 tok · cache 80863 · ttft 1395ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+13:57:41.343  SPAN      claude_code.tool.blocked_on_user                      80.36 s  decision=accept · source=user_temporary
+13:57:41.343  SPAN    claude_code.tool                                        80.63 s
+13:57:42.273  LOG   claude_code.api_request                                   seq=159  model=claude-opus-5 cost_usd=0.0610515
+13:57:42.273  LOG   claude_code.assistant_response                            seq=160  model=claude-opus-5
+13:59:01.706  LOG   claude_code.tool_decision                                 seq=161  tool_name=Bash decision=accept source=user_temporary
+13:59:01.708  SPAN      claude_code.tool.execution                             263 ms
+13:59:01.971  LOG   claude_code.tool_result                                   seq=162  tool_name=Bash
+13:59:01.972  SPAN      claude_code.tool.blocked_on_user                      68.86 s  decision=accept · source=user_temporary
+13:59:01.972  SPAN    claude_code.tool                                        68.93 s
+14:00:10.833  LOG   claude_code.tool_decision                                 seq=163  tool_name=Bash decision=accept source=user_temporary
+14:00:10.835  SPAN      claude_code.tool.execution                              72 ms
+14:00:10.907  LOG   claude_code.tool_result                                   seq=164  tool_name=Bash
+14:00:10.924  SPAN    claude_code.llm_request                                  4.65 s  in 2 / out 209 tok · cache 81699 · ttft 2127ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+14:00:15.567  SPAN    claude_code.tool                                        37.95 s
+14:00:15.567  SPAN      claude_code.tool.blocked_on_user                      37.88 s  decision=accept · source=user_temporary
+14:00:15.575  LOG   claude_code.api_request                                   seq=165  model=claude-opus-5 cost_usd=0.0535645
+14:00:53.449  LOG   claude_code.tool_decision                                 seq=166  tool_name=Bash decision=accept source=user_temporary
+14:00:53.452  SPAN      claude_code.tool.execution                              61 ms
+14:00:53.513  LOG   claude_code.tool_result                                   seq=167  tool_name=Bash
+14:00:53.517  SPAN    claude_code.llm_request                                  5.47 s  in 2 / out 164 tok · cache 82447 · ttft 3991ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+14:00:58.976  SPAN      claude_code.tool.blocked_on_user                      24.05 s  decision=accept · source=user_temporary
+14:00:58.976  SPAN    claude_code.tool                                        24.15 s
+14:00:58.992  LOG   claude_code.api_request                                   seq=168  model=claude-opus-5 cost_usd=0.047393500000000005
+14:01:23.023  LOG   claude_code.tool_decision                                 seq=169  tool_name=Bash decision=accept source=user_temporary
+14:01:23.025  SPAN      claude_code.tool.execution                             103 ms
+14:01:23.127  LOG   claude_code.tool_result                                   seq=170  tool_name=Bash
+14:01:23.131  SPAN    claude_code.llm_request                                 17.51 s  in 2 / out 1227 tok · cache 82653 · ttft 2117ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+14:01:40.586  SPAN    claude_code.tool                                        14.25 s
+14:01:40.586  SPAN      claude_code.tool.blocked_on_user                      14.20 s  decision=accept · source=user_temporary
+14:01:40.641  LOG   claude_code.api_request                                   seq=171  model=claude-opus-5 cost_usd=0.07683150000000001
+14:01:40.641  LOG   claude_code.assistant_response                            seq=172  model=claude-opus-5
+14:01:54.785  LOG   claude_code.tool_decision                                 seq=173  tool_name=Edit decision=accept source=user_temporary
+14:01:54.786  SPAN      claude_code.tool.execution                              48 ms
+14:01:54.835  LOG   claude_code.tool_result                                   seq=174  tool_name=Edit
+14:01:54.844  SPAN    claude_code.llm_request                                  6.91 s  in 2 / out 475 tok · cache 83135 · ttft 3384ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+14:02:01.750  LOG   claude_code.api_request                                   seq=175  model=claude-opus-5 cost_usd=0.0663525
+14:02:01.765  SPAN      claude_code.tool.blocked_on_user                      44.02 s  decision=accept · source=user_temporary
+14:02:01.765  SPAN    claude_code.tool                                        44.07 s
+14:02:45.778  LOG   claude_code.tool_decision                                 seq=176  tool_name=Edit decision=accept source=user_temporary
+14:02:45.781  SPAN      claude_code.tool.execution                              58 ms
+14:02:45.840  LOG   claude_code.tool_result                                   seq=177  tool_name=Edit
+14:02:45.859  SPAN    claude_code.llm_request                                 10.44 s  in 1 / out 679 tok · cache 84425 · ttft 2112ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+14:02:56.248  SPAN      claude_code.tool.blocked_on_user                       7.82 s  decision=accept · source=user_temporary
+14:02:56.248  SPAN    claude_code.tool                                         7.98 s
+14:02:56.302  LOG   claude_code.api_request                                   seq=178  model=claude-opus-5 cost_usd=0.0658725
+14:02:56.303  LOG   claude_code.assistant_response                            seq=179  model=claude-opus-5
+14:03:04.070  LOG   claude_code.tool_decision                                 seq=180  tool_name=Bash decision=accept source=user_temporary
+14:03:04.071  SPAN      claude_code.tool.execution                             160 ms
+14:03:04.231  LOG   claude_code.tool_result                                   seq=181  tool_name=Bash
+14:03:04.233  SPAN    claude_code.llm_request                                  8.61 s  in 2 / out 614 tok · cache 85093 · ttft 1852ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+14:03:12.816  SPAN      claude_code.tool.blocked_on_user                      22.71 s  decision=accept · source=user_temporary
+14:03:12.816  SPAN    claude_code.tool                                        23.02 s
+14:03:12.846  LOG   claude_code.api_request                                   seq=182  model=claude-opus-5 cost_usd=0.06694649999999999
+14:03:12.846  LOG   claude_code.assistant_response                            seq=183  model=claude-opus-5
+14:03:35.526  LOG   claude_code.tool_decision                                 seq=184  tool_name=Bash decision=accept source=user_temporary
+14:03:35.528  SPAN      claude_code.tool.execution                             312 ms
+14:03:35.840  LOG   claude_code.tool_result                                   seq=185  tool_name=Bash
+14:03:35.842  SPAN    claude_code.llm_request                                 19.18 s  in 2 / out 1127 tok · cache 85997 · ttft 3269ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+14:03:55.011  SPAN    claude_code.tool                                         3.39 s
+14:03:55.012  SPAN      claude_code.tool.blocked_on_user                       3.31 s  decision=accept · source=user_permanent
+14:03:55.020  LOG   claude_code.api_request                                   seq=186  model=claude-opus-5 cost_usd=0.08014349999999999
+14:03:55.020  LOG   claude_code.assistant_response                            seq=187  model=claude-opus-5
+14:03:58.316  LOG   claude_code.tool_decision                                 seq=188  tool_name=Bash decision=accept source=user_permanent
+14:03:58.317  SPAN      claude_code.tool.execution                              89 ms
+14:03:58.406  LOG   claude_code.tool_result                                   seq=189  tool_name=Bash
+14:03:58.409  SPAN    claude_code.llm_request                                 13.00 s  in 2 / out 633 tok · cache 86893 · ttft 2737ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+14:04:11.397  SPAN      claude_code.tool.blocked_on_user                       5.08 s  decision=accept · source=user_temporary
+14:04:11.397  SPAN    claude_code.tool                                         5.12 s
+14:04:11.405  LOG   claude_code.api_request                                   seq=190  model=claude-opus-5 cost_usd=0.0705015
+14:04:16.475  LOG   claude_code.tool_decision                                 seq=191  tool_name=Bash decision=accept source=user_temporary
+14:04:16.476  SPAN      claude_code.tool.execution                              40 ms
+14:04:16.516  LOG   claude_code.tool_result                                   seq=192  tool_name=Bash
+14:04:16.518  SPAN    claude_code.llm_request                                 20.07 s  in 2 / out 1164 tok · cache 88015 · ttft 1909ms · finish_reasons=["end_turn"] · stop_reason=end_turn
+14:04:36.591  LOG   claude_code.api_request                                   seq=193  model=claude-opus-5 cost_usd=0.0795175
+14:04:36.591  LOG   claude_code.assistant_response                            seq=194  model=claude-opus-5
+14:04:36.598  SPAN    claude_code.llm_request                                  3.27 s  in 504 / out 24 tok · cache 88655 · ttft 2135ms · finish_reasons=["end_turn"] · stop_reason=end_turn
+14:04:39.865  LOG   claude_code.api_request                                   seq=195  model=claude-opus-5 cost_usd=0.0590875
+14:04:39.865  LOG   claude_code.assistant_response                            seq=196  model=claude-opus-5
+
+──── Turno 3 · trace e4b4f55060c13dd6… · 21.72 s ────
+14:05:21.340  SPAN  claude_code.interaction                                   19.36 s
+14:05:21.364  LOG   claude_code.user_prompt                                   seq=197  prompt_length=66
+14:05:21.386  SPAN    claude_code.llm_request                                  4.67 s  in 2 / out 158 tok · cache 89819 · ttft 2232ms · finish_reasons=["tool_use"] · stop_reason=tool_use
+14:05:26.044  SPAN      claude_code.tool.blocked_on_user                       1.96 s  decision=accept · source=user_temporary
+14:05:26.044  SPAN    claude_code.tool                                         2.12 s
+14:05:26.054  LOG   claude_code.api_request                                   seq=198  model=claude-opus-5 cost_usd=0.0491295
+14:05:28.000  LOG   claude_code.tool_decision                                 seq=199  tool_name=Bash decision=accept source=user_temporary
+14:05:28.001  SPAN      claude_code.tool.execution                             158 ms
+14:05:28.159  LOG   claude_code.tool_result                                   seq=200  tool_name=Bash
+14:05:28.161  SPAN    claude_code.llm_request                                 12.52 s  in 2 / out 632 tok · cache 89845 · ttft 1645ms · finish_reasons=["end_turn"] · stop_reason=end_turn
+14:05:40.686  LOG   claude_code.api_request                                   seq=201  model=claude-opus-5 cost_usd=0.0663925
+14:05:40.686  LOG   claude_code.assistant_response                            seq=202  model=claude-opus-5
+14:05:40.696  SPAN    claude_code.llm_request                                  2.36 s  in 504 / out 16 tok · cache 90411 · ttft 1629ms · finish_reasons=["end_turn"] · stop_reason=end_turn
+14:05:43.055  LOG   claude_code.api_request                                   seq=203  model=claude-opus-5 cost_usd=0.0544455
+14:05:43.055  LOG   claude_code.assistant_response                            seq=204  model=claude-opus-5
+
+──── Turno 4 · trace 9a2b7ecc3c4ae8ed… · 6.52 s ────
+14:06:21.386  SPAN  claude_code.interaction                                    4.07 s
+14:06:21.389  LOG   claude_code.user_prompt                                   seq=205  prompt_length=78
+14:06:21.394  SPAN    claude_code.llm_request                                  4.06 s  in 1 / out 130 tok · cache 91043 · ttft 1657ms · finish_reasons=["end_turn"] · stop_reason=end_turn
+14:06:25.455  LOG   claude_code.api_request                                   seq=206  model=claude-opus-5 cost_usd=0.0504265
+14:06:25.455  LOG   claude_code.assistant_response                            seq=207  model=claude-opus-5
+14:06:25.459  SPAN    claude_code.llm_request                                  2.45 s  in 504 / out 16 tok · cache 91208 · ttft 1411ms · finish_reasons=["end_turn"] · stop_reason=end_turn
+14:06:27.911  LOG   claude_code.api_request                                   seq=208  model=claude-opus-5 cost_usd=0.049814
+14:06:27.911  LOG   claude_code.assistant_response                            seq=209  model=claude-opus-5
+
+──── Turno 5 · trace b22b15316517194d… · 15 ms ────
+14:08:12.409  SPAN  claude_code.interaction                                     15 ms
+14:08:12.411  LOG   claude_code.user_prompt                                   seq=210  prompt_length=5
