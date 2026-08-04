@@ -188,9 +188,28 @@ def span_detail(span: dict) -> str:
 
 
 def ms(ns: int) -> str:
-    if ns >= 1_000_000_000:
-        return f"{ns / 1e9:.2f} s"
+    seconds = ns / 1e9
+    if seconds >= 120:
+        # A session runs for tens of minutes; "1707.94 s" is a number nobody
+        # converts in their head.
+        return f"{int(seconds // 60)} min {int(seconds % 60):02d} s"
+    if seconds >= 1:
+        return f"{seconds:.2f} s"
     return f"{ns / 1e6:.0f} ms"
+
+
+def compact(n: int) -> str:
+    """Token counts run into the millions once cache is included, and
+    3.322.362 is harder to read at a glance than 3,3 M."""
+    if n >= 1_000_000:
+        return f"{n / 1e6:.1f} M".replace(".", ",")
+    if n >= 10_000:
+        return f"{n / 1000:.0f} k"
+    return f"{n:,}".replace(",", ".")
+
+
+def pct(part: int, whole: int) -> int:
+    return round(100 * part / whole) if whole else 0
 
 
 # --- rendering -------------------------------------------------------------
@@ -393,7 +412,7 @@ def render(session: str, spans: list[dict], logs: list[dict]) -> str:
     version = resource.get("service.version", "?")
     marker = resource.get("oteru.capture", "")
 
-    total_in = total_out = 0
+    total_in = total_out = total_cache = 0
     models: dict[str, int] = defaultdict(int)
     tools: dict[str, int] = defaultdict(int)
     waited_ns = 0
@@ -401,6 +420,11 @@ def render(session: str, spans: list[dict], logs: list[dict]) -> str:
         a = span.get("SpanAttributes", {})
         total_in += int(a.get("input_tokens") or 0)
         total_out += int(a.get("output_tokens") or 0)
+        # Cache is NOT part of input_tokens: `input_tokens` counts only the
+        # fresh prompt. Leaving cache out understates the real volume by a
+        # factor of tens — in this capture, 96% of all tokens were cache reads.
+        total_cache += int(a.get("cache_read_tokens") or 0)
+        total_cache += int(a.get("cache_creation_tokens") or 0)
         if a.get("model"):
             models[a["model"]] += 1
         if span["SpanName"] == "claude_code.tool" and a.get("tool_name"):
@@ -427,10 +451,15 @@ def render(session: str, spans: list[dict], logs: list[dict]) -> str:
         ),
         (
             "Tokens",
-            f"{total_in + total_out:,}".replace(",", "."),
-            f"{total_in:,} entrada / {total_out:,} saída".replace(",", "."),
+            compact(total_in + total_out + total_cache),
+            f"{pct(total_cache, total_in + total_out + total_cache)}% cache · "
+            f"{compact(total_in)} entrada · {compact(total_out)} saída",
         ),
-        ("Esperando humano", ms(waited_ns) if waited_ns else "0 ms", "tempo parado em decisão"),
+        (
+            "Esperando humano",
+            ms(waited_ns) if waited_ns else "0 ms",
+            f"{pct(waited_ns, wall_ns)}% da sessão parada em decisão",
+        ),
     ]
     tiles_html = "".join(
         f'<div class="tile"><div class="label">{esc(la)}</div>'
@@ -458,11 +487,11 @@ def render(session: str, spans: list[dict], logs: list[dict]) -> str:
             "correlação log↔trace a medir aqui."
         )
     else:
-        pct = round(100 * correlated / len(logs))
+        correlated_pct = pct(correlated, len(logs))
         integrity_class = " warn" if orphan_logs else ""
         integrity = (
             f"{correlated} de {len(logs)} log records carregam <code>TraceId</code> "
-            f"(<strong>{pct}%</strong>)."
+            f"(<strong>{correlated_pct}%</strong>)."
         )
         if orphan_logs:
             integrity += (
