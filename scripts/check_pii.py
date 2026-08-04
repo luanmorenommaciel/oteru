@@ -52,6 +52,11 @@ ATTR_RE = re.compile(
     r'"key"\s*:\s*"(?P<key>[^"]+)"\s*,\s*"value"\s*:\s*\{\s*"stringValue"\s*:\s*"(?P<value>[^"]*)"'
 )
 
+# ClickHouse exports attributes as a JSON object ({"user.id": "..."}) rather than
+# OTLP's array of {key, value} pairs. Without this the identity check silently
+# passes on a dump: the keys are there, the regex just never matches them.
+MAP_ATTR_RE = re.compile(r'"(?P<key>[A-Za-z_][\w.]*)"\s*:\s*"(?P<value>[^"]*)"')
+
 PLACEHOLDER_RES = (
     re.compile(r"^0+$"),  # all-zero hex/digits
     re.compile(r"^(\d)\1{7}-\1{4}-\1{4}-\1{4}-\1{12}$"),  # repeated-digit UUID
@@ -77,21 +82,29 @@ def _check_line(line: str) -> list[str]:
         for match in rx.finditer(line):
             violations.append(f"user path: {match.group(0)!r}")
 
-    for match in ATTR_RE.finditer(line):
-        key, value = match.group("key"), match.group("value")
-        if key in IDENTITY_KEYS and not _is_placeholder(value):
-            violations.append(f"un-redacted identity in {key!r}: {value!r}")
-        elif key == "host.name" and not _is_placeholder(value):
-            violations.append(f"non-placeholder host.name: {value!r}")
+    for rx in (ATTR_RE, MAP_ATTR_RE):
+        for match in rx.finditer(line):
+            key, value = match.group("key"), match.group("value")
+            if key in IDENTITY_KEYS and not _is_placeholder(value):
+                violations.append(f"un-redacted identity in {key!r}: {value!r}")
+            elif key == "host.name" and not _is_placeholder(value):
+                violations.append(f"non-placeholder host.name: {value!r}")
 
     return violations
 
 
 def main() -> int:
+    # Extra paths may be passed on the command line, so anything about to be
+    # shared — a session dump, a generated report — can be checked by the same
+    # guard the repo already trusts, instead of by an ad-hoc grep.
+    scan_dirs = [Path(arg).resolve() for arg in sys.argv[1:]] or list(SCAN_DIRS)
+
     files: list[Path] = []
-    for scan_dir in SCAN_DIRS:
+    for scan_dir in scan_dirs:
         if scan_dir.is_dir():
             files.extend(sorted(p for p in scan_dir.rglob("*") if p.is_file()))
+        elif scan_dir.is_file():
+            files.append(scan_dir)
 
     if not files:
         print("pii-guard: no files to scan (empty directories?).", file=sys.stderr)
@@ -99,7 +112,8 @@ def main() -> int:
 
     total = 0
     for path in files:
-        rel = path.relative_to(REPO_ROOT)
+        # A path passed on the command line can live outside the repo.
+        rel = path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
