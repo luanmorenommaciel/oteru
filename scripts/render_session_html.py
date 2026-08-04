@@ -70,6 +70,69 @@ def query(sql: str) -> list[dict]:
     return [json.loads(line) for line in payload.splitlines() if line.strip()]
 
 
+# --- masking ----------------------------------------------------------------
+#
+# The dump is meant to be faithful: a colleague has to be able to re-derive every
+# number the HTML claims. Identity is the one thing that cannot ship as-is —
+# user.email, user.id, user.account_id, user.account_uuid and organization.id
+# ride on ALL THREE signals, so a literal export would publish someone's e-mail.
+#
+# They are MASKED, not dropped. That the key exists and carries a value is itself
+# the finding — identity travels without any flag being turned on — and a stable
+# pseudonym keeps rows joinable. Placeholder values follow the convention
+# scripts/check_pii.py already recognises, so the guard can verify the result.
+
+IDENTITY_PLACEHOLDERS = {
+    "user.email": "user@example.com",
+    "user.id": "user_REDACTED_0001",
+    "organization.id": "00000000-0000-0000-0000-000000000000",
+    "user.account_uuid": "11111111-1111-1111-1111-111111111111",
+    "user.account_id": "22222222-2222-2222-2222-222222222222",
+}
+
+# session.id / prompt.id / request_id are deliberately NOT masked: check_pii.py
+# classifies them as correlation rather than identity, and masking them would
+# break every join the dump exists to support without protecting anyone.
+
+
+def collect_identity_values(rows: list[dict], *attr_fields: str) -> set[str]:
+    """The real identity values present, so they can be replaced anywhere.
+
+    Masking by key alone is not enough: an e-mail can turn up inside an
+    attribute nobody anticipated — a path, an error message. Collecting the
+    actual values lets the second pass catch those.
+    """
+    found: set[str] = set()
+    for row in rows:
+        for field in attr_fields:
+            attrs = row.get(field) or {}
+            for key, value in attrs.items():
+                if key in IDENTITY_PLACEHOLDERS and value:
+                    found.add(str(value))
+    return found
+
+
+def mask_row(row: dict, attr_fields: tuple[str, ...], real_values: set[str]) -> dict:
+    """Two passes: known keys by name, then any leftover value anywhere."""
+    out = json.loads(json.dumps(row))  # deep copy; rows are nested dicts
+    for field in attr_fields:
+        attrs = out.get(field)
+        if isinstance(attrs, dict):
+            for key in attrs:
+                if key in IDENTITY_PLACEHOLDERS:
+                    attrs[key] = IDENTITY_PLACEHOLDERS[key]
+
+    # Second pass over the serialised row: catches a real value sitting in a
+    # field the first pass does not know about.
+    if real_values:
+        text = json.dumps(out, ensure_ascii=False)
+        for value in sorted(real_values, key=len, reverse=True):
+            if value and value in text:
+                text = text.replace(value, "REDACTED")
+        out = json.loads(text)
+    return out
+
+
 # --- data ------------------------------------------------------------------
 
 
@@ -113,13 +176,26 @@ def fetch_metrics(session: str) -> dict:
     the same number printed twice.
     """
     rows = query(f"""
-        SELECT MetricName, Attributes['model'] AS model, Attributes['type'] AS type,
-               sum(Value) AS total
+        SELECT MetricName,
+               Attributes['model']        AS model,
+               Attributes['type']         AS type,
+               Attributes['query_source'] AS source,
+               Attributes['language']     AS language,
+               sum(Value)                 AS total
         FROM otel.otel_metrics_sum
         WHERE Attributes['session.id'] = '{session}'
-        GROUP BY MetricName, model, type
+        GROUP BY MetricName, model, type, source, language
     """)
-    out: dict = {"cost_by_model": {}, "tokens_by_type": {}, "cost": 0.0, "tokens": 0, "lines": 0}
+    out: dict = {
+        "cost_by_model": {},
+        "cost_by_source": {},
+        "tokens_by_type": {},
+        "lines_by_type": {},
+        "edits_by_language": {},
+        "cost": 0.0,
+        "tokens": 0,
+        "lines": 0,
+    }
     for r in rows:
         total = float(r["total"])
         name = r["MetricName"].removeprefix("claude_code.")
@@ -127,6 +203,14 @@ def fetch_metrics(session: str) -> dict:
             out["cost"] += total
             if r["model"]:
                 out["cost_by_model"][r["model"]] = out["cost_by_model"].get(r["model"], 0.0) + total
+            if r["source"]:
+                out["cost_by_source"][r["source"]] = (
+                    out["cost_by_source"].get(r["source"], 0.0) + total
+                )
+        elif name == "code_edit_tool.decision" and r["language"]:
+            out["edits_by_language"][r["language"]] = out["edits_by_language"].get(
+                r["language"], 0
+            ) + int(total)
         elif name == "token.usage":
             out["tokens"] += int(total)
             if r["type"]:
@@ -138,7 +222,50 @@ def fetch_metrics(session: str) -> dict:
                 )
         elif name == "lines_of_code.count":
             out["lines"] += int(total)
+            if r["type"]:
+                out["lines_by_type"][r["type"]] = out["lines_by_type"].get(r["type"], 0) + int(
+                    total
+                )
     return out
+
+
+def turn_stats(spans: list[dict]) -> list[dict]:
+    """Per-turn totals, from spans only.
+
+    Cost is deliberately absent: cost.usage carries model and session.id but no
+    prompt.id, so there is no measured per-turn cost. Splitting the session
+    total proportionally to tokens would be an estimate wearing a measurement's
+    clothes.
+    """
+    stats = []
+    for index, turn in enumerate(build_turns(spans), start=1):
+        tokens = waited = calls = tools = 0
+        for span in turn["spans"]:
+            a = span.get("SpanAttributes", {})
+            for key in (
+                "input_tokens",
+                "output_tokens",
+                "cache_read_tokens",
+                "cache_creation_tokens",
+            ):
+                tokens += int(a.get(key) or 0)
+            if span["SpanName"] == "claude_code.tool.blocked_on_user":
+                waited += span["duration_ns"]
+            elif span["SpanName"] == "claude_code.llm_request":
+                calls += 1
+            elif span["SpanName"] == "claude_code.tool":
+                tools += 1
+        stats.append(
+            {
+                "turn": index,
+                "duration_ns": turn["duration_ns"],
+                "waited_ns": waited,
+                "tokens": tokens,
+                "calls": calls,
+                "tools": tools,
+            }
+        )
+    return stats
 
 
 def fetch_decisions(session: str) -> list[dict]:
@@ -277,6 +404,134 @@ def pct_str(part: float, whole: float) -> str:
     return f"{round(value)}%"
 
 
+# --- dump -------------------------------------------------------------------
+
+
+def fetch_raw(session: str) -> dict[str, list[dict]]:
+    """Every row the session left, one list per source table.
+
+    One file per table rather than one interleaved file: the schemas differ
+    (logs carry Body/LogAttributes, spans SpanName/Duration/ParentSpanId,
+    metrics MetricName/Value), so a mixed file forces every consumer to branch
+    before doing anything. Separate files also make the boundary physical — you
+    cannot accidentally sum cost across logs and metrics and get double.
+    """
+    return {
+        "logs": query(f"""
+            SELECT * FROM otel.otel_logs
+            WHERE LogAttributes['session.id'] = '{session}' ORDER BY Timestamp
+        """),
+        "spans": query(f"""
+            SELECT * FROM otel.otel_traces
+            WHERE SpanAttributes['session.id'] = '{session}' ORDER BY Timestamp
+        """),
+        "metrics": query(f"""
+            SELECT * FROM otel.otel_metrics_sum
+            WHERE Attributes['session.id'] = '{session}' ORDER BY TimeUnix
+        """),
+    }
+
+
+ATTR_FIELDS = ("LogAttributes", "SpanAttributes", "Attributes", "ResourceAttributes")
+
+
+def write_dump(session: str, raw: dict[str, list[dict]], outdir: str) -> dict[str, int]:
+    """Writes dados/<table>.jsonl, identity masked. Returns rows per file."""
+    real = set()
+    for rows in raw.values():
+        real |= collect_identity_values(rows, *ATTR_FIELDS)
+
+    datadir = os.path.join(outdir, "dados")
+    os.makedirs(datadir, exist_ok=True)
+    counts = {}
+    for name, rows in raw.items():
+        path = os.path.join(datadir, f"{name}.jsonl")
+        with open(path, "w", encoding="utf-8") as handle:
+            for row in rows:
+                masked = mask_row(row, ATTR_FIELDS, real)
+                handle.write(json.dumps(masked, ensure_ascii=False, default=str) + "\n")
+        counts[name] = len(rows)
+    return counts
+
+
+def write_log(session: str, spans: list[dict], logs: list[dict], path: str) -> int:
+    """The readable half: logs and spans interleaved, in time order.
+
+    Not the source of truth — an llm_request span carries 27 attributes and a
+    line can hold about eight. This is for reading the session top to bottom and
+    seeing the permission decision land between the tool being proposed and it
+    running. Reconstruction happens from the JSONL.
+    """
+    turns = build_turns(spans)
+    span_depth = {}
+    turn_of_span = {}
+    for index, turn in enumerate(turns, start=1):
+        for span, depth in order_nested(turn):
+            span_depth[span["SpanId"]] = depth
+            turn_of_span[span["SpanId"]] = index
+
+    events = []
+    for span in spans:
+        events.append((span["start_ns"], "SPAN", span))
+    for log in logs:
+        events.append((log["ts_ns"], "LOG", log))
+    events.sort(key=lambda e: e[0])
+
+    def stamp(ns: int) -> str:
+        import datetime
+
+        return datetime.datetime.fromtimestamp(ns / 1e9).strftime("%H:%M:%S.%f")[:-3]
+
+    resource = (spans or logs)[0].get("ResourceAttributes", {})
+    lines = [
+        f"# oteru — sessão {session}",
+        f"# Claude Code {resource.get('service.version', '?')}"
+        f" · captura {resource.get('oteru.capture', '—')}",
+        f"# {len(logs)} log records + {len(spans)} spans, em ordem cronológica.",
+        "# Sem captura de conteúdo: prompt e resposta seguem redigidos.",
+        "# Identidade mascarada. Fonte fiel e completa: dados/*.jsonl",
+        "",
+    ]
+
+    emitted_turn = None
+    written = 0
+    for ns, kind, row in events:
+        if kind == "SPAN":
+            index = turn_of_span.get(row["SpanId"])
+            if index and index != emitted_turn:
+                turn = turns[index - 1]
+                lines.append("")
+                lines.append(
+                    f"──── Turno {index} · trace {turn['trace_id'][:16]}…"
+                    f" · {ms(turn['duration_ns'])} ────"
+                )
+                emitted_turn = index
+            depth = span_depth.get(row["SpanId"], 0)
+            detail = span_detail(row)
+            name = "  " * depth + row["SpanName"]
+            lines.append(
+                f"{stamp(ns)}  SPAN  {name:<52} {ms(row['duration_ns']):>12}"
+                + (f"  {detail}" if detail else "")
+            )
+        else:
+            attrs = row.get("LogAttributes", {})
+            extra = " ".join(
+                f"{k}={attrs[k]}"
+                for k in ("model", "tool_name", "decision", "source", "cost_usd", "prompt_length")
+                if attrs.get(k)
+            )
+            seq = attrs.get("event.sequence", "—")
+            lines.append(
+                f"{stamp(ns)}  LOG   {row['Body']:<52} {'seq=' + str(seq):>12}"
+                + (f"  {extra}" if extra else "")
+            )
+        written += 1
+
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+    return written
+
+
 # --- rendering -------------------------------------------------------------
 
 CSS = """
@@ -387,7 +642,14 @@ def esc(value) -> str:
     return html.escape(str(value), quote=True)
 
 
-def render_turn(turn: dict, index: int, logs_by_trace: dict) -> str:
+def render_turn(turn: dict, index: int, logs_by_trace: dict, limit: int | None = None) -> str:
+    """Draws one turn. ``limit`` caps the rows, for the page meant to be projected.
+
+    Truncation is not only about fitting: turn 1 repeats the same
+    tool -> decision -> execution cycle dozens of times. Drawing it 45 times
+    buries the finding under its own evidence; saying "+94 more of the same"
+    states it.
+    """
     total = max(turn["duration_ns"], 1)
     out = [f'<div class="turn"><h3>Turno {index}</h3>']
 
@@ -402,7 +664,9 @@ def render_turn(turn: dict, index: int, logs_by_trace: dict) -> str:
     out.append(f'<div class="meta">{" · ".join(meta)}</div>')
 
     out.append('<div class="scroll">')
-    for span, depth in order_nested(turn):
+    ordered = order_nested(turn)
+    shown = ordered[:limit] if limit else ordered
+    for span, depth in shown:
         role = SPAN_ROLES.get(span["SpanName"], ROLE_WORK)
         left = (span["start_ns"] - turn["start_ns"]) / total * 100
         width = max(span["duration_ns"] / total * 100, 0.4)
@@ -437,6 +701,15 @@ def render_turn(turn: dict, index: int, logs_by_trace: dict) -> str:
         f"<span>{ms(turn['duration_ns'])}</span></div></div>"
     )
     out.append("</div>")
+
+    hidden = len(ordered) - len(shown)
+    if hidden:
+        cycles = sum(1 for s, _ in ordered[len(shown) :] if s["SpanName"] == "claude_code.tool")
+        out.append(
+            f'<div class="more">+{hidden} spans não desenhados — '
+            f"mais {cycles}× o mesmo ciclo <code>tool → decisão → execução</code>. "
+            f"A repetição é o achado; o timeline completo tem todos.</div>"
+        )
 
     events = logs_by_trace.get(turn["trace_id"], [])
     if events:
@@ -488,6 +761,31 @@ PRESENTATION_CSS = """
   width:20px; height:20px; border-radius:50%; background:var(--series-1);
   color:#fff; font-size:12px; display:grid; place-items:center; font-weight:600; }
 .steps code { display:inline-block; margin-top:3px; }
+.panel { background:var(--surface-1); border:1px solid var(--border);
+  border-radius:12px; padding:18px 20px; }
+.panel h3 { margin:0 0 3px; font-size:15.5px; }
+.panel .q { margin:0 0 14px; font-size:13px; color:var(--text-muted);
+  font-style:italic; }
+.grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+  gap:14px; }
+.hb { display:grid; grid-template-columns:150px 1fr 92px; align-items:center;
+  gap:10px; margin-bottom:7px; font-size:12.5px; }
+.hb-l { color:var(--text-secondary); text-align:right; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.hb-t { height:15px; }
+.hb-b { height:15px; border-radius:3px; min-width:2px; }
+.hb-v { color:var(--text-primary); font-variant-numeric:tabular-nums;
+  font-weight:600; }
+table.data { border-collapse:collapse; width:100%; font-size:13px; }
+table.data th { text-align:left; font-weight:600; color:var(--text-muted);
+  font-size:11.5px; text-transform:uppercase; letter-spacing:.06em;
+  padding:0 12px 7px 0; border-bottom:1px solid var(--gridline); }
+table.data td { padding:6px 12px 6px 0; font-variant-numeric:tabular-nums;
+  border-bottom:1px solid var(--gridline); }
+table.data td.k { color:var(--text-secondary); }
+.wait { color:var(--series-2); font-weight:600; }
+.more { margin-top:10px; padding-top:10px; border-top:1px dashed var(--gridline);
+  font-size:12.5px; color:var(--text-muted); }
 """
 
 
@@ -589,6 +887,43 @@ def render_presentation(
         for d in decisions
     )
 
+    def bars(items, fmt, colour="series-1") -> str:
+        """Horizontal bars sharing one scale, biggest first."""
+        if not items:
+            return '<p class="ev">nada registrado nesta sessão.</p>'
+        top = max(v for _, v in items) or 1
+        rows = []
+        for label, value in items:
+            rows.append(
+                f'<div class="hb"><div class="hb-l">{esc(label)}</div>'
+                f'<div class="hb-t"><div class="hb-b" style="width:{100 * value / top:.1f}%;'
+                f'background:var(--{colour})"></div></div>'
+                f'<div class="hb-v">{esc(fmt(value))}</div></div>'
+            )
+        return "".join(rows)
+
+    money = sorted(metrics["cost_by_model"].items(), key=lambda kv: -kv[1])
+    money_html = bars(money, lambda v: f"US$ {v:.4f}".replace(".", ","))
+
+    source = sorted(metrics["cost_by_source"].items(), key=lambda kv: -kv[1])
+    source_html = bars(source, lambda v: f"US$ {v:.4f}".replace(".", ","), "series-2")
+
+    stats = [s for s in turn_stats(spans) if s["duration_ns"] > 0]
+    time_rows = "".join(
+        f'<tr><td class="k">Turno {s["turn"]}</td>'
+        f"<td>{ms(s['duration_ns'])}</td>"
+        f'<td><span class="wait">{ms(s["waited_ns"])}</span>'
+        f' <span class="k">({pct(s["waited_ns"], s["duration_ns"])}%)</span></td>'
+        f"<td>{compact(s['tokens'])}</td>"
+        f"<td>{s['calls']}</td><td>{s['tools']}</td></tr>"
+        for s in stats
+    )
+
+    produced = sorted(metrics["lines_by_type"].items(), key=lambda kv: -kv[1])
+    produced_html = bars(produced, lambda v: f"{v:,}".replace(",", "."), "series-3")
+    langs = sorted(metrics["edits_by_language"].items(), key=lambda kv: -kv[1])
+    langs_html = bars(langs, lambda v: f"{v}", "series-3")
+
     return f"""<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -614,16 +949,64 @@ def render_presentation(
     <em>estrutura</em> do trabalho, não o seu texto.
   </div>
 
+  <h2>Três números que mudam a leitura</h2>
+  <div class="hero">{big_html}</div>
+
+  <h2>Onde vai o dinheiro</h2>
+  <div class="grid2">
+    <div class="panel">
+      <h3>Por modelo</h3>
+      <p class="q">"Qual modelo consome o orçamento?"</p>
+      {money_html}
+      <div class="more">O modelo barato é chamado <strong>primeiro</strong> em cada
+        turno e responde por uma fração ínfima. Roteamento barato, trabalho caro.</div>
+    </div>
+    <div class="panel">
+      <h3>Por origem da chamada</h3>
+      <p class="q">"Quanto do custo não é a conversa principal?"</p>
+      {source_html}
+      <div class="more"><code>auxiliary</code> é <strong>subagente</strong> — trabalho
+        que o agente delega a si mesmo. Não aparece no chat, aparece na fatura.</div>
+    </div>
+  </div>
+
+  <h2>Onde vai o tempo</h2>
+  <div class="panel">
+    <h3>Trabalho contra espera humana, turno a turno</h3>
+    <p class="q">"O gargalo é o modelo ou somos nós?"</p>
+    <div class="scroll">
+    <table class="data">
+      <thead><tr><th>Turno</th><th>Duração</th><th>Esperando humano</th>
+        <th>Tokens</th><th>Chamadas</th><th>Tools</th></tr></thead>
+      <tbody>{time_rows}</tbody>
+    </table>
+    </div>
+    <div class="more">Custo por turno <strong>não</strong> aparece aqui de propósito:
+      <code>cost.usage</code> tem <code>model</code> e <code>session.id</code>, mas não
+      <code>prompt.id</code>. Ratear pelos tokens seria estimativa vestida de medição.</div>
+  </div>
+
+  <h2>O que foi produzido</h2>
+  <div class="grid2">
+    <div class="panel">
+      <h3>Linhas de código</h3>
+      <p class="q">"O que saiu disso, concretamente?"</p>
+      {produced_html}
+    </div>
+    <div class="panel">
+      <h3>Edições por linguagem</h3>
+      <p class="q">"Em que a IA mexeu?"</p>
+      {langs_html}
+    </div>
+  </div>
+
   <h2>O caminho de um turno</h2>
   <p class="lede">
-    Uma pergunta sua vira isto. Cada barra é um span que o Claude Code emitiu,
+    De onde os números acima saem. Cada barra é um span que o Claude Code emitiu,
     posicionada pelo tempo real: o modelo barato responde primeiro, o caro assume,
     a tool é proposta, <strong>a execução para até você aprovar</strong>, e só então roda.
   </p>
-  {render_turn(best, best_index, logs_by_trace)}
-
-  <h2>Três números que mudam a leitura</h2>
-  <div class="hero">{big_html}</div>
+  {render_turn(best, best_index, logs_by_trace, limit=14)}
 
   <h2>Por que dá para confiar nisso</h2>
   <div class="check">
@@ -666,6 +1049,25 @@ def render_presentation(
     </ul>
   </div>
 
+  <h2>O que dá para perguntar com este dado</h2>
+  <div class="panel">
+    <p class="q">A ponte entre uma sessão e um dashboard de verdade.</p>
+    <ul>
+      <li><strong>Quanto custa cada pessoa, time ou organização</strong> — identidade
+      viaja nos três sinais, sem join.</li>
+      <li><strong>Quanto do orçamento vai para subagente</strong> — aqui foram 5,8%,
+      e ninguém enxerga isso lendo o chat.</li>
+      <li><strong>Quanto tempo a IA passa esperando gente</strong> — e se a allowlist
+      está trabalhando ou virou carimbo.</li>
+      <li><strong>Se uma versão nova quebrou a correlação</strong> — a cobertura de
+      <code>TraceId</code> muda entre versões, em silêncio.</li>
+      <li><strong>Se algo se perdeu no caminho</strong> — <code>event.sequence</code>
+      detecta buraco por execução.</li>
+    </ul>
+    <div class="more">Tudo isso já está no dado coletado. O que falta é o painel,
+      não a instrumentação.</div>
+  </div>
+
   <h2>Como reproduzir</h2>
   <ol class="steps">
     <li>Preparar o ambiente num terminal:<br>
@@ -674,9 +1076,18 @@ def render_presentation(
       <code>bash scripts/capture_session.sh check</code></li>
     <li>Abrir o Claude Code <em>nesse mesmo terminal</em> e trabalhar normalmente:<br>
       <code>claude</code></li>
-    <li>Ao terminar, <code>/exit</code>, e gerar a página:<br>
-      <code>python3 scripts/render_session_html.py &lt;session&gt; --apresentacao</code></li>
+    <li>Ao terminar, <code>/exit</code>, e gerar tudo:<br>
+      <code>python3 scripts/render_session_html.py &lt;session&gt; --apresentacao</code><br>
+      <code>python3 scripts/render_session_html.py &lt;session&gt; --dump demo-lineage/</code></li>
   </ol>
+  <div class="check">
+    <strong>Cada número desta página é conferível.</strong> O dump em
+    <code>dados/*.jsonl</code> traz todos os atributos de logs, spans e métricas —
+    dá para refazer as contas sem acesso ao banco. Identidade vai
+    <strong>mascarada</strong>, não removida: as chaves continuam lá com valor
+    de placeholder, porque o fato de identidade viajar nos três sinais é parte do
+    achado.
+  </div>
 
   <footer>
     Sessão <code>{esc(session)}</code> · captura de {ms(wall_ns)} ·
@@ -860,6 +1271,11 @@ def main() -> int:
         action="store_true",
         help="short page built to be projected: one turn's lineage plus the numbers",
     )
+    parser.add_argument(
+        "--dump",
+        metavar="DIR",
+        help="write the faithful dump (dados/*.jsonl + a readable .log) into DIR",
+    )
     args = parser.parse_args()
 
     try:
@@ -886,6 +1302,17 @@ def main() -> int:
             print(f"no spans for session {args.session}", file=sys.stderr)
             return 1
         logs = fetch_logs(args.session)
+
+        if args.dump:
+            raw = fetch_raw(args.session)
+            counts = write_dump(args.session, raw, args.dump)
+            log_path = os.path.join(args.dump, f"sessao-{args.session[:8]}.log")
+            events = write_log(args.session, spans, logs, log_path)
+            for name, n in counts.items():
+                print(f"wrote {args.dump}/dados/{name}.jsonl  ({n} objetos)")
+            print(f"wrote {log_path}  ({events} eventos)")
+            return 0
+
         if args.apresentacao:
             page = render_presentation(
                 args.session,
