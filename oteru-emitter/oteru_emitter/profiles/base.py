@@ -5,6 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+def _version_key(version: str) -> tuple[int, ...]:
+    """'2.1.220' -> (2, 1, 220), so 2.1.220 sorts above 2.1.191 (not below,
+    as a string compare would have it)."""
+    parts = []
+    for chunk in version.split("."):
+        digits = "".join(c for c in chunk if c.isdigit())
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts)
+
+
 @dataclass(frozen=True)
 class Profile:
     name: str
@@ -13,13 +23,35 @@ class Profile:
     rotate_id_keys: tuple[str, ...] = ()
     # Principal-identity attributes -> ALWAYS preserved (doc/sanity).
     preserve_id_keys: tuple[str, ...] = ()
-    # Scopes expected in the capture (light validation / documentation).
+    # Log/metric scopes expected in the capture. Trace scopes live in
+    # ``trace_scopes`` instead — they are version-dependent.
     expected_scopes: tuple[str, ...] = ()
+    # (minimum emitting version, scope name), newest first. A single name
+    # cannot describe every capture: the trace scope was renamed between
+    # versions, so replaying an old capture and a new one both have to be
+    # recognised.
+    trace_scopes: tuple[tuple[str, str], ...] = ()
+
+    def trace_scope_for(self, version: str) -> str | None:
+        """The trace scope a given emitting version is expected to use."""
+        for min_version, scope in self.trace_scopes:
+            if _version_key(version) >= _version_key(min_version):
+                return scope
+        return None
+
+    @property
+    def known_scopes(self) -> frozenset[str]:
+        """Every scope this profile recognises, across versions.
+
+        Derived rather than listed twice: duplicating the trace scope names
+        here is how they drift apart.
+        """
+        return frozenset(self.expected_scopes) | {scope for _, scope in self.trace_scopes}
 
 
 CLAUDE_CODE = Profile(
     name="claude_code",
-    description="Claude Code CLI — claude_code.* namespace, logs + metrics, no traces.",
+    description="Claude Code CLI — claude_code.* namespace, logs + metrics; traces opt-in (beta).",
     rotate_id_keys=("session.id", "prompt.id", "request_id"),
     preserve_id_keys=(
         "user.id",
@@ -29,8 +61,12 @@ CLAUDE_CODE = Profile(
         "organization.id",
     ),
     expected_scopes=(
-        "com.anthropic.claude_code.events",
-        "com.anthropic.claude_code",
+        "com.anthropic.claude_code.events",  # logs
+        "com.anthropic.claude_code",  # metrics
+    ),
+    trace_scopes=(
+        ("2.1.191", "com.anthropic.claude_code.tracing"),
+        ("0", "com.anthropic.claude_code.traces"),
     ),
 )
 

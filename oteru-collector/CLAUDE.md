@@ -30,6 +30,16 @@ docker compose up -d --force-recreate   # apply config edits (config is bind-mou
   enables `grpc` on `0.0.0.0:4317` and `http` on `0.0.0.0:4318` under
   `receivers.otlp.protocols`; both are published in `docker-compose.yml`. Both
   protocols feed the same `traces`/`logs`/`metrics` pipelines.
+- **Partial payloads need no special handling — do not add a "normalization
+  layer".** The OTLP receiver dispatches per signal: a batch carrying only
+  `resourceLogs` reaches only the `logs` pipeline, and the `metrics`/`traces`
+  pipelines are simply not invoked. A body with no records at all
+  (`{}` POSTed to `/v1/logs`) answers `200 {"partialSuccess":{}}`. So any
+  combination the emitter's `--emit` produces is already ingested without error,
+  and a custom processor would mean building a Go component for behavior the
+  collector has by construction. `make e2e-signals`
+  (`scripts/check_signals_e2e.sh`) is the verification artifact for this claim —
+  it asserts every combination lands in the right ClickHouse tables.
 - **All three signals fan into two exporters: `debug` and `file`.** `debug`
   (`verbosity: detailed`) prints human-readable text to stdout; `file`
   (`/telemetry/telemetry.json`, with rotation) writes structured OTLP/JSON, one
@@ -46,13 +56,17 @@ docker compose up -d --force-recreate   # apply config edits (config is bind-mou
 
 | Emitter | Namespace | Signals | Transport |
 |---|---|---|---|
-| Claude Code CLI | `claude_code.*` | logs + metrics (no traces) | HTTP `:4318` (`http/protobuf`) |
-| `oteru-emitter` (sibling directory) | replays whatever it's fed | logs/metrics/traces | HTTP `:4318` or gRPC `:4317` |
+| Claude Code CLI | `claude_code.*` | logs + metrics always; **traces opt-in** (beta, see below) | HTTP `:4318` (`http/protobuf`) |
+| `oteru-emitter` (sibling directory) | replays whatever it's fed | logs/metrics/traces, selectable with `--emit log,metric,trace` | HTTP `:4318` or gRPC `:4317` |
 | POD-1 production emitter (future) | `gen_ai.*` + `mcp.*` | traces (spans) + metrics | gRPC `:4317` |
 
-Claude Code emits `claude_code.*` logs/metrics with empty Trace IDs; records are
-correlated via `session.id` + `prompt.id`, not spans. To set it up, see the
-README. To generate traffic without a live session, use `oteru-emitter/`.
+Claude Code's logs/metrics carry empty Trace IDs; those records correlate via
+`session.id` + `prompt.id`, not spans. **Spans are a separate, opt-in beta**
+(`CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1` + `OTEL_TRACES_EXPORTER=otlp`), off by
+default — see the README. The real span names are `claude_code.interaction`
+(root) → `claude_code.llm_request` / `claude_code.tool` →
+`claude_code.tool.execution`. To generate traffic without a live session, use
+`oteru-emitter/`.
 
 ### Coexistence gotcha — live Claude Code + synthetic emitter mix here
 

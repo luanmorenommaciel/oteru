@@ -25,10 +25,29 @@ from collections.abc import Callable, Iterable
 
 from ..sources.replay import Batch
 
-# Every timestamp to shift (includes startTimeUnixNano to keep durations).
-SHIFT_TIME_KEYS = {"timeUnixNano", "observedTimeUnixNano", "startTimeUnixNano"}
+# Every timestamp to shift. start/endTimeUnixNano are both here so durations
+# survive: shifting only the start of a span would leave end < start and yield
+# a negative duration downstream.
+SHIFT_TIME_KEYS = {
+    "timeUnixNano",
+    "observedTimeUnixNano",
+    "startTimeUnixNano",
+    "endTimeUnixNano",
+}
 
 _ID_ALPHABET = string.ascii_letters + string.digits
+_HEX_ALPHABET = "0123456789abcdef"
+
+# Trace/span IDs are *structural* OTLP fields, not attributes, so the
+# attribute-walking rotation below can never reach them. Left alone, every
+# replay re-sends the same traceId: the backend then shows one trace holding
+# spans from several runs, with conflicting session.ids. The values are the
+# ID's byte length (hex is twice that).
+STRUCTURAL_ID_BYTES = {
+    "traceId": 16,
+    "spanId": 8,
+    "parentSpanId": 8,
+}
 
 IdGen = Callable[[str, str], str]
 
@@ -75,6 +94,51 @@ def _rotate_ids(
             _rotate_ids(item, keys, mapping, gen)
 
 
+def _is_hex(value: str, byte_length: int) -> bool:
+    if len(value) != byte_length * 2:
+        return False
+    try:
+        bytes.fromhex(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _rotate_structural_ids(
+    node: object,
+    mapping: dict[tuple[int, str], str],
+    rnd: random.Random,
+) -> None:
+    """Rewrites traceId/spanId/parentSpanId in place, consistently.
+
+    The mapping is keyed by (byte length, old value), not by field name, so a
+    ``parentSpanId`` resolves to the same new value as the ``spanId`` it points
+    at — the parent/child tree survives. Sharing one mapping across every batch
+    of the run is what keeps a log record's traceId pointing at the same trace
+    as the span it belongs to.
+
+    Values that are not hex of the expected length are left untouched, as are
+    empty strings: Claude Code's logs carry empty trace IDs when tracing is off.
+    """
+    if isinstance(node, dict):
+        for key, value in node.items():
+            byte_length = STRUCTURAL_ID_BYTES.get(key)
+            if byte_length is not None and isinstance(value, str) and value:
+                if not _is_hex(value, byte_length):
+                    continue
+                map_key = (byte_length, value)
+                if map_key not in mapping:
+                    mapping[map_key] = "".join(
+                        rnd.choice(_HEX_ALPHABET) for _ in range(byte_length * 2)
+                    )
+                node[key] = mapping[map_key]
+            else:
+                _rotate_structural_ids(value, mapping, rnd)
+    elif isinstance(node, list):
+        for item in node:
+            _rotate_structural_ids(item, mapping, rnd)
+
+
 def _make_id_gen(rnd: random.Random) -> IdGen:
     """Generates new IDs preserving the original's *format* (seedable)."""
 
@@ -94,10 +158,16 @@ def restamp(
     *,
     shift_time: bool = True,
     rotate_keys: Iterable[str] | None = None,
+    rotate_trace_ids: bool = True,
     seed: int | None = None,
     now_ns: int | None = None,
 ) -> int:
-    """Applies the restamp in-place. Returns the time offset applied (ns)."""
+    """Applies the restamp in-place. Returns the time offset applied (ns).
+
+    ``rotate_keys`` is profile-specific identity (which attributes count as
+    per-run correlation); ``rotate_trace_ids`` covers the structural trace/span
+    IDs, which are universal to OTLP and so are not profile-driven.
+    """
     batches = list(batches)
     offset_ns = 0
 
@@ -109,12 +179,21 @@ def restamp(
             for batch in batches:
                 _shift_timestamps(batch.payload, offset_ns)
 
+    # One RNG for both rotations, and attributes go first: that keeps the
+    # values a given --seed produces for session.id and friends unchanged.
+    rnd = random.Random(seed)
+
     rotate_set = {k for k in (rotate_keys or [])}
     if rotate_set:
-        rnd = random.Random(seed)
         gen = _make_id_gen(rnd)
         mapping: dict[tuple[str, str], str] = {}
         for batch in batches:
             _rotate_ids(batch.payload, rotate_set, mapping, gen)
+
+    if rotate_trace_ids:
+        # One mapping for every batch, so IDs stay consistent across signals.
+        id_mapping: dict[tuple[int, str], str] = {}
+        for batch in batches:
+            _rotate_structural_ids(batch.payload, id_mapping, rnd)
 
     return offset_ns

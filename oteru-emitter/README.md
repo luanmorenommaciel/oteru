@@ -19,6 +19,9 @@ batch per line) and **re-sends it to the collector**:
   `Str("2501")` etc.).
 - **Dual-transport.** Same message, two channels to choose from:
   `http/protobuf` (`:4318`) or `gRPC` (`:4317`).
+- **Signal selection.** `--emit log,metric,trace` replays only the chosen
+  signals. The three are independent — any combination is valid and none
+  implies another.
 - **Realtime.** Honors the original cadence between events (with a cap for
   idle gaps).
 - **Restamp.** Re-stamps timestamps (everything shifted to "now") and rotates
@@ -125,8 +128,57 @@ oteru-emitter replay samples\telemetry-sample.json --transport http `
 ```
 
 Main flags: `--transport http|grpc`, `--endpoint`, `--header NAME=VALUE`
-(repeatable), `--profile`, `--speed`, `--max-gap`, `--limit N`, `--seed`,
-`--no-restamp`, `--dry-run`. Full help: `oteru-emitter replay --help`.
+(repeatable), `--emit`, `--profile`, `--speed`, `--max-gap`, `--limit N`,
+`--seed`, `--no-restamp`, `--dry-run`. Full help:
+`oteru-emitter replay --help`.
+
+## Choosing which signals to send (`--emit`)
+
+By default the emitter replays **every signal the capture holds**. `--emit`
+narrows that to a comma-separated list of `log`, `metric` and `trace`:
+
+```powershell
+oteru-emitter replay samples\telemetry-sample.json --emit log            # logs only
+oteru-emitter replay samples\telemetry-sample.json --emit metric         # metrics only
+oteru-emitter replay my-capture.json --emit trace                       # traces only
+oteru-emitter replay samples\telemetry-sample.json --emit log,metric     # both
+```
+
+The names are **singular**, order does not matter (output is always reported as
+`log,metric,trace`), and the flag is repeatable (`--emit log --emit metric` is
+the same as `--emit log,metric`).
+
+There is **no dependency between signals**: a trace does not require a log or a
+metric. This mirrors OTLP, where the three are separate pipelines.
+
+Two things `--emit` deliberately does *not* do:
+
+- It **selects, never fabricates.** Asking for a signal the capture does not
+  hold is an error (exit 1), not an empty send — `samples/telemetry-sample.json`
+  is a real Claude Code capture, so it has logs and metrics but **no traces**.
+  For the trace signal, point it at a capture of your own taken with the traces
+  beta on (see below).
+- It **is applied before `--limit`**, so `--emit metric --limit 5` sends five
+  *metric* batches rather than the metrics among the first five batches.
+
+## Signals: what Claude Code actually emits
+
+| Signal | Claude Code | In `samples/telemetry-sample.json` |
+|---|---|---|
+| `log` | yes (`claude_code.*` events) | 348 batches |
+| `metric` | yes (`claude_code.*` counters) | 175 batches |
+| `trace` | **opt-in beta** — off unless `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1` + `OTEL_TRACES_EXPORTER=otlp` | none |
+
+The sample predates the traces beta, so it has none. Logs and metrics carry
+empty trace IDs unless the beta is on; without it those records correlate via
+`session.id` / `prompt.id`, not spans.
+
+To get a capture with traces, enable the beta (see
+[`oteru-collector/README.md`](../oteru-collector/README.md#traces-opt-in-beta)),
+work for a while, and point the emitter at the collector's
+`telemetry/telemetry.json`. Captures are **never committed** — this repo ships
+only the code needed to run it locally. The test suite builds the OTLP payloads
+it needs in `tests/factories.py` instead of reading a fixture file.
 
 ## Development (tests and lint)
 
@@ -154,7 +206,7 @@ Or, from the monorepo root: `make test` / `make lint` / `make format`
 
 ```
 OTLP/JSON capture
-   │  sources/replay.py     (loads batches + anchors timestamps)
+   │  sources/replay.py     (loads batches + anchors timestamps + --emit selection)
    ▼
    │  rewrite/restamp.py    (shifts time + rotates IDs — preserves structure)
    ▼

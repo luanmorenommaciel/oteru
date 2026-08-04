@@ -147,5 +147,55 @@ export OTEL_LOGS_EXPORT_INTERVAL=2000
 claude
 ```
 
-Claude Code emits **logs + metrics** (`claude_code.*`), no traces. To generate
-traffic without a real session, use the [`oteru-emitter`](../oteru-emitter).
+That gives you **logs + metrics** (`claude_code.*`). To generate traffic without
+a real session, use the [`oteru-emitter`](../oteru-emitter).
+
+### Traces (opt-in beta)
+
+Spans are **off by default** and need two extra variables on top of the ones
+above:
+
+```bash
+export CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1
+export OTEL_TRACES_EXPORTER=otlp
+```
+
+The span hierarchy is `claude_code.interaction` (one per user prompt) →
+`claude_code.llm_request` and `claude_code.tool` → `claude_code.tool.execution`.
+Prompt text, tool parameters and tool output are **redacted by default**;
+`OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_TOOL_DETAILS` and `OTEL_LOG_TOOL_CONTENT`
+opt back in — leave them off unless you have a reason, they carry real content.
+
+Reference: [Claude Code monitoring
+docs](https://code.claude.com/docs/en/monitoring-usage).
+
+For a longer-lived setup, add the resource attributes and (if the endpoint is
+authenticated) the headers:
+
+```bash
+export OTEL_RESOURCE_ATTRIBUTES=service.name=claude-code,environment=prod
+export OTEL_EXPORTER_OTLP_HEADERS=authorization=<api-key>   # never commit this
+```
+
+Credentials belong in env vars or the gitignored `.env` — see
+[`.env.example`](.env.example).
+
+## Signal tolerance (partial payloads)
+
+The collector accepts **any combination of signals**, and needs no extra
+configuration to do so: the OTLP receiver routes each signal to its own
+pipeline, so a batch with only `resourceLogs` never touches the metrics or
+traces pipelines. A body with no records at all is accepted too:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:4318/v1/logs \
+  -H 'content-type: application/json' --data '{}'      # -> 200
+```
+
+To verify this end to end against ClickHouse — every `--emit` combination
+landing in the right tables, with no collector error — run from the repo root:
+
+```bash
+make up-clickhouse
+make e2e-signals
+```
