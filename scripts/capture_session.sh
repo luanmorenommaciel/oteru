@@ -19,6 +19,7 @@ usage() {
 usage: capture_session.sh <command>
 
   env [--with-content]   print the export block to paste into a NEW terminal
+  check                  run INSIDE the new session: is it actually instrumented?
   list                   sessions currently in ClickHouse, newest first
   purge                  delete only the rows carrying this capture's marker
 
@@ -95,17 +96,59 @@ WARN
 
   cat <<'EOF'
 
-# Then, from that same terminal:
-#   code .        (so the VS Code extension inherits these variables)
-# or
-#   claude        (uses the PATH build)
+# Then, from that SAME terminal:
 #
-# Prefer the VS Code extension's build: on 2.1.191 roughly 25% of log records
-# ship without a TraceId, which shows up as gaps in the rendered timeline.
+#   claude            <- simplest, always inherits. Recommended.
+#
+# The VS Code extension is trickier than it looks. `code .` only starts a new
+# process when VS Code is NOT already running; otherwise it just asks the
+# running instance to open a folder, and that instance keeps whatever
+# environment it was launched with — possibly days old. To use the extension
+# you must QUIT VS Code entirely (Cmd+Q) first, then `code .` from here.
+#
+# What you give up by using `claude` instead: on 2.1.191 about 25% of log
+# records ship without a TraceId. That degrades the event list beside the
+# timeline — it does NOT affect the span tree, because spans carry their own
+# trace context. The lineage renders in full either way.
+#
+# Verify before you start working:
+#   scripts/capture_session.sh check     (run it INSIDE the new session)
 #
 # When done: /exit, wait ~15s for the final metric flush, then:
 #   scripts/capture_session.sh list
 EOF
+}
+
+cmd_check() {
+  # Meant to be run from inside the session being captured: it reports on its
+  # own environment, which is the session's environment.
+  local missing=0
+  echo "Telemetry variables visible to this process:"
+  for var in CLAUDE_CODE_ENABLE_TELEMETRY OTEL_LOGS_EXPORTER OTEL_METRICS_EXPORTER \
+             OTEL_TRACES_EXPORTER CLAUDE_CODE_ENHANCED_TELEMETRY_BETA \
+             OTEL_EXPORTER_OTLP_ENDPOINT OTEL_RESOURCE_ATTRIBUTES; do
+    if [ -n "${!var:-}" ]; then
+      printf '  ok      %-40s %s\n' "$var" "${!var}"
+    else
+      printf '  MISSING %-40s\n' "$var"
+      missing=$((missing + 1))
+    fi
+  done
+
+  echo
+  if [ "$missing" -gt 0 ]; then
+    cat <<'EOF'
+This session is NOT instrumented — nothing it does will be captured.
+
+The usual cause: the process was started before the variables were exported.
+A VS Code extension inherits the environment of the VS Code process, and
+`code .` reuses an already-running instance instead of starting a fresh one,
+so the variables never reach it. Quit VS Code entirely and relaunch from a
+prepared terminal, or just run `claude` there.
+EOF
+    return 1
+  fi
+  echo "This session is instrumented. Work normally, then /exit and wait ~15s."
 }
 
 cmd_list() {
@@ -168,6 +211,7 @@ cmd_purge() {
 
 case "${1:-}" in
   env)   shift; cmd_env "$@" ;;
+  check) cmd_check ;;
   list)  cmd_list ;;
   purge) cmd_purge ;;
   *)     usage; exit 1 ;;
