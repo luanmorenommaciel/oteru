@@ -18,6 +18,17 @@ exporters:
       max_backups: 5
 
 service:
+  # Expose the collector's own metrics (otelcol_*) on all interfaces so Docker
+  # port-publishing can reach them. Without this block v0.155 binds :8888 to
+  # localhost inside the container, unreachable from the host even if published.
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   pipelines:
     traces:
       receivers: [otlp]

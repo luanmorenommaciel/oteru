@@ -9,3 +9,4 @@ services:
     ports:
       - "4317:4317"   # gRPC
       - "4318:4318"   # HTTP
+      - "8888:8888"   # internal telemetry (Prometheus metrics)
