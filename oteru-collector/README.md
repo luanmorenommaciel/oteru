@@ -88,6 +88,48 @@ Notes:
   (managed / HyperDX UI); **`up-clickhouse`** is fully self-contained (raw
   ClickHouse tables you query with SQL).
 
+## Resource footprint (memory tuning)
+
+ClickHouse sizes itself from the memory it can *see*. On Docker Desktop
+(macOS/Windows) that is the whole VM allocation, and the VM can grow until the
+host starts swapping — one crew member watched ClickHouse eat 32 GB on a Mac.
+Three knobs keep the sandbox small:
+
+1. **Cap the Docker Desktop VM** (macOS/Windows): Settings → Resources →
+   Memory. 4 GB is plenty for this stack. This is the single most effective
+   knob — everything below inherits from it.
+2. **Cap the containers.** Docker Compose honors `deploy.resources.limits` on
+   a plain `up` (no swarm needed). Drop this override next to the other
+   compose files — e.g. `docker-compose.limits.yml` — and add
+   `-f docker-compose.limits.yml` to the `up` command:
+
+   ```yaml
+   services:
+     clickhouse:
+       deploy:
+         resources:
+           limits:
+             memory: 2G
+     oteru-collector:
+       deploy:
+         resources:
+           limits:
+             memory: 512M
+   ```
+
+   Recent ClickHouse versions read the container's cgroup limit and size
+   `max_server_memory_usage` from it, so the container cap alone keeps the
+   database in bounds — no ClickHouse config change needed.
+3. **Watch it:** `docker stats` shows live per-container usage. Expected
+   footprint at sandbox scale: collector ~50–150 MB, ClickHouse ~0.5–1 GB —
+   well under 2 GB total. If ClickHouse sits far above that with no load,
+   the cap in step 2 is not being applied (older Compose: upgrade, or use
+   the legacy `mem_limit: 2g` key instead).
+
+This stack is a **local dev sandbox**; none of these numbers are sizing
+guidance for a shared deployment.
+
+
 ## Ports (OTLP ingress)
 
 | Port | Protocol | Use |

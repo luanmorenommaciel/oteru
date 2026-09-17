@@ -21,6 +21,9 @@ What it does
 
 Notes
 - macOS uses the same Docker bind-mount behavior as Linux for this repository.
+- If Docker makes your Mac swap: cap the Docker Desktop VM under Settings →
+  Resources → Memory (4 GB is enough here), and see the "Resource footprint"
+  section of `oteru-collector/README.md` for per-container limits.
 - If you need to access host services from inside the collector container, use `host.docker.internal`.
 - If the script fails because `telemetry.json` is not produced, inspect collector logs:
 
