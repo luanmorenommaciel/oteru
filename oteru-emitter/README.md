@@ -169,18 +169,19 @@ Two things `--emit` deliberately does *not* do:
 | `metric` | yes (`claude_code.*` counters) | 175 batches |
 | `trace` | **opt-in beta** — off unless `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1` + `OTEL_TRACES_EXPORTER=otlp` | none |
 
-The sample predates the traces beta, so it has none. Logs and metrics carry
-empty trace IDs unless the beta is on; without it those records correlate via
-`session.id` / `prompt.id`, not spans.
+The sample was captured with the traces beta off, so it has none — the Claude
+Code version behind it already supported traces; the exporter just wasn't
+enabled. Logs and metrics carry empty trace IDs unless the beta is on; without
+it those records correlate via `session.id` / `prompt.id`, not spans.
 
 To get a capture with traces, enable the beta (see
 [`oteru-collector/README.md`](../oteru-collector/README.md#traces-opt-in-beta)),
 work for a while, and point the emitter at the collector's
-`telemetry/telemetry.json`. Captures are **never committed** — this repo ships
-only the code needed to run it locally. The test suite builds the OTLP payloads
-it needs in `tests/factories.py` instead of reading a fixture file.
-
-## Development (tests and lint)
+`telemetry/telemetry.json`. The capture policy: **new captures are not
+committed** — nothing un-redacted or realistic lands in the repo. The existing
+`samples/telemetry-sample.json` is a redacted historical capture kept for
+`make dry-run` and the integration tests; new fixtures (e.g. traces) are built
+synthetically in `tests/factories.py` instead of committed as JSON.
 
 Install with the dev extras and run the suite:
 
