@@ -9,6 +9,11 @@
 #
 # Requires: `make up-clickhouse` running (collector + ClickHouse) and the venv
 # from `make setup`. Run from the repo root: `make e2e-signals`.
+#
+# Isolation: every run tags its captures with an `oteru.e2e.run_id` resource
+# attribute and filters every ClickHouse assertion by it, so live Claude Code
+# telemetry or a concurrent e2e run on the same collector cannot change the
+# expected row-count deltas. No environment quarantine is required.
 
 set -uo pipefail
 
@@ -18,11 +23,15 @@ TINY="$EMITTER/tests/fixtures/tiny-capture.json"
 
 # Trace captures are built, not committed — see oteru-emitter/tests/factories.py.
 TRACES="$(mktemp -t oteru-traces-XXXXXX).json"
-trap 'rm -f "$TRACES"' EXIT
+SCOPED_TINY="$(mktemp -t oteru-tiny-XXXXXX).json"
+SCOPED_TRACES="$(mktemp -t oteru-scoped-traces-XXXXXX).json"
+trap 'rm -f "$TRACES" "$SCOPED_TINY" "$SCOPED_TRACES"' EXIT
+# Unique per execution; tags every replayed batch so ClickHouse assertions can
+# filter to rows this run produced. date+pid keeps it portable (Git Bash/macOS/Linux).
+RUN_ID="e2e-$(date +%s)-$$"
 CH="${CLICKHOUSE_URL:-http://localhost:8123/?user=otel&password=otel}"
 OTLP="${OTLP_HTTP_ENDPOINT:-http://localhost:4318}"
 SETTLE="${SETTLE_SECONDS:-6}"
-
 if [ "${OS:-}" = "Windows_NT" ]; then
   PY="$EMITTER/.venv/Scripts/python.exe"
 else
@@ -33,12 +42,34 @@ failures=0
 
 fail() { echo "  FAIL: $*"; failures=$((failures + 1)); }
 
+# Row counts filtered to this run's tag — concurrent telemetry (live or
+# synthetic) on the same collector contributes nothing to these numbers.
 counts() {
   curl -sf "$CH" --data-binary "SELECT
-      (SELECT count() FROM otel.otel_logs),
-      (SELECT count() FROM otel.otel_traces),
-      (SELECT count() FROM otel.otel_metrics_sum)
+      (SELECT count() FROM otel.otel_logs WHERE ResourceAttributes['oteru.e2e.run_id'] = '$RUN_ID'),
+      (SELECT count() FROM otel.otel_traces WHERE ResourceAttributes['oteru.e2e.run_id'] = '$RUN_ID'),
+      (SELECT count() FROM otel.otel_metrics_sum WHERE ResourceAttributes['oteru.e2e.run_id'] = '$RUN_ID')
     FORMAT TSV"
+}
+
+# inject_run_id <src-capture> <dst-capture>: copy a JSONL capture with the
+# oteru.e2e.run_id resource attribute added to every batch.
+inject_run_id() {
+  "$PY" - "$1" "$2" "$RUN_ID" <<'PY'
+import json, sys
+
+src, dst, run_id = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(src, encoding="utf-8") as fh:
+    batches = [json.loads(line) for line in fh if line.strip()]
+for batch in batches:
+    for section in ("resourceLogs", "resourceMetrics", "resourceSpans"):
+        for entry in batch.get(section, []):
+            attrs = entry.setdefault("resource", {}).setdefault("attributes", [])
+            attrs.append({"key": "oteru.e2e.run_id", "value": {"stringValue": run_id}})
+with open(dst, "w", encoding="utf-8") as fh:
+    for batch in batches:
+        fh.write(json.dumps(batch) + "\n")
+PY
 }
 
 # The mirror of case_emit: --emit naming a signal the capture lacks has to fail
@@ -107,25 +138,34 @@ pathlib.Path(sys.argv[1]).write_text(
 )
 PY
 
-case_emit "logs only"    "$TINY"   "log"        3 0 0
-case_emit "metrics only" "$TINY"   "metric"     0 0 1
-case_emit "traces only"  "$TRACES" "trace"      0 6 0
-case_emit "combined"     "$TINY"   "log,metric" 3 0 1
-case_emit_rejects "partially absent" "$TINY" "log,trace"
+inject_run_id "$TINY" "$SCOPED_TINY" \
+  || { echo "  FAIL: could not tag the tiny capture"; exit 1; }
+inject_run_id "$TRACES" "$SCOPED_TRACES" \
+  || { echo "  FAIL: could not tag the traces capture"; exit 1; }
+
+case_emit "logs only"    "$SCOPED_TINY"   "log"        3 0 0
+case_emit "metrics only" "$SCOPED_TINY"   "metric"     0 0 1
+case_emit "traces only"  "$SCOPED_TRACES" "trace"      0 6 0
+case_emit "combined"     "$SCOPED_TINY"   "log,metric" 3 0 1
+case_emit_rejects "partially absent" "$SCOPED_TINY" "log,trace"
 
 # Replaying the same capture twice must yield two distinct traces. Trace/span
 # IDs are structural OTLP fields, so nothing rotated them before and every
-# replay collided with the original trace. Counted as a delta, so pre-existing
-# rows in the table cannot confound it.
+# replay collided with the original trace. Run-scoped query, so neither
+# pre-existing rows nor concurrent telemetry can confound it.
 traces_before="$(curl -sf "$CH" --data-binary \
-  "SELECT uniqExact(TraceId) FROM otel.otel_traces FORMAT TSV")"
+  "SELECT uniqExact(TraceId) FROM otel.otel_traces \
+   WHERE ResourceAttributes['oteru.e2e.run_id'] = '$RUN_ID' FORMAT TSV")"
 for _ in 1 2; do
-  "$PY" -m oteru_emitter.cli replay "$TRACES" \
-    --transport http --max-gap 0.2 --emit trace >/dev/null 2>&1 || true
+  if ! "$PY" -m oteru_emitter.cli replay "$SCOPED_TRACES" \
+    --transport http --max-gap 0.2 --emit trace >/dev/null 2>&1; then
+    fail "trace replay exited non-zero"
+  fi
 done
 sleep "$SETTLE"
 traces_after="$(curl -sf "$CH" --data-binary \
-  "SELECT uniqExact(TraceId) FROM otel.otel_traces FORMAT TSV")"
+  "SELECT uniqExact(TraceId) FROM otel.otel_traces \
+   WHERE ResourceAttributes['oteru.e2e.run_id'] = '$RUN_ID' FORMAT TSV")"
 new_traces=$((traces_after - traces_before))
 if [ "$new_traces" -eq 4 ]; then
   echo "  ok   two replays -> 4 distinct traces (no ID collision)"
