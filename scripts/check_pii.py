@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""PII guard: scans committed captures for real identity.
+"""PII guard: scans committed captures and generated fixtures for real identity.
 
 The repo's #1 documented risk is committing an un-redacted OTLP capture
 (they carry e-mail, account/organization IDs and user paths). This script
 is the single verification artifact — reused by the Makefile
 (``make pii-guard``), by the pre-commit hook and by CI.
 
-Stdlib-only; runs with the system Python, before any ``make setup``.
+Coverage: every file under ``SCAN_DIRS`` (committed captures/fixtures) plus
+the OTLP payloads built programmatically by ``oteru-emitter/tests/factories.py``
+(trace/log fixtures no longer live as JSON on disk — the guard builds them
+in memory and applies the same rules).
 
 Rules (violation -> ``file:line`` + description, exit 1):
 1. E-mails outside the reserved ``example.com/org/net`` domains.
@@ -21,6 +24,9 @@ Rules (violation -> ``file:line`` + description, exit 1):
 
 from __future__ import annotations
 
+import importlib.util
+import inspect
+import json
 import re
 import sys
 from pathlib import Path
@@ -33,6 +39,11 @@ SCAN_DIRS = (
     REPO_ROOT / "oteru-emitter" / "samples",
     REPO_ROOT / "oteru-emitter" / "tests" / "fixtures",
 )
+
+# Trace/log fixtures are built, not committed. Loading factories.py directly
+# (no package import) keeps this script stdlib-only and usable before
+# ``make setup`` — factories.py itself has no third-party imports.
+FACTORIES_PATH = REPO_ROOT / "oteru-emitter" / "tests" / "factories.py"
 
 ALLOWED_EMAIL_DOMAINS = ("example.com", "example.org", "example.net")
 
@@ -82,9 +93,29 @@ def _check_line(line: str) -> list[str]:
         if key in IDENTITY_KEYS and not _is_placeholder(value):
             violations.append(f"un-redacted identity in {key!r}: {value!r}")
         elif key == "host.name" and not _is_placeholder(value):
-            violations.append(f"non-placeholder host.name: {value!r}")
+            violations.append(f"non-placeholder host.name: {match.group(0)!r}")
 
     return violations
+
+
+def _generated_payloads() -> list[tuple[str, list[str]]]:
+    """Builds every zero-arg ``factories.py`` builder returning a list of
+    batches; returns ``(builder_name, json_lines)`` pairs for scanning."""
+    spec = importlib.util.spec_from_file_location("factories", FACTORIES_PATH)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    payloads: list[tuple[str, list[str]]] = []
+    for name in sorted(dir(module)):
+        if name.startswith("_"):
+            continue
+        fn = getattr(module, name)
+        if not callable(fn) or inspect.signature(fn).parameters:
+            continue
+        result = fn()
+        if isinstance(result, list) and all(isinstance(b, dict) for b in result):
+            payloads.append((name, [json.dumps(b) for b in result]))
+    return payloads
 
 
 def main() -> int:
@@ -93,8 +124,8 @@ def main() -> int:
         if scan_dir.is_dir():
             files.extend(sorted(p for p in scan_dir.rglob("*") if p.is_file()))
 
-    if not files:
-        print("pii-guard: no files to scan (empty directories?).", file=sys.stderr)
+    if not files and not FACTORIES_PATH.is_file():
+        print("pii-guard: nothing to scan (empty directories?).", file=sys.stderr)
         return 1
 
     total = 0
@@ -111,11 +142,25 @@ def main() -> int:
                 print(f"{rel}:{lineno}: {violation}")
                 total += 1
 
+    generated = 0
+    if FACTORIES_PATH.is_file():
+        try:
+            payloads = _generated_payloads()
+        except Exception as exc:  # a broken builder must not mute the guard
+            print(f"factories.py: could not build payloads ({exc}) — guard coverage lost.")
+            return 1
+        for name, lines in payloads:
+            generated += len(lines)
+            for lineno, line in enumerate(lines, 1):
+                for violation in _check_line(line):
+                    print(f"factories.py:{name}:{lineno}: {violation}")
+                    total += 1
+
     if total:
         print(f"\npii-guard: {total} violation(s) — do NOT commit un-redacted captures.")
         return 1
 
-    print(f"pii-guard: OK ({len(files)} clean file(s)).")
+    print(f"pii-guard: OK ({len(files)} clean file(s), {generated} generated batch(es)).")
     return 0
 
 
