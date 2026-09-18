@@ -105,7 +105,8 @@ Key design decisions:
   re-encodes `traceId`/`spanId`/`parentSpanId` before parsing
   (`normalize_ids`), leaving empty strings and wrong-length values untouched.
   This only ever bites on traces, which is why it went unnoticed: Claude Code
-  emits none.
+  emits none by default — spans require the opt-in beta
+  (`CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1` + `OTEL_TRACES_EXPORTER=otlp`).
 - **Spans anchor on `startTimeUnixNano`, other signals do not.** Spans carry no
   `timeUnixNano`, so without that exception a traces-only capture would have no
   anchor and restamp would silently leave stale timestamps

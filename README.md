@@ -57,12 +57,12 @@ cd oteru-emitter && .venv/bin/oteru-emitter replay samples/telemetry-sample.json
 ```
 
 The default is every signal the capture holds. Note that the committed sample
-has **no traces**: Claude Code emits logs and metrics by default, and spans only
-when the opt-in beta is enabled (see
-[`oteru-collector/README.md`](oteru-collector/README.md#traces-opt-in-beta)).
+has **no traces**: it was captured with the traces beta off — Claude Code emits
+logs and metrics by default, and spans only when the opt-in beta is enabled
+(see [`oteru-collector/README.md`](oteru-collector/README.md#traces-opt-in-beta)).
 The trace path is exercised with an OTLP payload the test suite builds in
-`oteru-emitter/tests/factories.py` — captures are never committed, only the code
-to run things locally.
+`oteru-emitter/tests/factories.py`. New captures are never committed — the
+redacted historical sample is the one exception, kept for local runs.
 See [`oteru-emitter/README.md`](oteru-emitter/README.md#choosing-which-signals-to-send---emit).
 
 To also forward everything to a ClickStack (ClickHouse + HyperDX) backend, set
