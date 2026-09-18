@@ -24,6 +24,11 @@ docker compose down                     # stop
 docker compose up -d --force-recreate   # apply config edits (config is bind-mounted)
 ```
 
+Three compose overrides stack on top of the base file — from the monorepo root,
+`make up-clickstack` (forward to an external ClickStack), `make up-clickhouse`
+(bundled ClickHouse), `make up-hyperdx` (bundled ClickHouse **plus** the local
+HyperDX UI on `:8080`).
+
 ## Architecture notes
 
 - **OTLP ingress accepts both gRPC and HTTP.** `oteru-collector-config.yml`
@@ -51,6 +56,14 @@ docker compose up -d --force-recreate   # apply config edits (config is bind-mou
   exactly what `oteru-emitter` replays.
 - **Config is bind-mounted, not baked in.** Edits to `oteru-collector-config.yml`
   take effect on container recreate without rebuilding.
+- **The HyperDX override uses the standalone image, never the all-in-one.** The
+  all-in-one bundles its own OTel collector on `4317`/`4318`, which collides with
+  this one — and its own ClickHouse, which would duplicate the store
+  `docker-compose.clickhouse.yml` already runs. `docker-compose.hyperdx.yml`
+  therefore adds only the UI (plus a `mongo:7` for HyperDX's own app state) and
+  points it at the existing ClickHouse; the collector config is **not** swapped,
+  so the write path is identical to `up-clickhouse`. It is a read-only lens on
+  data that is already there, which is why it needs no API key.
 
 ## Emitters
 
