@@ -97,6 +97,9 @@ team is created, which normally happens manually in the UI.
    (tries `mongosh`, falls back to the legacy `mongo` shell — the image has
    shipped both, depending on version);
 4. writes `HYPERDX_API_KEY=<key>` into `oteru-collector/.env` (gitignored).
+5. probes the OTLP ingest path with an empty payload until it answers 200 —
+   the container reports `healthy` before ingest is up, and replaying in that
+   window loses batches.
 
 Defaults (override with env vars before running):
 

@@ -1,4 +1,4 @@
-﻿# Alternative config: everything the default config does, PLUS forwarding to
+# Alternative config: everything the default config does, PLUS forwarding to
 # a HyperDX all-in-one container via otlphttp on the internal Docker network.
 #
 # Used by `make up-hyperdx`. HyperDX requires an ingestion API key even

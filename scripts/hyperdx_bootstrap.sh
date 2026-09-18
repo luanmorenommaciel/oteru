@@ -43,9 +43,24 @@ fi
 
 touch "$ENV_FILE"
 if grep -q '^HYPERDX_API_KEY=' "$ENV_FILE"; then
-  sed -i "s/^HYPERDX_API_KEY=.*/HYPERDX_API_KEY=$api_key/" "$ENV_FILE"
+  # -i with a backup suffix is the only spelling both GNU and BSD sed accept.
+  sed -i.bak "s/^HYPERDX_API_KEY=.*/HYPERDX_API_KEY=$api_key/" "$ENV_FILE" && rm -f "$ENV_FILE.bak"
 else
   printf 'HYPERDX_API_KEY=%s\n' "$api_key" >> "$ENV_FILE"
+fi
+
+# The container reports healthy before its OTLP ingest path is up — replaying
+# immediately loses batches. Probe with an empty payload until it accepts.
+# (Direct mode only: port 4318 is published on the host there.)
+echo "waiting for the OTLP ingest path to accept traffic..."
+for _ in $(seq 1 24); do
+  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:4318/v1/logs \
+    -H 'content-type: application/json' -H "authorization: $api_key" --data '{}' || true)
+  [ "$code" = "200" ] && break
+  sleep 5
+done
+if [ "${code:-}" != "200" ]; then
+  echo "warning: ingest path not ready (HTTP ${code:-none}) — give it a minute before 'make ingest'." >&2
 fi
 
 echo "HYPERDX_API_KEY written to $ENV_FILE"
