@@ -32,6 +32,16 @@ After editing `oteru-collector-config.yml`, recreate to remount the config:
 docker compose up -d --force-recreate
 ```
 
+## Local ClickStack (HyperDX all-in-one)
+
+For a fully local ClickHouse + HyperDX backend with persistent volumes and
+automated API-key bootstrap, see [`docs/clickstack.md`](../docs/clickstack.md):
+
+```bash
+make up-direct     # ClickStack alone; emitter ingests direct on :4318
+make up-hyperdx    # collector + ClickStack (collector forwards internally)
+```
+
 ## Forwarding to ClickStack (optional)
 
 The alternative config `oteru-collector-config.clickstack.yml` keeps `debug` +

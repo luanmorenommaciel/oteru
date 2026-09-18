@@ -65,7 +65,10 @@ The trace path is exercised with an OTLP payload the test suite builds in
 redacted historical sample is the one exception, kept for local runs.
 See [`oteru-emitter/README.md`](oteru-emitter/README.md#choosing-which-signals-to-send---emit).
 
-To also forward everything to a ClickStack (ClickHouse + HyperDX) backend, set
+To land everything in a **local ClickStack** (ClickHouse + HyperDX) with a
+searchable UI at http://localhost:8080, use `make up-direct` + `make ingest`
+(direct, simplest) or `make up-hyperdx` (through the collector) — see
+[`docs/clickstack.md`](docs/clickstack.md). For a remote/cloud ClickStack, set
 `CLICKSTACK_ENDPOINT` + `CLICKSTACK_API_KEY` and use `make up-clickstack` —
 see [`oteru-collector/README.md`](oteru-collector/README.md). Credentials go
 in env vars or the gitignored `.env`, **never in the repo**.
