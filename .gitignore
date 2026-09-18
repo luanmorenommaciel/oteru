@@ -1,2 +1,14 @@
 # Secrets / local environment — never commit credentials.
 .env
+
+# Local scratch — screenshots, generated PDFs, one-off scripts. These are not
+# shared artifacts: if something here is worth keeping, give it a real home
+# under docs/ instead of letting it sit in everyone's `git status`.
+tmp/
+output/
+.tmp_palestra/
+/*.png
+
+# Claude Code: `settings.json` is shareable and stays tracked; `settings.local.json`
+# is per-machine (absolute paths, personal permission grants) and is not.
+.claude/settings.local.json
