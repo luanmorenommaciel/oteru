@@ -70,6 +70,11 @@ To also forward everything to a ClickStack (ClickHouse + HyperDX) backend, set
 see [`oteru-collector/README.md`](oteru-collector/README.md). Credentials go
 in env vars or the gitignored `.env`, **never in the repo**.
 
+To browse the telemetry in a **local** HyperDX UI instead — no external backend,
+no API key, nothing leaving the machine — use `make up-hyperdx`. It adds the
+HyperDX UI on `:8080` on top of the ClickHouse this repo already runs, so the
+collector keeps writing exactly where `make up-clickhouse` puts it.
+
 ## Development
 
 ```bash
