@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse up-hyperdx up-direct down down-clickhouse down-direct ingest ingest-loop demo clean
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -64,14 +64,15 @@ e2e-signals: ## verify every --emit combination lands in ClickHouse (needs `make
 up: ## start the collector (docker compose, detached)
 	cd $(COLLECTOR) && docker compose up -d
 
-up-hyperdx: ## start the collector + HyperDX all-in-one; UI at http://localhost:8080
+up-clickstack-local: ## start the collector forwarding to a local ClickStack all-in-one; UI at http://localhost:8080
 	@cd $(COLLECTOR) && \
 	if [ ! -f .env ] && [ -z "$${HYPERDX_API_KEY:-}" ]; then \
 		echo "warning: HYPERDX_API_KEY not set — forwarding to HyperDX will get 401s." \
-		     "Register at http://localhost:8080, copy the ingestion API key (Team Settings)" \
-		     "into $(COLLECTOR)/.env (see .env.example), then re-run 'make up-hyperdx'."; \
+		     "Run 'bash scripts/hyperdx_bootstrap.sh' (from the repo root, once the" \
+		     "container is up) or copy the ingestion key from the UI (Team Settings)" \
+		     "into $(COLLECTOR)/.env (see .env.example), then re-run 'make up-clickstack-local'."; \
 	fi && \
-	docker compose -f docker-compose.yml -f docker-compose.hyperdx.yml up -d
+	docker compose -f docker-compose.yml -f docker-compose.clickstack-local.yml up -d
 
 up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK_ENDPOINT + CLICKSTACK_API_KEY)
 	@cd $(COLLECTOR) && \
@@ -98,6 +99,11 @@ ingest: ## replay the full sample DIRECTLY into ClickStack (reads HYPERDX_API_KE
 ingest-loop: ## keep ingesting forever (Ctrl+C to stop)
 	@while true; do $(MAKE) --no-print-directory ingest; sleep 2; done
 
+up-hyperdx: ## start the collector + ClickHouse + the local HyperDX (ClickStack) UI on :8080
+	cd $(COLLECTOR) && docker compose -f docker-compose.yml \
+		-f docker-compose.clickhouse.yml -f docker-compose.hyperdx.yml up -d
+	@echo "HyperDX UI: http://localhost:8080 — connect it to ClickHouse at http://clickhouse:8123 (user/pass: otel)."
+
 down: ## stop the collector
 	cd $(COLLECTOR) && docker compose down
 
@@ -106,6 +112,10 @@ down-clickhouse: ## stop the collector + ClickHouse and remove the ClickHouse vo
 
 down-direct: ## stop the standalone ClickStack (volumes are kept)
 	cd $(COLLECTOR) && docker compose -f docker-compose.hyperdx-direct.yml down
+
+down-hyperdx: ## stop the collector + ClickHouse + HyperDX and remove their volumes
+	cd $(COLLECTOR) && docker compose -f docker-compose.yml \
+		-f docker-compose.clickhouse.yml -f docker-compose.hyperdx.yml down -v
 
 demo: up ## start the collector, send 5 batches over HTTP and show the logs
 	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.cli replay $(SAMPLE) \

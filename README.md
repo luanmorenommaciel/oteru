@@ -67,11 +67,16 @@ See [`oteru-emitter/README.md`](oteru-emitter/README.md#choosing-which-signals-t
 
 To land everything in a **local ClickStack** (ClickHouse + HyperDX) with a
 searchable UI at http://localhost:8080, use `make up-direct` + `make ingest`
-(direct, simplest) or `make up-hyperdx` (through the collector) — see
+(direct, simplest) or `make up-clickstack-local` (through the collector) — see
 [`docs/clickstack.md`](docs/clickstack.md). For a remote/cloud ClickStack, set
 `CLICKSTACK_ENDPOINT` + `CLICKSTACK_API_KEY` and use `make up-clickstack` —
 see [`oteru-collector/README.md`](oteru-collector/README.md). Credentials go
 in env vars or the gitignored `.env`, **never in the repo**.
+
+To browse the telemetry in a **local** HyperDX UI instead — no external backend,
+no API key, nothing leaving the machine — use `make up-hyperdx`. It adds the
+HyperDX UI on `:8080` on top of the ClickHouse this repo already runs, so the
+collector keeps writing exactly where `make up-clickhouse` puts it.
 
 ## Development
 

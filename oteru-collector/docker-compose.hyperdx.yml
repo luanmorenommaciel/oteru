@@ -1,32 +1,42 @@
-# Compose override: adds HyperDX all-in-one as the backend and swaps in the
-# forwarding config for the collector. Use together with the base file:
-#   docker compose -f docker-compose.yml -f docker-compose.hyperdx.yml up -d
+# Compose override: adds the HyperDX (ClickStack) UI on top of the self-contained
+# ClickHouse stack. Use together with BOTH the base file and the clickhouse one —
+# HyperDX reads the ClickHouse this repo already runs, it does not bring its own:
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.clickhouse.yml \
+#                  -f docker-compose.hyperdx.yml up -d
 # (or simply `make up-hyperdx` from the monorepo root).
 #
-# HyperDX's OTLP ports (4317/4318) are intentionally NOT exposed to the host —
-# the collector reaches them via the internal Docker network (service name: hyperdx).
-# Only the UI port (8080) is published.
+# Unlike docker-compose.clickstack.yml — which FORWARDS to someone else's hosted
+# HyperDX and needs an endpoint + API key — this runs the UI locally. Nothing
+# leaves the machine, which matters: live Claude Code telemetry carries real
+# identity (user.email, user.id, organization.id).
+#
+# This is the standalone HyperDX image, not the all-in-one: the all-in-one bundles
+# its own collector on 4317/4318 and would collide with oteru-collector.
 services:
-  oteru-collector:
+  # Application state only — dashboards, saved searches, users, alerts. No
+  # telemetry lands here; that stays in ClickHouse.
+  hyperdx-mongo:
+    image: mongo:7
     volumes:
-      - ./oteru-collector-config.hyperdx.yml:/etc/oteru-collector-config.yml
-      - ./telemetry:/telemetry
-    environment:
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY:-}
-    depends_on:
-      - hyperdx
+      - hyperdx-mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   hyperdx:
-    image: docker.hyperdx.io/hyperdx/hyperdx-all-in-one
+    image: docker.hyperdx.io/hyperdx/hyperdx:2
+    depends_on:
+      hyperdx-mongo:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://hyperdx-mongo:27017/hyperdx
     ports:
-      - "8080:8080"
-    # Persist across recreates: telemetry (ClickHouse) + accounts/dashboards/
-    # API keys (MongoDB). Remove with `docker compose down -v` when you want
-    # a factory reset.
-    volumes:
-      - hyperdx-clickhouse:/var/lib/clickhouse
-      - hyperdx-mongo:/data/db
+      - "8080:8080"   # UI — http://localhost:8080
 
 volumes:
-  hyperdx-clickhouse:
-  hyperdx-mongo:
+  hyperdx-mongo-data:

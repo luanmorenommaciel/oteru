@@ -34,6 +34,9 @@ make pii-guard  # python scripts/check_pii.py (system python — works before se
 make e2e-signals # asserts every --emit combination reaches ClickHouse (needs up-clickhouse)
 make up/down    # collector via docker compose
 make up-clickstack  # collector + forward to ClickStack (needs CLICKSTACK_ENDPOINT/API_KEY env)
+make up-hyperdx # collector + ClickHouse + the local HyperDX UI on :8080 (no API key)
+make up-direct  # local ClickStack all-in-one + API-key bootstrap; `make ingest` replays into it
+make up-clickstack-local  # collector forwarding to a local ClickStack all-in-one
 make demo       # up + 5 batches over HTTP + collector logs
 make clean      # removes build/test caches (keeps .venv)
 ```

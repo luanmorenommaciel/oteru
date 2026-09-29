@@ -38,8 +38,8 @@ For a fully local ClickHouse + HyperDX backend with persistent volumes and
 automated API-key bootstrap, see [`docs/clickstack.md`](../docs/clickstack.md):
 
 ```bash
-make up-direct     # ClickStack alone; emitter ingests direct on :4318
-make up-hyperdx    # collector + ClickStack (collector forwards internally)
+make up-direct            # ClickStack alone; emitter ingests direct on :4318
+make up-clickstack-local  # collector + ClickStack (collector forwards internally)
 ```
 
 ## Forwarding to ClickStack (optional)
@@ -95,8 +95,36 @@ Notes:
 - Query the data on the host at `http://localhost:8123` (HTTP) or `:9000`
   (native), user `otel`, password `otel`.
 - Choose your backend: **`up-clickstack`** forwards to an *external* ClickStack
-  (managed / HyperDX UI); **`up-clickhouse`** is fully self-contained (raw
-  ClickHouse tables you query with SQL).
+  (managed / HyperDX UI); **`up-clickstack-local`** forwards to a *local*
+  ClickStack all-in-one (see above); **`up-clickhouse`** is fully self-contained
+  (raw ClickHouse tables you query with SQL); **`up-hyperdx`** (below) keeps
+  that self-contained ClickHouse and puts the HyperDX UI in front of it.
+
+## Browsing it in HyperDX (local UI, no API key)
+
+The override `docker-compose.hyperdx.yml` adds the HyperDX UI on `:8080` **on
+top of** the ClickHouse stack above — it reads the ClickHouse this repo already
+runs, it does not bring its own. Stack all three files (or use the make target):
+
+```bash
+make up-hyperdx     # collector + ClickHouse + HyperDX (from the monorepo root)
+# open http://localhost:8080 and point it at ClickHouse:
+#   host http://clickhouse:8123 · user otel · password otel
+make down-hyperdx   # stop + remove the ClickHouse, Mongo and HyperDX volumes
+```
+
+Notes:
+
+- **Nothing leaves the machine.** Unlike `up-clickstack`, there is no endpoint
+  and no API key — which matters, because live Claude Code telemetry carries
+  real identity (`user.email`, `user.id`, `organization.id`).
+- This is the **standalone** HyperDX image, not the all-in-one: the all-in-one
+  bundles its own collector on `4317`/`4318` and would collide with
+  `oteru-collector`.
+- A `mongo:7` service stores application state only — dashboards, saved
+  searches, users, alerts. Telemetry stays in ClickHouse.
+- First run asks you to create a local user and connect a data source; both
+  persist in the Mongo volume across recreates.
 
 ## Resource footprint (memory tuning)
 

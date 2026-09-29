@@ -47,7 +47,7 @@ oteru-emitter replay samples/telemetry-sample.json \
   --transport http --header "authorization=$HYPERDX_API_KEY"
 ```
 
-### Mode B — through the oteru-collector (`make up-hyperdx`)
+### Mode B — through the oteru-collector (`make up-clickstack-local`)
 
 The sandbox collector stays the single entry point and fans out to `debug`
 (stdout), `file` (`telemetry/telemetry.json`) **and** ClickStack. Use this when
@@ -64,15 +64,16 @@ oteru-collector ──► debug (stdout)
 ```
 
 ```bash
-make up-hyperdx    # collector + ClickStack; UI at http://localhost:8080
-make demo          # send 5 batches through the collector
-make down          # stop
+make up-clickstack-local  # collector + ClickStack; UI at http://localhost:8080
+make demo                 # send 5 batches through the collector
+make down                 # stop
 ```
 
-Compose override: `docker-compose.hyperdx.yml` (ClickStack's OTLP ports stay
-internal — only the collector reaches them, as service name `hyperdx`).
-Collector config: `oteru-collector-config.hyperdx.yml` (adds the
-`otlp_http/hyperdx` exporter, authenticated via `${env:HYPERDX_API_KEY}`).
+Compose override: `docker-compose.clickstack-local.yml` (ClickStack's OTLP
+ports stay internal — only the collector reaches them, as service name
+`hyperdx`). Collector config: `oteru-collector-config.clickstack-local.yml`
+(adds the `otlp_http/hyperdx` exporter, authenticated via
+`${env:HYPERDX_API_KEY}`).
 
 > **The two modes are mutually exclusive at runtime** — both claim host ports
 > 4317/4318. `make down` / `make down-direct` the other one first. They share
@@ -80,7 +81,10 @@ Collector config: `oteru-collector-config.hyperdx.yml` (adds the
 
 There is also `make up-clickstack` for forwarding to a **remote/cloud**
 ClickStack (`CLICKSTACK_ENDPOINT` + `CLICKSTACK_API_KEY`) — same idea as
-mode B with an external backend.
+mode B with an external backend. And `make up-hyperdx` is something else
+entirely: a read-only HyperDX UI in front of the repo's *own* ClickHouse
+(`make up-clickhouse`), with no API key and no second backend — see
+[`oteru-collector/README.md`](../oteru-collector/README.md#browsing-it-in-hyperdx-local-ui-no-api-key).
 
 API-key bootstrap
 -----------------

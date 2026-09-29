@@ -7,9 +7,9 @@
 # Do NOT run this together with the base docker-compose.yml — both claim host
 # ports 4317/4318. `make down` the collector stack first.
 #
-# Uses the same named volumes as docker-compose.hyperdx.yml, so telemetry
-# (ClickHouse) and accounts/API keys (MongoDB) persist across modes and
-# recreates. Factory reset: docker compose -f docker-compose.hyperdx-direct.yml down -v
+# Uses the same named volumes as docker-compose.clickstack-local.yml, so
+# telemetry (ClickHouse) and accounts/API keys (MongoDB) persist across modes
+# and recreates. Factory reset: docker compose -f docker-compose.hyperdx-direct.yml down -v
 services:
   hyperdx:
     image: docker.hyperdx.io/hyperdx/hyperdx-all-in-one
