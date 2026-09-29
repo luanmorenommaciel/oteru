@@ -32,6 +32,16 @@ After editing `oteru-collector-config.yml`, recreate to remount the config:
 docker compose up -d --force-recreate
 ```
 
+## Local ClickStack (HyperDX all-in-one)
+
+For a fully local ClickHouse + HyperDX backend with persistent volumes and
+automated API-key bootstrap, see [`docs/clickstack.md`](../docs/clickstack.md):
+
+```bash
+make up-direct            # ClickStack alone; emitter ingests direct on :4318
+make up-clickstack-local  # collector + ClickStack (collector forwards internally)
+```
+
 ## Forwarding to ClickStack (optional)
 
 The alternative config `oteru-collector-config.clickstack.yml` keeps `debug` +
@@ -85,9 +95,10 @@ Notes:
 - Query the data on the host at `http://localhost:8123` (HTTP) or `:9000`
   (native), user `otel`, password `otel`.
 - Choose your backend: **`up-clickstack`** forwards to an *external* ClickStack
-  (managed / HyperDX UI); **`up-clickhouse`** is fully self-contained (raw
-  ClickHouse tables you query with SQL); **`up-hyperdx`** (below) keeps that
-  self-contained ClickHouse and puts the HyperDX UI in front of it.
+  (managed / HyperDX UI); **`up-clickstack-local`** forwards to a *local*
+  ClickStack all-in-one (see above); **`up-clickhouse`** is fully self-contained
+  (raw ClickHouse tables you query with SQL); **`up-hyperdx`** (below) keeps
+  that self-contained ClickHouse and puts the HyperDX UI in front of it.
 
 ## Browsing it in HyperDX (local UI, no API key)
 
