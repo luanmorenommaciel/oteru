@@ -32,6 +32,7 @@ make format     # ruff format + autofixes
 make dry-run    # validates the sample without network (523 batches)
 make pii-guard  # python scripts/check_pii.py (system python — works before setup)
 make e2e-signals # asserts every --emit combination reaches ClickHouse (needs up-clickhouse)
+make views      # (re)applies oteru-collector/clickhouse/views/*.sql, e.g. otel.mcp_calls (needs up-clickhouse)
 make up/down    # collector via docker compose
 make up-clickstack  # collector + forward to ClickStack (needs CLICKSTACK_ENDPOINT/API_KEY env)
 make up-hyperdx # collector + ClickHouse + the local HyperDX UI on :8080 (no API key)
