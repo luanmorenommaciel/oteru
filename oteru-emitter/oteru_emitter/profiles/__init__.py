@@ -9,6 +9,6 @@ lifecycle state machine.
 
 from __future__ import annotations
 
-from .base import Profile, get_profile, list_profiles
+from .base import Profile, get_profile, list_profiles, profile_for_service
 
-__all__ = ["Profile", "get_profile", "list_profiles"]
+__all__ = ["Profile", "get_profile", "list_profiles", "profile_for_service"]

@@ -235,3 +235,469 @@ def logs_sharing_trace_context() -> list[dict]:
             ]
         }
     ]
+
+
+# --- One fixture per emitter profile (#41) ----------------------------------------
+#
+# Each builder writes out the telemetry shape a tool documents for its native
+# OTLP export — service.name, scope, event/span names, and the attribute keys
+# its profile rotates or preserves. Sources are the tool's own code/docs, read
+# 2026-10-06 (commit or URL in each docstring). Values are fabricated and
+# identity is placeholder-only; nothing here is a capture.
+
+
+def _profile_span(
+    name: str,
+    span_id: str,
+    start_ms: int,
+    end_ms: int,
+    attributes: list[dict],
+    *,
+    trace_id: str,
+    kind: int = 3,  # CLIENT
+    parent_span_id: str | None = None,
+) -> dict:
+    out = {
+        "traceId": trace_id,
+        "spanId": span_id,
+        "name": name,
+        "kind": kind,
+        "startTimeUnixNano": str(BASE_NS + start_ms * MS),
+        "endTimeUnixNano": str(BASE_NS + end_ms * MS),
+        "attributes": attributes,
+        "status": {"code": 0},
+    }
+    if parent_span_id is not None:
+        out["parentSpanId"] = parent_span_id
+    return out
+
+
+def _resource(service: str, *extra: dict) -> dict:
+    return {"attributes": [s("service.name", service), *extra]}
+
+
+def _log_record(offset_ms: int, body: str, attributes: list[dict]) -> dict:
+    ts = str(BASE_NS + offset_ms * MS)
+    return {
+        "timeUnixNano": ts,
+        "observedTimeUnixNano": ts,
+        "body": {"stringValue": body},
+        "attributes": attributes,
+    }
+
+
+def _logs_batch(resource: dict, scope: dict, records: list[dict]) -> dict:
+    return {
+        "resourceLogs": [
+            {"resource": resource, "scopeLogs": [{"scope": scope, "logRecords": records}]}
+        ]
+    }
+
+
+def _traces_batch(resource: dict, scope: dict, spans: list[dict]) -> dict:
+    return {
+        "resourceSpans": [{"resource": resource, "scopeSpans": [{"scope": scope, "spans": spans}]}]
+    }
+
+
+def _sum_batch(resource: dict, scope: dict, name: str, unit: str, points: list[dict]) -> dict:
+    return {
+        "resourceMetrics": [
+            {
+                "resource": resource,
+                "scopeMetrics": [
+                    {
+                        "scope": scope,
+                        "metrics": [
+                            {
+                                "name": name,
+                                "unit": unit,
+                                "sum": {
+                                    "aggregationTemporality": 1,  # DELTA
+                                    "isMonotonic": True,
+                                    "dataPoints": points,
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+
+def _point(offset_ms: int, value: int, attributes: list[dict]) -> dict:
+    return {
+        "startTimeUnixNano": str(BASE_NS),
+        "timeUnixNano": str(BASE_NS + offset_ms * MS),
+        "asInt": str(value),
+        "attributes": attributes,
+    }
+
+
+def claude_code_capture() -> list[dict]:
+    """Claude Code: the trace fixture above plus a log record carrying the
+    per-prompt id (prompt.id) the profile rotates."""
+    record = _log_record(
+        5,
+        "claude_code.user_prompt",
+        [
+            *IDENTITY,
+            s("event.name", "user_prompt"),
+            s("prompt.id", "5d7a1c3e-8b24-4f60-9e1a-2c4b6d8f0a13"),
+        ],
+    )
+    events = _logs_batch(
+        RESOURCE, {"name": "com.anthropic.claude_code.events", "version": "2.1.220"}, [record]
+    )
+    return [*traces_capture(), events]
+
+
+def codex_capture() -> list[dict]:
+    """OpenAI Codex CLI — openai/codex@19c4793, codex-rs/otel/src/events/shared.rs,
+    session_telemetry.rs, metrics/names.rs. Event name in `event.name`; tracer
+    scope = service name; meter scope "codex". The log scope (tracing target
+    `codex_otel.log_only`) is unverified upstream — replay warns if it differs."""
+    resource = _resource("codex_cli_rs", s("service.version", "0.130.0"), s("env", "dev"))
+    common = [
+        s("conversation.id", "0199b7a2-5c1e-7d40-8f3a-6b2e9c4d1a07"),
+        s("app.version", "0.130.0"),
+        s("originator", "codex_cli_rs"),
+        s("terminal.type", "vscode"),
+        s("model", "gpt-5-codex"),
+        s("auth_mode", "ChatGPT"),
+        s("user.account_id", "33333333-3333-3333-3333-333333333333"),
+        s("user.email", "user@example.com"),
+        s("turn.id", "0199b7a2-5d00-7a11-9c2b-1e3f5a7b9c0d"),
+    ]
+    logs = _logs_batch(
+        resource,
+        {"name": "codex_otel.log_only"},
+        [
+            _log_record(
+                10,
+                "",
+                [
+                    *common,
+                    s("event.name", "codex.api_request"),
+                    i("duration_ms", 812),
+                    i("http.response.status_code", 200),
+                ],
+            ),
+            _log_record(
+                900,
+                "",
+                [
+                    *common,
+                    s("event.name", "codex.tool_result"),
+                    s("tool_name", "shell"),
+                    s("call_id", "call_01REDACTEDcodex0001"),
+                    b("success", True),
+                    i("duration_ms", 340),
+                ],
+            ),
+        ],
+    )
+    spans = _traces_batch(
+        resource,
+        {"name": "codex_cli_rs"},
+        [
+            _profile_span(
+                "op.dispatch.user_input",
+                "aa01bb02cc03dd04",
+                0,
+                5,
+                [s("submission.id", "0199b7a2-5cf0-7e22-8d4c-3a5b7c9d1e2f")],
+                trace_id="0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+                kind=1,
+            ),
+            _profile_span(
+                "session_task.turn",
+                "aa01bb02cc03dd05",
+                5,
+                1_400,
+                [
+                    s("thread.id", "0199b7a2-5c1e-7d40-8f3a-6b2e9c4d1a07"),
+                    s("turn.id", "0199b7a2-5d00-7a11-9c2b-1e3f5a7b9c0d"),
+                ],
+                trace_id="0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+                kind=1,
+                parent_span_id="aa01bb02cc03dd04",
+            ),
+        ],
+    )
+    metrics = _sum_batch(
+        resource,
+        {"name": "codex"},
+        "codex.tool.call",
+        "{call}",
+        [_point(900, 1, [s("tool", "shell"), s("success", "true")])],
+    )
+    return [logs, spans, metrics]
+
+
+def cursor_capture() -> list[dict]:
+    """Cursor native OTLP export (Enterprise beta, sent by Cursor's servers) —
+    cursor.com/docs/enterprise/opentelemetry-export (+ /wire). Logs + delta
+    metrics only, no spans; scope cursor.telemetry 0.1.0; the event name is the
+    log body; cursor.event.id is the dedup key, so replay must rotate it."""
+    resource = _resource(
+        "cursor",
+        i("cursor.team.id", 4242),
+        s("cursor.surface", "desktop"),
+        s("cursor.entrypoint", "desktop"),
+        s("cursor.user.id", "user_REDACTED_0002"),
+        s("cursor.user.account_id", "acct_REDACTED_0002"),
+        s("cursor.user.email", "user@example.com"),
+    )
+    scope = {"name": "cursor.telemetry", "version": "0.1.0"}
+    logs = _logs_batch(
+        resource,
+        scope,
+        [
+            _log_record(
+                10,
+                "api_request",
+                [
+                    s("cursor.event.id", "evt_7f3a9c1e5b2d4086"),
+                    s("cursor.source_event.id", "src_1c9e7b52d04a4f3e"),
+                    s("cursor.request.id", "8e2f4a6c-1b3d-4e5f-9a7b-0c2d4e6f8a1b"),
+                    s("cursor.conversation.id", "3a5c7e9b-2d4f-4a6c-8e0b-1d3f5a7c9e2b"),
+                    s("cursor.usage_event.id", "use_4b6d8f0a2c4e6a8c"),
+                    s("cursor.model.name", "claude-sonnet-5-5"),
+                    i("cursor.api.request.input_tokens", 2410),
+                    i("cursor.api.request.output_tokens", 388),
+                    b("cursor.api.billable", True),
+                ],
+            )
+        ],
+    )
+    metrics = _sum_batch(
+        resource,
+        scope,
+        "cursor.token.usage",
+        "{token}",
+        [
+            _point(
+                10,
+                2410,
+                [s("cursor.token.type", "input"), s("cursor.model.name", "claude-sonnet-5-5")],
+            )
+        ],
+    )
+    return [logs, metrics]
+
+
+def copilot_chat_capture() -> list[dict]:
+    """GitHub Copilot Chat in VS Code — microsoft/vscode@9b2d899,
+    extensions/copilot/docs/monitoring/agent_monitoring.md and
+    src/platform/otel/common/genAiAttributes.ts. GenAI semconv spans
+    invoke_agent -> chat / execute_tool; service.name and scope copilot-chat;
+    resource session.id is per VS Code window; user identity only with
+    captureIdentity on (user.name on invoke_agent, process.user.name on the
+    resource)."""
+    resource = _resource(
+        "copilot-chat",
+        s("service.version", "0.42.0"),
+        s("session.id", "6b8d0f2a-4c6e-4a8c-9e1b-3d5f7a9c1e4d"),
+        s("process.user.name", "user_REDACTED_0003"),
+    )
+    trace = "2c4e6a8c0e2a4c6e8a0c2e4a6c8e0a2c"
+    conversation = s("gen_ai.conversation.id", "9a1c3e5b-7d9f-4b1d-8f3a-5c7e9b1d3f5a")
+    session = s("copilot_chat.chat_session_id", "1e3a5c7e-9b2d-4f6a-8c0e-2a4c6e8a0c2e")
+    agent = _profile_span(
+        "invoke_agent GitHub Copilot Chat",
+        "b1c2d3e4f5a6b7c8",
+        0,
+        3_200,
+        [
+            s("gen_ai.operation.name", "invoke_agent"),
+            s("gen_ai.provider.name", "github"),
+            s("gen_ai.agent.name", "GitHub Copilot Chat"),
+            s("user.name", "user_REDACTED_0003"),
+            conversation,
+            session,
+        ],
+        trace_id=trace,
+        kind=1,
+    )
+    chat = _profile_span(
+        "chat gpt-5",
+        "b1c2d3e4f5a6b7c9",
+        30,
+        1_500,
+        [
+            s("gen_ai.operation.name", "chat"),
+            s("gen_ai.provider.name", "github"),
+            s("gen_ai.request.model", "gpt-5"),
+            s("gen_ai.response.id", "chatcmpl-REDACTEDcopilot0001"),
+            i("gen_ai.usage.input_tokens", 5120),
+            i("gen_ai.usage.output_tokens", 230),
+            conversation,
+        ],
+        trace_id=trace,
+        parent_span_id=agent["spanId"],
+    )
+    tool = _profile_span(
+        "execute_tool readFile",
+        "b1c2d3e4f5a6b7d0",
+        1_520,
+        1_700,
+        [
+            s("gen_ai.operation.name", "execute_tool"),
+            s("gen_ai.tool.name", "readFile"),
+            s("gen_ai.tool.type", "function"),
+            s("gen_ai.tool.call.id", "call_REDACTEDcopilot0001"),
+            conversation,
+        ],
+        trace_id=trace,
+        kind=1,
+        parent_span_id=agent["spanId"],
+    )
+    return [
+        _traces_batch(resource, {"name": "copilot-chat", "version": "0.42.0"}, [agent, chat, tool])
+    ]
+
+
+def litellm_capture() -> list[dict]:
+    """LiteLLM proxy with callbacks: ["otel"] — BerriAI/litellm@d8bc2b78e4ab,
+    litellm/integrations/opentelemetry.py. Default (non-semconv-mode) span
+    names; principal identity rides as metadata.user_api_key_* span
+    attributes; cost as gen_ai.cost.*."""
+    resource = _resource(
+        "litellm", s("deployment.environment", "production"), s("model_id", "litellm")
+    )
+    trace = "3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c"
+    server = _profile_span(
+        "Received Proxy Server Request",
+        "c1d2e3f4a5b6c7d8",
+        0,
+        1_250,
+        [s("http.route", "/chat/completions"), i("http.response.status_code", 200)],
+        trace_id=trace,
+        kind=2,
+    )
+    request = _profile_span(
+        "litellm_request",
+        "c1d2e3f4a5b6c7d9",
+        15,
+        1_240,
+        [
+            s("gen_ai.system", "openai"),
+            s("gen_ai.request.model", "gpt-4.1"),
+            s("gen_ai.response.id", "chatcmpl-REDACTEDlitellm0001"),
+            i("gen_ai.usage.input_tokens", 820),
+            i("gen_ai.usage.output_tokens", 96),
+            s("llm.request.type", "acompletion"),
+            s("litellm.call_id", "4f6a8c0e-2b4d-4f6a-8c0e-2b4d6f8a0c2e"),
+            s("metadata.user_api_key_hash", "hash_REDACTED_0004"),
+            s("metadata.user_api_key_user_id", "user_REDACTED_0004"),
+            s("metadata.user_api_key_user_email", "user@example.com"),
+            s("metadata.user_api_key_team_id", "team_REDACTED_0004"),
+            {"key": "gen_ai.cost.total_cost", "value": {"doubleValue": 0.00214}},
+        ],
+        trace_id=trace,
+        kind=1,
+        parent_span_id=server["spanId"],
+    )
+    return [_traces_batch(resource, {"name": "litellm"}, [server, request])]
+
+
+def crewai_capture() -> list[dict]:
+    """CrewAI native event tracing (telemetry_session with an OTLP exporter) —
+    crewAIInc/crewAI@e836a191, lib/crewai/src/crewai/telemetry/tracing/
+    (handlers.py, semantic_conventions.py, session.py). GenAI semconv; note
+    gen_ai.agent.name is an MD5 key, the role lives in crewai.agent.role.
+    Principal identity only when the host passes principal=."""
+    resource = _resource("crewai")
+    scope = {"name": "crewai", "version": "1.4.0"}
+    trace = "4e6a8c0e2a4c6e8a0c2e4a6c8e0a2c4e"
+    run = s("crewai.execution_uuid", "7c9e1b3d-5f7a-4c9e-8b1d-3f5a7c9e1b3d")
+    principal = [
+        s("crewai.principal.type", "user"),
+        s("crewai.principal.id", "user_REDACTED_0005"),
+        s("enduser.id", "user_REDACTED_0005"),
+    ]
+    crew = _profile_span(
+        "execute crew",
+        "d1e2f3a4b5c6d7e8",
+        0,
+        6_000,
+        [
+            s("gen_ai.operation.name", "invoke_workflow"),
+            s("gen_ai.workflow.name", "support_crew"),
+            s("crewai.crew.id", "2b4d6f8a-0c2e-4a6c-8e0a-2c4e6a8c0e2a"),
+            run,
+            *principal,
+        ],
+        trace_id=trace,
+        kind=1,
+    )
+    task = _profile_span(
+        "execute task",
+        "d1e2f3a4b5c6d7e9",
+        10,
+        5_900,
+        [
+            s("gen_ai.operation.name", "execute_task"),
+            s("crewai.task.id", "5d7f9b1d-3f5a-4c7e-9b1d-3f5a7c9e1b3d"),
+            run,
+        ],
+        trace_id=trace,
+        kind=1,
+        parent_span_id=crew["spanId"],
+    )
+    agent = _profile_span(
+        "execute agent",
+        "d1e2f3a4b5c6d7f0",
+        20,
+        5_800,
+        [
+            s("gen_ai.operation.name", "invoke_agent"),
+            s("gen_ai.agent.name", "9f2c6d1e8b3a4f5c7d9e0a1b2c3d4e5f"),
+            s("crewai.agent.role", "Support Analyst"),
+            s("gen_ai.conversation.id", "8b0d2f4a-6c8e-4b0d-9f2a-4c6e8a0c2e4b"),
+            run,
+        ],
+        trace_id=trace,
+        kind=1,
+        parent_span_id=task["spanId"],
+    )
+    llm = _profile_span(
+        "call llm",
+        "d1e2f3a4b5c6d7f1",
+        40,
+        2_100,
+        [
+            s("gen_ai.operation.name", "chat"),
+            s("gen_ai.provider.name", "openai"),
+            s("gen_ai.request.model", "gpt-4.1-mini"),
+            i("gen_ai.usage.input_tokens", 1450),
+            i("gen_ai.usage.output_tokens", 210),
+            run,
+        ],
+        trace_id=trace,
+        parent_span_id=agent["spanId"],
+    )
+    tool = _profile_span(
+        "call tool",
+        "d1e2f3a4b5c6d7f2",
+        2_150,
+        2_700,
+        [s("gen_ai.operation.name", "execute_tool"), s("gen_ai.tool.name", "search_orders"), run],
+        trace_id=trace,
+        kind=1,
+        parent_span_id=agent["spanId"],
+    )
+    return [_traces_batch(resource, scope, [crew, task, agent, llm, tool])]
+
+
+# profile name -> builder; tests/test_emitter_profiles.py enumerates it.
+PROFILE_FIXTURES = {
+    "claude_code": claude_code_capture,
+    "codex": codex_capture,
+    "copilot_chat": copilot_chat_capture,
+    "cursor": cursor_capture,
+    "crewai": crewai_capture,
+    "litellm": litellm_capture,
+}
