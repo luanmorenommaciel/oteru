@@ -28,7 +28,9 @@ Four compose overrides stack on top of the base file — from the monorepo root,
 `make up-clickstack` (forward to an external ClickStack), `make up-clickhouse`
 (bundled ClickHouse), `make up-hyperdx` (bundled ClickHouse **plus** the local
 HyperDX UI on `:8080`), `make up-clickstack-local` (forward to a **local**
-ClickStack all-in-one; see `docs/clickstack.md`).
+ClickStack all-in-one; see `docs/clickstack.md`). `make up-archive` stacks a fifth
+(`docker-compose.archive.yml`) on top of the ClickHouse one: hot ClickHouse
+plus a cold, Object-Locked S3 archive — see the README, "Dual retention".
 
 ## Architecture notes
 

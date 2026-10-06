@@ -1,0 +1,74 @@
+# Compose override: dual retention (#44). Stack on top of the base file AND the
+# ClickHouse override — ClickHouse is the HOT store, the S3 bucket the COLD
+# archive:
+#   docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml \
+#                  -f docker-compose.archive.yml up -d
+# (or simply `make up-archive` from the monorepo root).
+#
+# The local object store is MinIO, standing in for the production one (S3,
+# R2, GCS-interop…). The image is Chainguard's (cgr.dev/chainguard/minio):
+# MinIO stopped publishing community images on Docker Hub (`minio/minio` no
+# longer pulls), and Chainguard's build tracks current MinIO releases. It has
+# no shell, so the bucket is set up from the official AWS CLI image instead of
+# `mc` — which also proves the setup works against any S3, not only MinIO.
+#
+# The `archive-init` one-shot creates the bucket WITH Object Lock (it can only
+# be enabled at creation) plus a default retention, so every object the
+# collector writes is undeletable until it expires. Dev credentials are
+# throwaway placeholders, like ClickHouse's otel/otel — override via env/.env.
+services:
+  oteru-collector:
+    volumes:
+      - ./oteru-collector-config.archive.yml:/etc/oteru-collector-config.yml
+      - ./telemetry:/telemetry
+    environment:
+      AWS_ACCESS_KEY_ID: ${OTERU_ARCHIVE_ACCESS_KEY:-oteru-archive}
+      AWS_SECRET_ACCESS_KEY: ${OTERU_ARCHIVE_SECRET_KEY:-oteru-archive-dev-secret}
+      OTERU_HOT_TTL: ${OTERU_HOT_TTL:-72h}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      archive-init:
+        condition: service_completed_successfully
+
+  archive:
+    image: cgr.dev/chainguard/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${OTERU_ARCHIVE_ACCESS_KEY:-oteru-archive}
+      MINIO_ROOT_PASSWORD: ${OTERU_ARCHIVE_SECRET_KEY:-oteru-archive-dev-secret}
+    ports:
+      - "9002:9000"   # S3 API on the host (9000 is taken by ClickHouse's native port)
+      - "9001:9001"   # MinIO console: http://localhost:9001
+    volumes:
+      - archive-data:/data
+
+  archive-init:
+    image: amazon/aws-cli:latest
+    depends_on:
+      - archive
+    environment:
+      AWS_ACCESS_KEY_ID: ${OTERU_ARCHIVE_ACCESS_KEY:-oteru-archive}
+      AWS_SECRET_ACCESS_KEY: ${OTERU_ARCHIVE_SECRET_KEY:-oteru-archive-dev-secret}
+      AWS_DEFAULT_REGION: us-east-1
+      BUCKET: ${OTERU_ARCHIVE_BUCKET:-oteru-archive}
+      # Dev default: 1 day in GOVERNANCE mode (an admin can still bypass it).
+      # Production: COMPLIANCE (nobody can shorten or bypass it) and the legal
+      # period — see oteru-collector/README.md, "Dual retention".
+      RETENTION_MODE: ${OTERU_ARCHIVE_RETENTION_MODE:-GOVERNANCE}
+      RETENTION_DAYS: ${OTERU_ARCHIVE_RETENTION_DAYS:-1}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        s3() { aws --endpoint-url http://archive:9000 s3api "$$@"; }
+        for i in $$(seq 1 30); do s3 list-buckets >/dev/null 2>&1 && break; sleep 1; done
+        if ! s3 head-bucket --bucket "$$BUCKET" 2>/dev/null; then
+          s3 create-bucket --bucket "$$BUCKET" --object-lock-enabled-for-bucket
+        fi
+        s3 put-object-lock-configuration --bucket "$$BUCKET" --object-lock-configuration \
+          "{\"ObjectLockEnabled\":\"Enabled\",\"Rule\":{\"DefaultRetention\":{\"Mode\":\"$$RETENTION_MODE\",\"Days\":$$RETENTION_DAYS}}}"
+        s3 get-object-lock-configuration --bucket "$$BUCKET"
+
+volumes:
+  archive-data:
