@@ -24,10 +24,11 @@ docker compose down                     # stop
 docker compose up -d --force-recreate   # apply config edits (config is bind-mounted)
 ```
 
-Three compose overrides stack on top of the base file — from the monorepo root,
+Four compose overrides stack on top of the base file — from the monorepo root,
 `make up-clickstack` (forward to an external ClickStack), `make up-clickhouse`
 (bundled ClickHouse), `make up-hyperdx` (bundled ClickHouse **plus** the local
-HyperDX UI on `:8080`).
+HyperDX UI on `:8080`), `make up-clickstack-local` (forward to a **local**
+ClickStack all-in-one; see `docs/clickstack.md`).
 
 ## Architecture notes
 
