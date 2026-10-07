@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals views up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean e2e-archive up-archive down-archive up-ingestor down-ingestor ingestor-check
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals views up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean e2e-archive up-archive down-archive up-ingestor down-ingestor ingestor-check test-hooks
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -41,12 +41,17 @@ setup: ## create the venv, install the emitter (editable + dev) and enable the P
 	git config core.hooksPath .githooks
 	@echo "setup OK — pre-commit hook (PII guard) enabled."
 
-test: ## run the emitter's pytest suite
+test: ## run the emitter's and the hook bridge's pytest suites
 	cd $(EMITTER) && $(VENV_PY) -m pytest
+	$(MAKE) --no-print-directory test-hooks
+
+test-hooks: ## run the hook bridge tests (oteru-hooks/, #90)
+	cd $(EMITTER) && $(VENV_PY) -m pytest ../oteru-hooks/tests
 
 lint: ## ruff check + formatting check
 	cd $(EMITTER) && $(VENV_PY) -m ruff check oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff format --check oteru_emitter tests
+	cd $(EMITTER) && $(VENV_PY) -m ruff check ../oteru-hooks && $(VENV_PY) -m ruff format --check ../oteru-hooks
 
 format: ## apply ruff format + autofixes
 	cd $(EMITTER) && $(VENV_PY) -m ruff check --fix oteru_emitter tests
