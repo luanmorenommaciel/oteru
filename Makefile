@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals up-ingestor down-ingestor ingestor-check up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -85,6 +85,18 @@ up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK
 
 up-clickhouse: ## start the collector + a self-contained ClickHouse backend (native clickhouse exporter)
 	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml up -d
+
+INGEST_COMPOSE := -f docker-compose.yml -f docker-compose.clickhouse.yml -f docker-compose.ingestor.yml
+IMPL ?= python
+
+up-ingestor: ## build + start one ingestor (IMPL=python|go|rust) next to the collector + ClickHouse
+	cd $(COLLECTOR) && docker compose $(INGEST_COMPOSE) --profile $(IMPL) up -d --build
+
+down-ingestor: ## stop the ingestor stack (keeps the ClickHouse volume)
+	cd $(COLLECTOR) && docker compose $(INGEST_COMPOSE) --profile python --profile go --profile rust down
+
+ingestor-check: ## run the conformance suite against one ingestor (IMPL=python|go|rust)
+	bash scripts/check_ingestor.sh $(IMPL)
 
 up-direct: ## start ClickStack alone (persistent volumes) + bootstrap the API key into .env
 	cd $(COLLECTOR) && docker compose -f docker-compose.hyperdx-direct.yml up -d
