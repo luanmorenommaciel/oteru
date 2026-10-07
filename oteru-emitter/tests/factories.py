@@ -891,6 +891,72 @@ def crewai_capture() -> list[dict]:
     return [_traces_batch(resource, scope, [crew, task, agent, llm, tool])]
 
 
+def omnigent_capture() -> list[dict]:
+    """Omnigent with OMNIGENT_TELEMETRY_ENABLED=true — omnigent-ai/omnigent@fa1dbe6,
+    omnigent/inner/tracing.py: agent:<name> (invoke_agent), tool:<name>
+    (execute_tool), policy:<name> spans, each with openinference.span.kind and
+    session.id. Failed spans get ERROR status but no error.type — faithfully
+    reproduced here, it is what the integration surface flags."""
+    resource = _resource("omni-runner")
+    scope = {"name": "omnigent"}
+    trace = "5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e"
+    session = s("session.id", "omni-session-7c3e9a1b")
+    agent = _profile_span(
+        "agent:support-agent",
+        "e1f2a3b4c5d6e7f8",
+        0,
+        4_000,
+        [
+            s("openinference.span.kind", "AGENT"),
+            s("gen_ai.operation.name", "invoke_agent"),
+            s("gen_ai.agent.name", "support-agent"),
+            s("gen_ai.provider.name", "anthropic"),
+            s("gen_ai.request.model", "claude-sonnet-5-5"),
+            i("gen_ai.usage.input_tokens", 3120),
+            i("gen_ai.usage.output_tokens", 410),
+            session,
+        ],
+        trace_id=trace,
+        kind=1,
+    )
+    policy = _profile_span(
+        "policy:no-prod-writes",
+        "e1f2a3b4c5d6e7f9",
+        900,
+        905,
+        [
+            s("openinference.span.kind", "GUARDRAIL"),
+            s("policy.name", "no-prod-writes"),
+            s("policy.phase", "pre_tool"),
+            s("policy.action", "deny"),
+            s("policy.reason", "write to prod database"),
+            session,
+        ],
+        trace_id=trace,
+        kind=1,
+        parent_span_id=agent["spanId"],
+    )
+    tool = _profile_span(
+        "tool:run_sql",
+        "e1f2a3b4c5d6e7fa",
+        910,
+        1_300,
+        [
+            s("openinference.span.kind", "TOOL"),
+            s("gen_ai.operation.name", "execute_tool"),
+            s("gen_ai.tool.name", "run_sql"),
+            s("tool.name", "run_sql"),
+            {"key": "duration_ms", "value": {"doubleValue": 390.0}},
+            session,
+        ],
+        trace_id=trace,
+        kind=1,
+        parent_span_id=agent["spanId"],
+    )
+    tool["status"] = {"code": 2}
+    return [_traces_batch(resource, scope, [agent, policy, tool])]
+
+
 # profile name -> builder; tests/test_emitter_profiles.py enumerates it.
 PROFILE_FIXTURES = {
     "claude_code": claude_code_capture,
@@ -899,4 +965,5 @@ PROFILE_FIXTURES = {
     "cursor": cursor_capture,
     "crewai": crewai_capture,
     "litellm": litellm_capture,
+    "omnigent": omnigent_capture,
 }
