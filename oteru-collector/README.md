@@ -100,6 +100,35 @@ Notes:
   (raw ClickHouse tables you query with SQL); **`up-hyperdx`** (below) keeps
   that self-contained ClickHouse and puts the HyperDX UI in front of it.
 
+## Views over the raw tables (`make views`)
+
+`clickhouse/views/*.sql` holds plain ClickHouse views over the `otel_*`
+tables — typed, named reads of what the exporter stores in attribute maps.
+They are `CREATE OR REPLACE`, hold no data, and need the tables to exist, so
+apply them after `make up-clickhouse`:
+
+```bash
+make views     # from the monorepo root; re-run any time, it is idempotent
+```
+
+| View | What it holds |
+|---|---|
+| `otel.mcp_calls` | one row per MCP span (#42): `method`, `tool_name`, `resource_uri`, `prompt_name`, `session_id`, `request_id`, `side` (client/server), `failed`, `error_type`, `duration_ms` |
+
+```sql
+-- slowest MCP tools, failures first
+SELECT tool_name, countIf(failed) AS failures, count() AS calls,
+       quantile(0.95)(duration_ms) AS p95_ms
+FROM otel.mcp_calls
+WHERE method = 'tools/call' AND side = 'client'
+GROUP BY tool_name ORDER BY failures DESC, p95_ms DESC;
+```
+
+The attribute names follow the OTel MCP semantic conventions — see
+[`../docs/integration-surface.md`](../docs/integration-surface.md) once #22
+lands. `make e2e-signals` replays an MCP fixture and asserts the view's
+per-method counts, the failed call and the client/server join.
+
 ## Browsing it in HyperDX (local UI, no API key)
 
 The override `docker-compose.hyperdx.yml` adds the HyperDX UI on `:8080` **on
