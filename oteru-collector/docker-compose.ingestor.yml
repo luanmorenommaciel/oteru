@@ -23,3 +23,12 @@ services:
       dockerfile: python/Dockerfile
     ports:
       - "14318:4318"
+
+  ingestor-go:
+    <<: *ingestor
+    profiles: ["go"]
+    build:
+      context: ../oteru-ingestor
+      dockerfile: go/Dockerfile
+    ports:
+      - "24318:4318"
