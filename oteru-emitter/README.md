@@ -235,10 +235,11 @@ docs — `Profile.source` records where and when.
 |---|---|---|---|---|
 | `claude_code` | Claude Code CLI | `claude-code` | logs, metrics, traces (beta) | no — `claude_code.*` names |
 | `codex` | OpenAI Codex CLI (`[otel]` in `config.toml`, off by default) | `codex_cli_rs`, `codex_exec`, `codex_vscode`, `codex_desktop`, `codex_mcp_server`, `codex_sdk_ts` | logs (`codex.*` in `event.name`), metrics, traces | no — own namespace |
-| `copilot_chat` | GitHub Copilot Chat in VS Code (`github.copilot.chat.otel.*`) | `copilot-chat` | traces, metrics, events | **yes** — `gen_ai.*` |
+| `copilot_chat` | GitHub Copilot Chat in VS Code (`github.copilot.chat.otel.*`) and the Copilot CLI (`COPILOT_OTEL_ENABLED`) | `copilot-chat`, `github-copilot` | traces, metrics, events | **yes** — `gen_ai.*` |
 | `cursor` | Cursor, Enterprise OTLP export (sent by Cursor's servers) | `cursor` | logs, delta metrics — **no spans** | no — `cursor.*` |
 | `litellm` | LiteLLM SDK / proxy (`callbacks: ["otel"]`) | `litellm` | traces (+ opt-in metrics/events) | partly — `gen_ai.*`, but `gen_ai.operation.name` only with content capture on |
 | `crewai` | CrewAI native tracing (`telemetry_session` + OTLP exporter) | `crewai` | traces | **yes** — `gen_ai.*` |
+| `omnigent` | Omnigent agent meta-harness (`OMNIGENT_TELEMETRY_ENABLED=true`) | `omni-server`, `omni-runner`, `omni-harness`, `omni-host`, `omnigent` | traces, metrics, logs | **almost** — `gen_ai.*` spans, but failed spans carry no `error.type`; no user identity |
 | `generic` | anything | — | — | — (literal replay, no attribute rotation) |
 
 `--profile auto` picks the profile **per `service.name`** found in the

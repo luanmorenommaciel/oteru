@@ -126,10 +126,14 @@ COPILOT_CHAT = Profile(
         "session.id",
     ),
     preserve_id_keys=("user.name", "process.user.name"),
-    expected_scopes=("copilot-chat",),
-    service_names=("copilot-chat",),
+    # The Copilot CLI shares the extension's OTel pipeline under its own
+    # service.name; its scope is assumed to follow the same name = service
+    # convention (unverified for the CLI — replay warns if it differs).
+    expected_scopes=("copilot-chat", "github-copilot"),
+    service_names=("copilot-chat", "github-copilot"),
     source="microsoft/vscode@9b2d899 extensions/copilot/docs/monitoring/agent_monitoring.md, "
-    "src/platform/otel/common/genAiAttributes.ts (2026-10-06)",
+    "src/platform/otel/common/genAiAttributes.ts; Copilot CLI: "
+    "github.com/microsoft/vscode-copilot-chat docs/monitoring/agent_monitoring.md (2026-10-06)",
 )
 
 # Cursor: Enterprise beta, exported by Cursor's servers (not the IDE) over
@@ -174,6 +178,21 @@ LITELLM = Profile(
     source="BerriAI/litellm@d8bc2b78e4ab litellm/integrations/opentelemetry.py (2026-10-06)",
 )
 
+# Omnigent (Databricks, Apache-2.0 agent meta-harness): GenAI semconv spans
+# agent:<name> (invoke_agent) / tool:<name> (execute_tool) / policy:<name>,
+# plus OpenInference's openinference.span.kind. One service.name per process.
+# No user identity on spans; failed spans set ERROR status but no error.type.
+OMNIGENT = Profile(
+    name="omnigent",
+    description="Omnigent — agent:/tool:/policy: spans, gen_ai.* (OMNIGENT_TELEMETRY_ENABLED).",
+    rotate_id_keys=("session.id",),
+    preserve_id_keys=(),
+    expected_scopes=("omnigent", "omnigent.frames"),
+    service_names=("omnigent", "omni-server", "omni-runner", "omni-harness", "omni-host"),
+    source="omnigent-ai/omnigent@fa1dbe6 omnigent/inner/tracing.py, omnigent/runtime/telemetry.py "
+    "(2026-10-06)",
+)
+
 # CrewAI native event tracing (telemetry_session with an OTLP exporter) — GenAI
 # semconv, on the surface. CrewAI's *built-in* telemetry (service.name
 # crewAI-telemetry) is hard-wired to CrewAI's endpoint and never reaches a
@@ -203,7 +222,8 @@ GENERIC = Profile(
 )
 
 _REGISTRY: dict[str, Profile] = {
-    p.name: p for p in (CLAUDE_CODE, CODEX, COPILOT_CHAT, CURSOR, LITELLM, CREWAI, GENERIC)
+    p.name: p
+    for p in (CLAUDE_CODE, CODEX, COPILOT_CHAT, CURSOR, LITELLM, CREWAI, OMNIGENT, GENERIC)
 }
 
 _BY_SERVICE: dict[str, Profile] = {
