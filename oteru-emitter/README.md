@@ -218,15 +218,73 @@ OTLP/JSON capture
    └► transport/            (otlp_http.py | otlp_grpc.py)  -> collector
 ```
 
-`profiles/` is the extension seam: each emitter (`claude_code`, future
-`codex`, `crewai`) declares its metadata. In replay it defines which IDs to
-rotate; in the synthetic generators (Phase 2+) it will also declare the event
-catalog, the attribute schema and the lifecycle state machine.
+`profiles/` is the extension seam: each emitter declares its metadata (see
+below). In replay it defines which IDs to rotate; in the synthetic generators
+(Phase 2+) it will also declare the event catalog, the attribute schema and the
+lifecycle state machine.
+
+## Emitter profiles (`--profile`)
+
+A profile tells replay how one tool's telemetry is shaped: which `service.name`
+it announces, which scopes to expect, which IDs are **per-run correlation**
+(rotated on every replay so re-sends don't dedupe) and which are **principal
+identity** (never touched). Every profile is read off the tool's own source or
+docs — `Profile.source` records where and when.
+
+| Profile | Tool | `service.name` | Signals | On the integration surface? |
+|---|---|---|---|---|
+| `claude_code` | Claude Code CLI | `claude-code` | logs, metrics, traces (beta) | no — `claude_code.*` names |
+| `codex` | OpenAI Codex CLI (`[otel]` in `config.toml`, off by default) | `codex_cli_rs`, `codex_exec`, `codex_vscode`, `codex_desktop`, `codex_mcp_server`, `codex_sdk_ts` | logs (`codex.*` in `event.name`), metrics, traces | no — own namespace |
+| `copilot_chat` | GitHub Copilot Chat in VS Code (`github.copilot.chat.otel.*`) and the Copilot CLI (`COPILOT_OTEL_ENABLED`) | `copilot-chat`, `github-copilot` | traces, metrics, events | **yes** — `gen_ai.*` |
+| `cursor` | Cursor, Enterprise OTLP export (sent by Cursor's servers) | `cursor` | logs, delta metrics — **no spans** | no — `cursor.*` |
+| `litellm` | LiteLLM SDK / proxy (`callbacks: ["otel"]`) | `litellm` | traces (+ opt-in metrics/events) | partly — `gen_ai.*`, but `gen_ai.operation.name` only with content capture on |
+| `crewai` | CrewAI native tracing (`telemetry_session` + OTLP exporter) | `crewai` | traces | **yes** — `gen_ai.*` |
+| `omnigent` | Omnigent agent meta-harness (`OMNIGENT_TELEMETRY_ENABLED=true`) | `omni-server`, `omni-runner`, `omni-harness`, `omni-host`, `omnigent` | traces, metrics, logs | **almost** — `gen_ai.*` spans, but failed spans carry no `error.type`; no user identity |
+| `generic` | anything | — | — | — (literal replay, no attribute rotation) |
+
+`--profile auto` picks the profile **per `service.name`** found in the
+capture — the right choice for the collector's `telemetry.json`, which mixes
+every tool pointed at it. A service no profile claims is replayed literally
+(only trace/span IDs and timestamps rewritten) with a warning, never an error:
+
+```bash
+oteru-emitter replay ../oteru-collector/telemetry/telemetry.json --profile auto
+```
+
+### What about tools without a profile?
+
+- **An agent CLI inside any editor** (Claude Code or Codex in VS Code,
+  Windsurf, Sublime, a bare terminal): the CLI is the emitter, not the editor,
+  so its profile already covers it. Claude Code records where it ran in
+  `terminal.type`, Codex in `terminal.type` / `originator`.
+- **Tools that follow the OTel GenAI conventions** need no profile to be
+  observable — that is what the integration surface (#22) is for. A profile
+  only adds correct ID rotation on replay.
+- **Google Antigravity and Windsurf (Cascade)** have no native OTLP export as of
+  2026-10: both expose **hooks** (Antigravity: `PreToolUse`, `PostToolUse`,
+  `PreInvocation`, `PostInvocation`, `Stop`, keyed by `conversationId`;
+  Windsurf: `pre_/post_run_command`, `pre_/post_mcp_tool_use`, …, keyed by
+  `trajectory_id`), and Windsurf an Enterprise analytics API. Getting them into
+  Oteru takes a hook → OTLP bridge; if the bridge emits `gen_ai.*` it lands on
+  the surface without a profile. Neither hook payload carries user identity —
+  the bridge has to add it.
+- **VS Code's own product telemetry** (`telemetry.telemetryLevel`) only goes
+  to Microsoft and cannot be routed to a collector; Copilot Chat's OTel export
+  above is the observable part.
+- **CrewAI's built-in telemetry** (`service.name` `crewAI-telemetry`) is
+  hard-wired to CrewAI's endpoint and never reaches a user collector; only the
+  native tracing above does.
+
+Adding a tool = one `Profile(...)` in `profiles/base.py` with its source, plus a
+fixture in `tests/factories.py::PROFILE_FIXTURES` — the registry tests then
+enumerate it automatically (service-name uniqueness, rotate/preserve
+disjointness across all profiles, every declared key present and rotated).
 
 ## Roadmap
 
 - **Phase 1 (current):** faithful replay, dual-transport, realtime, restamp.
 - **Phase 2:** stochastic synthetic generator (state machine + distributions
   fitted to captures + invariants like `cost = f(tokens, model)`), seedable.
-- **Phase 3:** new profiles (Codex, CrewAI) incl. the `gen_ai.*` path + spans.
+- **Phase 3:** profiles for Codex, Copilot Chat, Cursor, LiteLLM, CrewAI (#41,
+  replay) — next: synthetic generation per profile.
 - **Phase 4:** AI-authored scenario catalog (offline → fixtures).
