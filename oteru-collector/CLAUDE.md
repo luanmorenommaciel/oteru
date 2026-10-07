@@ -75,6 +75,7 @@ plus a cold, Object-Locked S3 archive — see the README, "Dual retention".
 | Claude Code CLI | `claude_code.*` | logs + metrics always; **traces opt-in** (beta, see below) | HTTP `:4318` (`http/protobuf`) |
 | `oteru-emitter` (sibling directory) | replays whatever it's fed | logs/metrics/traces, selectable with `--emit log,metric,trace` | HTTP `:4318` or gRPC `:4317` |
 | POD-1 production emitter (future) | `gen_ai.*` + `mcp.*` | traces (spans) + metrics | gRPC `:4317` |
+| Codex CLI, Copilot Chat (VS Code), Cursor (server-side), LiteLLM, CrewAI | see `oteru-emitter` README, "Emitter profiles" | per tool | HTTP and/or gRPC |
 
 Claude Code's logs/metrics carry empty Trace IDs; those records correlate via
 `session.id` + `prompt.id`, not spans. **Spans are a separate, opt-in beta**

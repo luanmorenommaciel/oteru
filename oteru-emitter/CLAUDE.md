@@ -76,9 +76,16 @@ Key design decisions:
   dedupe — but attribute types, ordering, and quirks (the `Str("2501")`
   mistypings, `cost_usd`/`cost_usd_micros` redundancy) are preserved verbatim.
   Principal identity (`user.email`, `organization.id`) is NOT rotated.
-- **Profiles are the extension seam** (`profiles/`). `claude_code` declares which
-  IDs are per-run correlation vs preserved principal identity. Future profiles
-  (Codex, CrewAI) will add synthetic event catalogs and `gen_ai.*` + spans.
+- **Profiles are the extension seam** (`profiles/`). Each declares which IDs
+  are per-run correlation vs preserved principal identity, its scopes, the
+  `service.name`s it announces and the `source` it was read from: `claude_code`,
+  `codex`, `copilot_chat`, `cursor`, `litellm`, `crewai`, `generic` (#41).
+  `--profile auto` resolves one per `service.name` and unions their rotate
+  keys — safe only because **no profile may rotate a key any profile
+  preserves** (`test_no_profile_rotates_what_any_profile_preserves`). A new
+  profile needs a fixture in `factories.PROFILE_FIXTURES`; the registry tests
+  enumerate it. Profiles are observed fact: re-read the upstream source when a
+  tool changes its telemetry, do not extrapolate.
 - **`--emit` selects, it does not generate.** It filters the loaded batches by
   signal (`sources/replay.py::select_signals`), so it can only narrow what the
   capture already holds; asking for an absent signal exits 1 rather than sending
