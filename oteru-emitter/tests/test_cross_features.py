@@ -36,3 +36,13 @@ def test_mcp_fixture_is_on_the_integration_surface():
     report = check_payloads(mcp_capture())
     assert report.errors == []
     assert json.dumps([f.attribute for f in report.warnings]) == "[]"
+
+
+def test_omnigent_is_on_the_surface_except_error_type_on_failed_spans():
+    """Omnigent (#41 profile) emits gen_ai.* natively; the one contract gap is
+    that failed spans carry no error.type. If upstream adds it, this flips."""
+    from factories import omnigent_capture
+
+    report = check_payloads(omnigent_capture())
+    assert report.on_surface == 2  # agent + tool; policy spans declare neither key
+    assert [(f.level, f.attribute) for f in report.errors] == [("error", "error.type")]
