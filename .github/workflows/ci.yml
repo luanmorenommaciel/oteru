@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - "oteru-emitter/**"
+      - "oteru-hooks/**"
       - "scripts/**"
       - ".github/workflows/ci.yml"
   pull_request:
     paths:
       - "oteru-emitter/**"
+      - "oteru-hooks/**"
       - "scripts/**"
       - ".github/workflows/ci.yml"
 
@@ -40,6 +42,11 @@ jobs:
         run: ruff format --check .
       - name: Tests
         run: pytest
+      - name: Hook bridge (lint + tests)
+        run: |
+          ruff check ../oteru-hooks
+          ruff format --check ../oteru-hooks
+          pytest ../oteru-hooks/tests
       - name: Smoke (sample dry-run, no network)
         run: oteru-emitter replay samples/telemetry-sample.json --dry-run
 
