@@ -12,7 +12,7 @@ exporter.
 |---|---|---|---|---|
 | Python | [`python/`](python/) | 14318 | `ingest_python` | conformant (11/11), exporter-equivalent on the 523-batch sample |
 | Go | [`go/`](go/) | 24318 | `ingest_go` | conformant (11/11), exporter-equivalent on the 523-batch sample |
-| Rust | `rust/` | 34318 | `ingest_rust` | #26 |
+| Rust | [`rust/`](rust/) | 34318 | `ingest_rust` | conformant (11/11), exporter-equivalent on the 523-batch sample |
 
 ## Run
 
@@ -67,3 +67,14 @@ unchanged.
   request); static binary on `distroless/static:nonroot`.
 - `go.sum` is committed; regenerate inside Docker, no local Go needed:
   `docker run --rm -v "$PWD/oteru-ingestor/go":/src -w /src golang:1.26 go mod tidy`.
+
+## Rust notes
+
+- axum + tokio, `opentelemetry-proto` 0.33 (prost messages; its `with-serde`
+  feature reads OTLP/JSON with hex IDs), reqwest to ClickHouse — same
+  JSONEachRow, one-INSERT-per-table strategy as the other two.
+- `f64`'s `Display` already matches Go's `FormatFloat(f, 'f', -1, 64)`
+  (`0.00214`, `3`, no exponent), so attribute rendering needs no special case.
+- `Cargo.lock` is committed and the Docker build is `--locked`, with a
+  dependency-caching stub layer; final image `distroless/cc:nonroot`. No local
+  Rust needed: `docker run --rm -v "$PWD/oteru-ingestor/rust":/src -w /src rust:1 cargo build --release`.

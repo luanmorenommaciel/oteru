@@ -32,3 +32,12 @@ services:
       dockerfile: go/Dockerfile
     ports:
       - "24318:4318"
+
+  ingestor-rust:
+    <<: *ingestor
+    profiles: ["rust"]
+    build:
+      context: ../oteru-ingestor
+      dockerfile: rust/Dockerfile
+    ports:
+      - "34318:4318"
