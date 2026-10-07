@@ -38,6 +38,8 @@ make up-clickstack  # collector + forward to ClickStack (needs CLICKSTACK_ENDPOI
 make up-hyperdx # collector + ClickHouse + the local HyperDX UI on :8080 (no API key)
 make up-direct  # local ClickStack all-in-one + API-key bootstrap; `make ingest` replays into it
 make up-clickstack-local  # collector forwarding to a local ClickStack all-in-one
+make up-archive # dual retention (#44): collector + ClickHouse (hot) + MinIO Object Lock bucket (cold)
+make e2e-archive # asserts a replay lands in hot and cold, and the cold copy cannot be deleted
 make demo       # up + 5 batches over HTTP + collector logs
 make clean      # removes build/test caches (keeps .venv)
 ```
