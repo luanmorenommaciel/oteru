@@ -1,5 +1,12 @@
 name: CI
 
+# Lean default:
+#   pull_request / push main (emitter or scripts paths) -> ubuntu + Python 3.13
+#     only (lint, format, tests, smoke) + PII guard.
+#   weekly (Mon 06:00 UTC) + workflow_dispatch -> full matrix
+#     (ubuntu + windows) x (3.10 + 3.13), which keeps the Windows and
+#     oldest-Python support claims proven without paying for them per PR.
+
 on:
   push:
     branches: [main]
@@ -12,6 +19,16 @@ on:
       - "oteru-emitter/**"
       - "scripts/**"
       - ".github/workflows/ci.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # weekly full OS x Python matrix
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
   PYTHONUTF8: "1" # stable UTF-8 output on Windows consoles
@@ -23,7 +40,12 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.10", "3.13"]
+        # PRs and pushes: ubuntu + 3.13 only. Full matrix on dispatch/schedule.
+        exclude:
+          - os: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'windows-latest' || 'none' }}
+          - python-version: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && '3.10' || 'none' }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: oteru-emitter
@@ -32,6 +54,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: oteru-emitter/pyproject.toml
       - name: Install (editable + dev)
         run: pip install -e ".[dev]"
       - name: Lint (ruff check)
@@ -45,6 +69,7 @@ jobs:
 
   pii-guard:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: PII guard (committed captures)
