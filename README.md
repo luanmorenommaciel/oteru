@@ -78,6 +78,14 @@ no API key, nothing leaving the machine — use `make up-hyperdx`. It adds the
 HyperDX UI on `:8080` on top of the ClickHouse this repo already runs, so the
 collector keeps writing exactly where `make up-clickhouse` puts it.
 
+## Integration surface
+
+What an agent must emit to be observable by Oteru, whatever its stack — OTLP
+plus the OTel GenAI/MCP attribute names — is the **Minimum Integration
+Surface** ([`docs/integration-surface.md`](docs/integration-surface.md),
+proposal v0). Check a capture against it with
+`oteru-emitter check <capture.json>`.
+
 ## Development
 
 ```bash

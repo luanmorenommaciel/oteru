@@ -132,6 +132,19 @@ Main flags: `--transport http|grpc`, `--endpoint`, `--header NAME=VALUE`
 `--seed`, `--no-restamp`, `--dry-run`. Full help:
 `oteru-emitter replay --help`.
 
+## Checking a capture against the integration surface (`check`)
+
+```bash
+oteru-emitter check my-capture.json            # exit 1 on errors / nothing on the surface
+oteru-emitter check my-capture.json --strict   # warnings fail too
+```
+
+Lists, per span, the attributes the Minimum Integration Surface requires and
+the capture lacks — rules and rationale in
+[`../docs/integration-surface.md`](../docs/integration-surface.md). Spans with
+neither `gen_ai.operation.name` nor `mcp.method.name` are counted as
+*outside* the surface (Claude Code's native `claude_code.*` spans, for now).
+
 ## Choosing which signals to send (`--emit`)
 
 By default the emitter replays **every signal the capture holds**. `--emit`
