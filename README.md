@@ -78,6 +78,13 @@ no API key, nothing leaving the machine — use `make up-hyperdx`. It adds the
 HyperDX UI on `:8080` on top of the ClickHouse this repo already runs, so the
 collector keeps writing exactly where `make up-clickhouse` puts it.
 
+## Which agent tools can Oteru observe?
+
+[`docs/emitter-coverage.md`](docs/emitter-coverage.md) maps ~40 coding agents,
+IDEs, agent frameworks and the Microsoft Copilot family to how each reaches
+Oteru: natively on the integration surface, via a mapping, an emitter profile,
+a hook bridge — or not at all (research snapshot 2026-10-06, sources inline).
+
 ## Development
 
 ```bash
