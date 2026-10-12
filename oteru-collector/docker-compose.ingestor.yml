@@ -1,0 +1,25 @@
+# Compose override: the POD-of-3 ingestors (oteru-ingestor/SPEC.md, #3/#24–#26).
+# Stack on top of the base file AND the ClickHouse override — each ingestor
+# writes into its own database (ingest_<lang>) on the same ClickHouse the
+# collector's exporter fills (otel.*), so all of them can be compared side by
+# side. Each implementation is a compose profile:
+#   make up-ingestor IMPL=python      # -> http://localhost:14318
+# Built from source inside Docker: no local Python/Go/Rust toolchain needed.
+x-ingestor: &ingestor
+  environment:
+    CLICKHOUSE_URL: http://clickhouse:8123
+    CLICKHOUSE_USER: otel
+    CLICKHOUSE_PASSWORD: otel
+  depends_on:
+    clickhouse:
+      condition: service_healthy
+
+services:
+  ingestor-python:
+    <<: *ingestor
+    profiles: ["python"]
+    build:
+      context: ../oteru-ingestor
+      dockerfile: python/Dockerfile
+    ports:
+      - "14318:4318"
