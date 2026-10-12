@@ -25,7 +25,10 @@ TINY="$EMITTER/tests/fixtures/tiny-capture.json"
 TRACES="$(mktemp -t oteru-traces-XXXXXX).json"
 SCOPED_TINY="$(mktemp -t oteru-tiny-XXXXXX).json"
 SCOPED_TRACES="$(mktemp -t oteru-scoped-traces-XXXXXX).json"
-trap 'rm -f "$TRACES" "$SCOPED_TINY" "$SCOPED_TRACES"' EXIT
+MCP="$(mktemp -t oteru-mcp-XXXXXX).json"
+SCOPED_MCP="$(mktemp -t oteru-scoped-mcp-XXXXXX).json"
+MCP_EXPECTED="$(mktemp -t oteru-mcp-expected-XXXXXX).tsv"
+trap 'rm -f "$TRACES" "$SCOPED_TINY" "$SCOPED_TRACES" "$MCP" "$SCOPED_MCP" "$MCP_EXPECTED"' EXIT
 # Unique per execution; tags every replayed batch so ClickHouse assertions can
 # filter to rows this run produced. date+pid keeps it portable (Git Bash/macOS/Linux).
 RUN_ID="e2e-$(date +%s)-$$"
@@ -171,6 +174,57 @@ if [ "$new_traces" -eq 4 ]; then
   echo "  ok   two replays -> 4 distinct traces (no ID collision)"
 else
   fail "two replays of a 2-trace capture yielded $new_traces distinct traces (expected 4)"
+fi
+
+# MCP calls as first-class rows (#42): replay the MCP fixture and read it back
+# through the otel.mcp_calls view — per-method counts must equal what the
+# fixture declares, the failed tool call must surface as failed, and the
+# client/server sides of one call must join on (trace_id, request_id).
+"$PY" - "$MCP" "$MCP_EXPECTED" <<'PY' || fail "could not build the MCP capture"
+import json, sys, pathlib
+sys.path.insert(0, "tests")
+from factories import MCP_EXPECTED_METHODS, mcp_capture
+
+pathlib.Path(sys.argv[1]).write_text(
+    "".join(json.dumps(b) + "\n" for b in mcp_capture()), encoding="utf-8"
+)
+pathlib.Path(sys.argv[2]).write_text(
+    "".join(f"{m}\t{n}\n" for m, n in sorted(MCP_EXPECTED_METHODS.items())), encoding="utf-8"
+)
+PY
+inject_run_id "$MCP" "$SCOPED_MCP" || fail "could not tag the MCP capture"
+if ! curl -sf "$CH" --data-binary @"$ROOT/oteru-collector/clickhouse/views/mcp_calls.sql" >/dev/null; then
+  fail "could not apply the otel.mcp_calls view"
+elif ! "$PY" -m oteru_emitter.cli replay "$SCOPED_MCP" --profile generic \
+    --transport http --max-gap 0.2 >/dev/null 2>&1; then
+  fail "MCP replay exited non-zero"
+else
+  sleep "$SETTLE"
+  scope="resource_attributes['oteru.e2e.run_id'] = '$RUN_ID'"
+  got="$(curl -sf "$CH" --data-binary \
+    "SELECT method, count() FROM otel.mcp_calls WHERE $scope GROUP BY method ORDER BY method FORMAT TSV")"
+  if [ "$got" = "$(cat "$MCP_EXPECTED")" ]; then
+    echo "  ok   otel.mcp_calls -> per-method counts match the fixture"
+  else
+    fail "otel.mcp_calls per-method counts: got [$got], expected [$(cat "$MCP_EXPECTED")]"
+  fi
+  failed="$(curl -sf "$CH" --data-binary \
+    "SELECT tool_name, error_type FROM otel.mcp_calls WHERE $scope AND failed FORMAT TSV")"
+  if [ "$failed" = $'refund_order\ttool_error' ]; then
+    echo "  ok   otel.mcp_calls -> failed tool call surfaces with its error.type"
+  else
+    fail "otel.mcp_calls failed rows: got [$failed]"
+  fi
+  joined="$(curl -sf "$CH" --data-binary \
+    "SELECT count() FROM otel.mcp_calls c JOIN otel.mcp_calls s
+       ON c.trace_id = s.trace_id AND c.request_id = s.request_id AND s.parent_span_id = c.span_id
+     WHERE c.side = 'client' AND s.side = 'server'
+       AND c.$scope AND s.$scope FORMAT TSV")"
+  if [ "$joined" = "1" ]; then
+    echo "  ok   otel.mcp_calls -> client and server sides of a call join"
+  else
+    fail "otel.mcp_calls client/server join: got $joined row(s), expected 1"
+  fi
 fi
 
 # A payload with no records at all must be accepted, not rejected.
