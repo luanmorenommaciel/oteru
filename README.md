@@ -80,6 +80,9 @@ collector keeps writing exactly where `make up-clickhouse` puts it.
 
 ## Development
 
+For the offline operational-risk observation slice (#63, #64, #66), see
+[`docs/operational-risk.md`](docs/operational-risk.md).
+
 ```bash
 make test         # pytest suite (oteru-emitter/tests)
 make lint         # ruff check + format check

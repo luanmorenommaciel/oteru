@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals test-risk lint-risk demo-risk-offline e2e-risk up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -44,9 +44,26 @@ setup: ## create the venv, install the emitter (editable + dev) and enable the P
 test: ## run the emitter's pytest suite
 	cd $(EMITTER) && $(VENV_PY) -m pytest
 
+test-risk: ## run the operational-risk contract tests
+	cd $(EMITTER) && $(VENV_PY) -m pytest tests/test_risk.py
+
 lint: ## ruff check + formatting check
 	cd $(EMITTER) && $(VENV_PY) -m ruff check oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff format --check oteru_emitter tests
+	cd $(EMITTER) && $(VENV_PY) -m ruff check ../scripts/check_pii.py ../scripts/check_risk_e2e.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff format --check ../scripts/check_pii.py ../scripts/check_risk_e2e.py
+
+lint-risk: ## lint the operational-risk evaluator and tests
+	cd $(EMITTER) && $(VENV_PY) -m ruff check oteru_emitter/risk tests/test_risk.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff format --check oteru_emitter/risk tests/test_risk.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff check ../scripts/check_risk_e2e.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff format --check ../scripts/check_risk_e2e.py
+
+demo-risk-offline: ## evaluate a synthetic four-finding bundle without network
+	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.risk.demo
+
+e2e-risk: ## send risk logs to an isolated collector and ClickHouse
+	$(VENV)/$(BINDIR)/python scripts/check_risk_e2e.py
 
 format: ## apply ruff format + autofixes
 	cd $(EMITTER) && $(VENV_PY) -m ruff check --fix oteru_emitter tests
