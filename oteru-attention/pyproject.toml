@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oteru-attention"
+version = "0.1.0"
+description = "Evidence-backed attention console for Oteru telemetry."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Oteru" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+oteru-attention = "oteru_attention.server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["oteru_attention*"]
+
+[tool.setuptools.package-data]
+oteru_attention = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["oteru_attention"]

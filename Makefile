@@ -10,6 +10,7 @@ SHELL := bash
 
 EMITTER   := oteru-emitter
 COLLECTOR := oteru-collector
+ATTENTION := oteru-attention
 VENV      := $(EMITTER)/.venv
 SAMPLE    := samples/telemetry-sample.json
 
@@ -28,7 +29,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean
+.PHONY: help setup test test-attention lint lint-attention format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx up-attention down down-clickhouse down-direct down-hyperdx down-attention ingest ingest-loop demo clean
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -38,19 +39,32 @@ setup: ## create the venv, install the emitter (editable + dev) and enable the P
 	$(PYTHON) -m venv $(VENV)
 	$(VENV)/$(BINDIR)/python -m pip install --upgrade pip
 	$(VENV)/$(BINDIR)/python -m pip install -e "./$(EMITTER)[dev]"
+	$(VENV)/$(BINDIR)/python -m pip install -e "./$(ATTENTION)[dev]"
 	git config core.hooksPath .githooks
 	@echo "setup OK — pre-commit hook (PII guard) enabled."
 
-test: ## run the emitter's pytest suite
+test: ## run the emitter and attention pytest suites
 	cd $(EMITTER) && $(VENV_PY) -m pytest
+	$(VENV)/$(BINDIR)/python -m pytest $(ATTENTION)/tests
+
+test-attention: ## run the attention console's tests
+	$(VENV)/$(BINDIR)/python -m pytest $(ATTENTION)/tests
 
 lint: ## ruff check + formatting check
 	cd $(EMITTER) && $(VENV_PY) -m ruff check oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff format --check oteru_emitter tests
+	$(VENV)/$(BINDIR)/python -m ruff check $(ATTENTION)/oteru_attention $(ATTENTION)/tests
+	$(VENV)/$(BINDIR)/python -m ruff format --check $(ATTENTION)/oteru_attention $(ATTENTION)/tests
+
+lint-attention: ## lint and check formatting of the attention console
+	$(VENV)/$(BINDIR)/python -m ruff check $(ATTENTION)/oteru_attention $(ATTENTION)/tests
+	$(VENV)/$(BINDIR)/python -m ruff format --check $(ATTENTION)/oteru_attention $(ATTENTION)/tests
 
 format: ## apply ruff format + autofixes
 	cd $(EMITTER) && $(VENV_PY) -m ruff check --fix oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff format oteru_emitter tests
+	$(VENV)/$(BINDIR)/python -m ruff check --fix $(ATTENTION)/oteru_attention $(ATTENTION)/tests
+	$(VENV)/$(BINDIR)/python -m ruff format $(ATTENTION)/oteru_attention $(ATTENTION)/tests
 
 dry-run: ## validate the sample without network (smoke test)
 	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.cli replay $(SAMPLE) --dry-run
@@ -86,6 +100,9 @@ up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK
 up-clickhouse: ## start the collector + a self-contained ClickHouse backend (native clickhouse exporter)
 	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml up -d
 
+up-attention: ## start collector + ClickHouse + the local attention console on :8081
+	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml -f docker-compose.attention.yml up -d --build
+
 up-direct: ## start ClickStack alone (persistent volumes) + bootstrap the API key into .env
 	cd $(COLLECTOR) && docker compose -f docker-compose.hyperdx-direct.yml up -d
 	bash scripts/hyperdx_bootstrap.sh
@@ -109,6 +126,9 @@ down: ## stop the collector
 
 down-clickhouse: ## stop the collector + ClickHouse and remove the ClickHouse volume
 	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml down -v
+
+down-attention: ## stop attention + collector + ClickHouse, keeping their volumes
+	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml -f docker-compose.attention.yml down
 
 down-direct: ## stop the standalone ClickStack (volumes are kept)
 	cd $(COLLECTOR) && docker compose -f docker-compose.hyperdx-direct.yml down

@@ -7,7 +7,8 @@ from itertools import combinations
 
 import pytest
 
-from oteru_emitter.cli import main
+from oteru_emitter.cli import _mark_synthetic, main
+from oteru_emitter.sources.replay import Batch
 
 # --- --emit contract matrix -------------------------------------------------
 #
@@ -84,6 +85,38 @@ def test_dry_run_exit_0_and_summary(tiny_path, capsys):
     assert "logs=2" in out
     assert "metrics=1" in out
     assert "[dry-run]" in out
+
+
+def test_synthetic_marker_covers_each_otlp_signal_without_duplicate_attributes() -> None:
+    shapes = (("logs", "resourceLogs"), ("metrics", "resourceMetrics"), ("traces", "resourceSpans"))
+    batches = [
+        Batch(
+            signal,
+            {
+                key: [
+                    {
+                        "resource": {
+                            "attributes": [
+                                {"key": "service.name", "value": {"stringValue": "test-agent"}},
+                                {"key": "oteru.traffic", "value": {"stringValue": "old"}},
+                            ]
+                        }
+                    }
+                ]
+            },
+            1,
+        )
+        for signal, key in shapes
+    ]
+
+    _mark_synthetic(batches)
+
+    for batch, (_, key) in zip(batches, shapes, strict=True):
+        attributes = batch.payload[key][0]["resource"]["attributes"]
+        assert attributes[0]["key"] == "service.name"
+        assert [
+            item["value"]["stringValue"] for item in attributes if item["key"] == "oteru.traffic"
+        ] == ["synthetic"]
 
 
 def test_missing_file_friendly_error_no_traceback(tmp_path, capsys):

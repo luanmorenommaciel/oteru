@@ -62,6 +62,19 @@ def _summarize(batches: list[Batch]) -> str:
     return "\n".join(lines)
 
 
+def _mark_synthetic(batches: list[Batch]) -> None:
+    """Identify replay traffic at the OTLP resource level for downstream readers."""
+    keys = {"logs": "resourceLogs", "metrics": "resourceMetrics", "traces": "resourceSpans"}
+    marker = {"key": "oteru.traffic", "value": {"stringValue": "synthetic"}}
+    for batch in batches:
+        for item in batch.payload.get(keys[batch.signal], []):
+            attributes = item.setdefault("resource", {}).setdefault("attributes", [])
+            attributes[:] = [
+                attribute for attribute in attributes if attribute.get("key") != "oteru.traffic"
+            ]
+            attributes.append(marker.copy())
+
+
 def _header(value: str) -> tuple[str, str]:
     """argparse type for --header: validates and splits NAME=VALUE."""
     name, sep, val = value.partition("=")
@@ -170,6 +183,8 @@ def cmd_replay(args) -> int:
         rotate_trace_ids=not args.no_restamp,
         seed=args.seed,
     )
+    if args.mark_synthetic:
+        _mark_synthetic(batches)
 
     print(f"oteru-emitter {__version__} — replay")
     print(f"  file:      {args.file}")
@@ -186,6 +201,8 @@ def cmd_replay(args) -> int:
             else f"  (offset {offset_ns / 1e9:+.1f}s, rotates IDs={list(rotate_keys)})"
         )
     )
+    if args.mark_synthetic:
+        print("  traffic:   synthetic (resource attribute oteru.traffic)")
     print(_summarize(batches))
 
     if args.dry_run:
@@ -273,6 +290,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-restamp",
         action="store_true",
         help="literal replay: does NOT shift timestamps nor rotate IDs",
+    )
+    r.add_argument(
+        "--mark-synthetic",
+        action="store_true",
+        help="mark replay resources as synthetic for downstream attention views",
     )
     r.add_argument(
         "--speed",

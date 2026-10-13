@@ -1,0 +1,21 @@
+# Stack with docker-compose.yml and docker-compose.clickhouse.yml.
+# The console is local to this workstation; the OTLP receiver keeps its
+# existing ports and ClickHouse keeps the same volume.
+services:
+  oteru-attention:
+    build: ../oteru-attention
+    environment:
+      OTERU_CLICKHOUSE_URL: http://clickhouse:8123
+      OTERU_CLICKHOUSE_USER: otel
+      OTERU_CLICKHOUSE_PASSWORD: otel
+      OTERU_ATTENTION_DB: /data/attention.sqlite3
+    ports:
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    volumes:
+      - attention-data:/data
+
+volumes:
+  attention-data:

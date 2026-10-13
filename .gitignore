@@ -1,5 +1,11 @@
 # Secrets / local environment — never commit credentials.
 .env
+**/__pycache__/
+*.pyc
+**/.pytest_cache/
+**/.ruff_cache/
+**/.venv/
+oteru-attention/state/
 
 # Local scratch — screenshots, generated PDFs, one-off scripts. These are not
 # shared artifacts: if something here is worth keeping, give it a real home

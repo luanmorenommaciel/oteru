@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0d1724">
+    <title>Oteru · Atenção</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Oteru, início"><span>oteru<span class="brand-dot">.</span></span></a>
+        <div class="topbar-right"><span class="topbar-label">Console de atenção</span><span id="connection" class="connection">Conectando</span></div>
+      </header>
+      <main>
+        <section class="intro" aria-labelledby="page-title">
+          <div><p class="eyebrow">OBSERVAR · PRIORIZAR</p><h1 id="page-title">Onde olhar agora<span class="accent">.</span></h1><p class="intro-copy">Uma fila de ocorrências ordenada por regras verificáveis.</p></div>
+          <div class="intro-controls"><label class="demo-control" for="demo-mode"><input id="demo-mode" type="checkbox"><span class="switch" aria-hidden="true"></span><span>Incluir amostra</span></label><button id="refresh" class="button button-quiet" type="button">Atualizar dados</button></div>
+        </section>
+        <div id="notice" class="notice" role="status" hidden></div>
+        <section class="coverage-bar" aria-label="Cobertura dos dados"><strong id="coverage-title">Carregando telemetria</strong><span id="coverage-window">—</span><span id="coverage-detail">—</span></section>
+        <section class="panel queue-panel" aria-labelledby="queue-title"><div class="panel-head"><div><p class="section-number">01 / TRIAGEM</p><h2 id="queue-title">Fila de atenção</h2></div><span id="queue-count" class="count-pill">—</span></div><p class="panel-intro">Falhas, rejeições e mudanças de permissão observadas nesta janela.</p><div id="queue-list" class="queue-list" aria-live="polite"></div></section>
+      </main>
+    </div>
+  </body>
+</html>

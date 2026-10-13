@@ -148,6 +148,12 @@ The names are **singular**, order does not matter (output is always reported as
 `log,metric,trace`), and the flag is repeatable (`--emit log --emit metric` is
 the same as `--emit log,metric`).
 
+For local attention demos, pass `--mark-synthetic` when replaying a capture.
+It adds the OTLP resource attribute `oteru.traffic=synthetic` to logs, metrics
+and traces so the attention console can exclude replay traffic from its normal
+view and include it only when the demonstration switch is on. Without the flag,
+the replay keeps the captured resource attributes as before.
+
 There is **no dependency between signals**: a trace does not require a log or a
 metric. This mirrors OTLP, where the three are separate pipelines.
 

@@ -1,7 +1,7 @@
 name: CI
 
 # Lean default:
-#   pull_request / push main (emitter or scripts paths) -> ubuntu + Python 3.13
+#   pull_request / push main (emitter, attention, or scripts paths) -> ubuntu + Python 3.13
 #     only (lint, format, tests, smoke) + PII guard.
 #   weekly (Mon 06:00 UTC) + workflow_dispatch -> full matrix
 #     (ubuntu + windows) x (3.10 + 3.13), which keeps the Windows and
@@ -12,12 +12,18 @@ on:
     branches: [main]
     paths:
       - "oteru-emitter/**"
+      - "oteru-attention/**"
+      - "oteru-collector/docker-compose.attention.yml"
       - "scripts/**"
+      - "Makefile"
       - ".github/workflows/ci.yml"
   pull_request:
     paths:
       - "oteru-emitter/**"
+      - "oteru-attention/**"
+      - "oteru-collector/docker-compose.attention.yml"
       - "scripts/**"
+      - "Makefile"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
   schedule:
@@ -55,15 +61,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: oteru-emitter/pyproject.toml
+          cache-dependency-path: |
+            oteru-emitter/pyproject.toml
+            oteru-attention/pyproject.toml
       - name: Install (editable + dev)
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev]" -e "../oteru-attention[dev]"
       - name: Lint (ruff check)
-        run: ruff check .
+        run: ruff check . ../oteru-attention/oteru_attention ../oteru-attention/tests
       - name: Formatting (ruff format --check)
-        run: ruff format --check .
+        run: ruff format --check . ../oteru-attention/oteru_attention ../oteru-attention/tests
       - name: Tests
-        run: pytest
+        run: pytest ../oteru-attention/tests tests
       - name: Smoke (sample dry-run, no network)
         run: oteru-emitter replay samples/telemetry-sample.json --dry-run
 
