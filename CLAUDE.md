@@ -74,8 +74,11 @@ CI (`.github/workflows/ci.yml`): lint + tests on ubuntu/windows × Python
   `oteru-emitter/tests/factories.py`.
 - **Live + synthetic traffic coexist.** A live Claude Code session with
   `CLAUDE_CODE_ENABLE_TELEMETRY=1` and the emitter's replays land on the same
-  collector and are indistinguishable at the OTLP envelope. A clean separation
-  (opt-in `--mark-synthetic` resource attribute) is deferred — details in
+  collector and are indistinguishable at the OTLP envelope — unless the replay
+  runs with `--mark-synthetic`, which tags every resource
+  `oteru.traffic=synthetic` (records untouched). Aggregations (cost, metering,
+  adoption) filter `ResourceAttributes['oteru.traffic'] != 'synthetic'`.
+  Opt-in: an unmarked replay is still indistinguishable — details in
   `oteru-collector/CLAUDE.md`.
 - **History note.** These subprojects were consolidated from the standalone
   repos `viniciussena/otel-emitter` and `viniciussena/otel-collector`
