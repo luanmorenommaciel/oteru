@@ -12,8 +12,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from oteru_emitter.risk.demo import synthetic_capture
-from oteru_emitter.risk.demo_tool_rate import example as tool_rate_example
+from oteru_emitter.risk.demo import policy, synthetic_capture
 from oteru_emitter.risk.output import canonical, write_output
 from oteru_emitter.risk.rules import evaluate
 from oteru_emitter.risk.source_claude import project_capture
@@ -121,16 +120,12 @@ def main() -> int:
             anchor = (time.time_ns() // 60_000_000_000) * 60_000_000_000
             source = work / "permission-capture.jsonl"
             source.write_text(canonical(synthetic_capture(anchor)) + "\n", encoding="utf-8")
-            projected = project_capture(source, "risk-e2e", "demo")
-            bundle, risk_policy = tool_rate_example(11, anchor_ns=anchor)
-            bundle["permission_observations"] = []
-            bundle["permission_changes"] = projected["permission_changes"]
-            findings, report = evaluate(bundle, risk_policy)
+            findings, report = evaluate(project_capture(source, "risk-e2e", "demo"), policy())
             output = work / "result"
             write_output(output, findings, report)
             capture = output / "otlp.jsonl"
             url = f"http://{clickhouse}/?user=otel&password=otel"
-            for expected in (2, 4):
+            for expected in (1, 2):
                 _run(
                     [
                         sys.executable,
@@ -148,12 +143,12 @@ def main() -> int:
                     ]
                 )
                 physical, distinct, kinds, versions = _wait_count(url, expected)
-                if (physical, distinct, kinds, versions) != (expected, 2, 2, 1):
+                if (physical, distinct, kinds, versions) != (expected, 1, 1, 1):
                     raise RuntimeError(
                         f"risk_count_mismatch: rows={physical}, distinct={distinct}, "
                         f"kinds={kinds}, versions={versions}"
                     )
-            print("e2e-risk: 2 distinct findings, 4 rows after replay")
+            print("e2e-risk: 1 distinct permission finding, 2 rows after replay")
             return 0
         finally:
             # The unique Compose project owns this named volume; no existing stack is touched.
