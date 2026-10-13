@@ -24,12 +24,15 @@ não comprova execução bem-sucedida de todas as verificações necessárias.
 
 ## 2. Resultado esperado e fronteira de efeito
 
-Demonstrar dois fluxos explicitamente distintos:
+Entregar um único fluxo completo da #65: pedido sintético de ação → resultados
+explícitos das verificações → avaliação consolidada → revisão quando necessária
+→ revalidação → executor falso → auditoria reproduzível.
 
-1. **Autorização prévia simulada:** pedido sintético de ação → verificações
-   completas → avaliação consolidada → revisão quando necessária → executor falso.
-2. **Observação posterior:** evento de risco → caso de resposta → triagem humana.
-   Não concede autorização, não cancela retroativamente a ação e não alega prevenção.
+Eventos observados após a execução, ou sem vínculo verificável ao pedido, geram
+`not_authorization_input`, com motivo e zero autorizações. Tratamento de incidentes,
+fila de casos, triagem, responsável e escalonamento ficam fora desta issue.
+A separação entre observação e autorização é um limite do consumidor; não exige
+construir um segundo produto nesta entrega.
 
 Toda decisão inclui `enforcement=simulated`, `identity_assurance=fixture_only`
 e `action_execution=not_controlled`. A CLI/relatório mostra
@@ -75,8 +78,10 @@ Severidade: `low|medium|high|critical|unknown`. Evidência contém fatos mínimo
 redigidos e referências locais; não executar instruções nem buscar URLs fornecidas.
 
 `action_id`, revisão/digest e `correlation_id` identificam a relação quando ela é
-conhecida. Evento sem vínculo verificável segue para observação posterior;
-não é anexado a uma autorização apenas por proximidade temporal ou sessão.
+conhecida. Evento sem vínculo verificável é registrado como não elegível para
+autorização; não é anexado apenas por proximidade temporal ou sessão. Além da
+correlação, o snapshot exige que a ação ainda esteja pendente no cenário fixture;
+telemetria de ação concluída nunca é tratada como pedido de autorização.
 Consequência e decisão sugeridas pela origem são informativas, não autoritativas.
 
 ### `check_result/v1`: comprovação de cobertura
@@ -86,25 +91,20 @@ Cada verificação obrigatória definida na política publica um resultado expl�
 `status=pass|fail|unknown|error`, `completed_at`, `valid_until`, evidências e
 IDs de eventos associados. `pass` pode conter zero alertas, mas precisa existir.
 
-O coletor de resultados é um adaptador local, não o OTel Collector. Ele fecha
-um snapshot por pedido somente quando todas as verificações obrigatórias têm
-resultado, ou quando o cenário fixture manda avaliar com cobertura incompleta.
+O adaptador local lê um snapshot fornecido explicitamente por fixture; não
+agenda checks nem constrói um serviço de coleta de resultados. A política compara
+esse snapshot com a lista versionada de verificações obrigatórias por operação.
 Resultados ausentes, expirados, com erro ou de outra revisão não contam como
 cobertura completa. `fail` recebe o efeito definido por uma regra aplicável;
 não significa automaticamente proibição de qualquer ação.
 
-### `human_gate_decision/v1` e `response_case/v1`
+### `human_gate_decision/v1`
 
 A decisão contém `decision_id`, pedido/revisão/digest, `policy_version`,
 `snapshot_id`, `required_checks`, `coverage_complete`, consequência calculada,
 regras aplicáveis, evidências, `initial_outcome=allow|review|deny`, estado atual,
 instantes, prazo de validade quando aplicável e os marcadores de simulação.
 O snapshot é imutável e inclui versões, resultados e evidências usados.
-
-O caso posterior contém `case_id`, eventos, motivo, responsável placeholder
-quando atribuído, `state=open|acknowledged|resolved|expired_unresolved` e histórico.
-Não possui `allow` nem gera permissão; resolver o caso exige justificativa e
-evidência e não comprova que uma ação foi bloqueada.
 
 Versão desconhecida, ID ausente, tipo inválido ou payload malformado gera
 `input_rejected` e zero autorizações. Informação explicitamente desconhecida
@@ -128,7 +128,7 @@ não equivalem a classificação validada para recursos reais.
 | Ordem | Condição aplicável à ação avaliada | Resultado |
 |---|---|---|
 | 1 | Existe proibição explícita, por exemplo componente negado em política para aquela operação | `deny` |
-| 2 | Cobertura incompleta, resultado vencido, erro, regra não suportada ou consequência desconhecida | `review`, sem possibilidade de aprovar enquanto faltar cobertura/contexto |
+| 2 | Cobertura incompleta, resultado vencido, erro, regra não suportada ou consequência desconhecida | `review`, sem possibilidade de aprovar enquanto qualquer condição desta linha persistir |
 | 3 | Cobertura completa, consequência moderada/alta ou alguma regra exige julgamento humano | `review`, elegível para aprovação com identidade e escopo válidos |
 | 4 | Cobertura completa, consequência baixa e todas as condições permissivas satisfeitas | `allow` |
 
@@ -171,9 +171,8 @@ consome uma decisão no máximo uma vez por run. Não há esperas reais ou jobs.
 
 Ausência antes do prazo mantém pendência. Expiração deixa autorização ausente,
 sem converter silêncio em consentimento nem registrar um humano como autor.
-No fluxo posterior, prazo de triagem é outro parâmetro fixture, independente;
-vencimento produz `expired_unresolved`, nunca `deny` retroativo ou caso resolvido.
-Escalonamento real e prazos operacionais dependem de operação.
+Não há prazo de triagem de incidentes nesta entrega. Prazos de operação real
+dependem do responsável pelo atendimento e do futuro executor.
 
 Processamento local sequencial: primeira resposta terminal válida vence;
 duplicata idêntica é idempotente; conflito ou resposta tardia é registrado sem
@@ -183,7 +182,7 @@ de uma aprovação, preservando a resposta humana original no histórico.
 ## 6. Arquitetura e auditoria
 
 ```text
-ação sintética → plano de verificações → snapshot de resultados + riscos
+ação sintética + snapshot fixture de verificações e riscos
                                           ↓
                                 política pura consolidada
                                           ↓
@@ -191,9 +190,9 @@ ação sintética → plano de verificações → snapshot de resultados + risco
                                           ↓
                              revalidação → executor falso
 
-eventos posteriores → caso de resposta → triagem / resolução documentada
+eventos posteriores/sem vínculo → not_authorization_input
 
-ambos → auditoria local redigida + relatório com marcadores de simulação
+todas as saídas → auditoria local mínima + relatório com marcadores de simulação
 ```
 
 Começar com funções puras, estado em memória e adaptadores de arquivo explícito.
@@ -228,8 +227,8 @@ de indisponibilidade precisam de desenho próprio antes de operação real.
 
 | Dia | Entrega da #65 | Evidência esperada |
 |---|---|---|
-| 1 | Contratos de ação, risco, cobertura, decisão e caso; catálogo fixture e testes vermelhos | Ausência do mecanismo faz falhar os três cenários canônicos |
-| 2 | Adaptadores fixture, validação, separação pré/pós e proteção de evidência | Entradas inválidas rejeitadas e nenhum alerta posterior autoriza ação |
+| 1 | Contratos de ação, risco, cobertura e decisão; catálogo fixture e testes vermelhos | Ausência do mecanismo faz falhar os três cenários canônicos |
+| 2 | Adaptador de arquivo fixture, validação e rejeição de entradas posteriores/sem vínculo | Entradas inválidas rejeitadas e nenhum alerta posterior autoriza ação |
 | 3 | Política pura e consolidação com #63/#66 | Proibição prevalece; cobertura ausente não permite aprovação |
 | 4 | #64, identidade, relógio, estados e executor falso | Invalidação, expiração e consumo único demonstrados |
 | 5 | Integração local, auditoria, CI e roteiro | DoD reproduzido por outra pessoa com resultados explícitos |
@@ -284,10 +283,10 @@ antes do mecanismo, verde depois e falha ao remover a proteção pertinente.
 | Tempo | Sem resposta aos 299 s fica pending; aprovação aos 299 s é válida; aos 300/301 s expira. Executor falso aos 300 s não usa aprovação anterior |
 | Invalidação | Alterar parâmetros, política ou evidência relevante após aprovação: 3 cenários, 0 would_execute com decisão antiga |
 | Replay | Repetição idêntica gera 1 decisão inicial; mesmo ID alterado gera conflito. Consumo repetido de aprovação válida gera apenas 1 would_execute por run |
-| Observação posterior | Evento sem pedido abre 1 caso e 0 autorizações; triagem vencida vira expired_unresolved; não registra bloqueio retroativo |
+| Observação posterior | Evento sem pedido e evento de ação já concluída: 2 registros not_authorization_input, 0 autorizações e 0 casos de incidente criados |
 | Validação | Sem ID, versão desconhecida, enum inválido e payload acima do limite: 4 rejeições e 0 autorizações |
 | Auditoria | Falha injetada de escrita: erro explícito, 0 novas transições confirmadas e 0 would_execute decorrentes delas |
-| Privacidade | Canário anterior ao scrubbing não aparece em relatório/auditoria: 0 ocorrências. Remover proteção torna o teste vermelho |
+| Privacidade | Canário em campo bruto extra de entrada válida/inválida não é copiado para stdout, stderr ou auditoria: 0 ocorrências. Remover a projeção de saída faz o teste falhar; scrubbing do pipeline é aceite de #67 |
 | Fronteira | 100% das decisões marcadas simulated e 0 chamadas a executores reais; teste isolado sem adaptador real ou credenciais |
 
 Reconstituir uma decisão pelo snapshot, versões, ator e histórico sem apagar a
@@ -296,3 +295,97 @@ Incluir testes do gate nos comandos/CI usados pelo projeto; após implementaçã
 `make test`, `make lint` e `make pii-guard` devem passar. O guard existente não
 substitui o teste de privacidade da auditoria. Outra pessoa deve reproduzir a demo
 somente pelo roteiro, sem configuração pessoal ou serviços de produção.
+
+
+## 10. Revisão de escopo e preparação para implementação
+
+Esta revisão restringe a responsabilidade da branch à #65. O plano integrado
+é contexto de dependências; não autoriza implementar #21/#63/#64/#66/#67 aqui.
+Qualidade de engenharia de produção significa contrato preciso, falhas visíveis,
+compatibilidade e testes adequados ao efeito prometido. Não transforma uma
+simulação sem autenticação/persistência real em controle pronto para produção.
+
+### Decisões e alternativas
+
+| Decisão | Alternativa descartada e motivo |
+|---|---|
+| Uma única operação fixture parametrizada, com cenários allow/review/deny e falhas | Catálogo genérico de ações: amplia taxonomia antes de validar o mecanismo |
+| Consumir snapshot explícito de resultados | Agendar verificações ou montar agregador distribuído: responsabilidade dos produtores, sem necessidade na demo |
+| Rejeitar uso de observação posterior como autorização | Máquina de casos, triagem e escalonamento: segundo fluxo de produto fora da #65 |
+| Política e máquina de estados coesas, adaptadores mínimos | Framework de plugins, interfaces para múltiplos backends ou motor genérico: abstrações sem consumidor atual |
+| Projetar saída por campos seguros e referências opacas | Implementar outro scrubber na #65: duplica #67 e mistura transformação com política |
+
+A operação fixture proposta é alteração de um recurso sintético em sandbox;
+parâmetros de alcance/reversibilidade e regras aplicáveis cobrem as três decisões.
+Os exemplos de leitura/exclusão na matriz são casos adicionais de política pura,
+não compromissos de integração com diferentes executores. Não carregar arquivos,
+URLs ou comandos apontados pelos parâmetros da ação: o executor falso apenas
+incrementa um contador e emite registro estruturado.
+
+### Fronteiras e falhas visíveis
+
+- Coleta e transporte continuam no emitter/collector. Nenhuma alteração de
+  pipeline ou exporter é necessária para rodar a #65 isoladamente.
+- Transformação e scrubbing pertencem a #21/#67; detecção a #63/#64/#66.
+  O consumidor da #65 valida os resultados e aplica política, sem recriar detectores.
+- Auditoria da #65 usa uma projeção com campos estruturados permitidos. Texto
+  livre e payload de erro não são copiados; motivos são códigos enumerados e
+  referências locais opacas. Se uma justificativa textual for necessária, usa
+  somente texto fixture controlado; texto livre de produção permanece fora do recorte.
+- Política/roster/schema inválidos abortam antes de qualquer decisão permissiva.
+  Não aplicar configuração parcial, defaults permissivos ou fallback de versão.
+- `review` e `deny` são resultados válidos da política, não erros de execução.
+  CLI proposta: exit 0 para avaliação concluída, exit 2 para entrada/configuração
+  inválida, exit 1 para falha operacional, incluindo escrita de auditoria.
+  `not_authorization_input` é resultado explícito de roteamento, com exit 0.
+- Cada run termina com resumo de entradas aceitas/rejeitadas, decisões por tipo,
+  pendências, expirações e would_execute. Sem sucesso silencioso em falha parcial.
+
+### Compatibilidade, manutenção e rollback
+
+Não mudar schemas OTLP existentes, argumentos/defaults do replay ou configurações
+padrão do collector. Schema do gate é versionado separadamente; versão não
+suportada falha explicitamente, sem migração automática. Antes do código, revisar
+com os responsáveis pelos produtores nomes, versões e semântica de check_result;
+fixtures locais não impõem unilateralmente uma API às outras issues.
+
+Usar as convenções Python, pytest, Ruff e Make do repositório, sem novo framework.
+⚠️ EM ABERTO — localização do módulo de política e integração no ambiente Python ·
+decide: responsável pela arquitetura da #65 · trava: primeiro commit de código.
+O emitter é gerador de telemetria: não colocar política nele apenas para reutilizar
+seu ambiente. Escolher o menor módulo coeso após revisão de layout, sem abrir uma
+arquitetura de serviços. Registrar owner de política e de schema antes da integração.
+
+Rollback do recorte: parar a invocação explícita da demo e reverter somente o commit
+funcional da #65; conservar auditoria para investigação. Sem migrations, serviço
+residente, configuração padrão alterada ou dados de produção para restaurar.
+Verificar após a reversão que o replay continua operando via `make dry-run` e que
+nenhum comando padrão inicia o gate. Artefatos locais de runs usam diretório
+ignorado e distinto; não sobrescrever runs anteriores ou apagar logs no rollback.
+
+### Comandos e aceite executável planejado
+
+O Makefile atual executa `make test` e `make lint` somente no emitter. Eles **não
+comprovam cobertura do gate**. Os targets novos abaixo são requisitos para a
+implementação posterior e ainda não existem; devem entrar no CI junto com os
+paths do módulo escolhido, testes, fixtures e políticas.
+
+| Comando | Resultado esperado após implementação |
+|---|---|
+| `make test-human-gate` (novo) | Exit 0; todos os grupos da seção 9 passam, sem testes skipped/xfail para requisitos obrigatórios |
+| `make lint-human-gate` (novo) | Exit 0; zero erros Ruff e zero arquivos fora de formato no módulo/testes novos |
+| `make demo-human-gate` (novo) | Exit 0; cenário fixo com 3 pedidos: initial_allow=1, initial_review=1, initial_deny=1; review fica pending; would_execute=1 e zero efeitos externos |
+| `make test` | Exit 0; suíte existente sem regressão |
+| `make lint` | Exit 0; zero erros existentes |
+| `make dry-run` | Exit 0; replay valida sample sem envio de rede |
+| `make pii-guard` | Exit 0; zero violações nas superfícies que o guard cobre |
+
+Usar Python 3.10/3.13 e sistemas da matriz existente, preservando execução
+macOS/Linux e Windows com Git Bash. Não duplicar ambientes CI sem necessidade.
+O README da entrega deve documentar bootstrap dos novos targets, paths de saída,
+códigos de erro, um exemplo de falha e rollback. O canário de auditoria é teste
+separado do guard; a demo não requer Docker nem serviços externos.
+
+A implementação só começa após validar: recorte único, operação/catálogo fixture,
+contrato de cobertura com os produtores e localização do módulo. Testes da
+seção 9 e targets planejados são aceite futuro, não verificações já executadas.
