@@ -14,6 +14,7 @@ MODES = {"default", "plan", "acceptEdits", "auto", "dontAsk", "bypassPermissions
 KINDS = (
     "bypass_mode_observed",
     "permission_escalation_observed",
+    "fixed_threshold_exceeded",
 )
 MAX_RECORDS = 10_000
 MAX_NS = 2**63 - 1
@@ -84,9 +85,16 @@ def _validate_policy(raw: object) -> dict:
     _id(policy.get("policy_id"), "policy_id_invalid")
     _int(policy.get("policy_version"), "policy_version_invalid", minimum=1)
     severity = _object(policy.get("severity"), "severity_missing")
-    for kind in KINDS:
+    required_kinds = KINDS if "tool_rate" in policy else KINDS[:2]
+    for kind in required_kinds:
         if severity.get(kind) not in ("warning", "high"):
             _fail("severity_invalid")
+    if "tool_rate" in policy:
+        rate = _object(policy["tool_rate"], "tool_rate_invalid")
+        _id(rate.get("baseline_id"), "baseline_id_invalid")
+        _int(rate.get("baseline_version"), "baseline_version_invalid", minimum=1)
+        _int(rate.get("window_seconds"), "window_invalid", minimum=1, maximum=3600)
+        _int(rate.get("threshold"), "threshold_invalid", minimum=0, maximum=MAX_RECORDS)
     return policy
 
 
@@ -162,6 +170,10 @@ def evaluate(bundle: object, raw_policy: object) -> tuple[list[dict], dict]:
     )
     if observations and changes:
         _fail("permission_evidence_mixed")
+    tool_supplied = "tool_calls" in data
+    if tool_supplied and "tool_rate" not in policy:
+        _fail("tool_rate_missing")
+    tool_calls, tool_dups = _dedupe(_list(data.get("tool_calls", []), "tool_list_invalid"), "tool")
     diagnostics: set[str] = set()
     findings: list[dict] = []
     change_sequences: set[tuple[str, int]] = set()
@@ -275,10 +287,57 @@ def evaluate(bundle: object, raw_policy: object) -> tuple[list[dict], dict]:
                 )
             previous = item
 
+    rate = policy.get("tool_rate")
+    window_ns = rate["window_seconds"] * 1_000_000_000 if rate else 0
+    windows: dict[tuple[str, int], set[str]] = defaultdict(set)
+    for item in tool_calls:
+        session = _id(item.get("session_id"), "tool_session_invalid")
+        when = _int(item.get("time_unix_nano"), "tool_time_invalid")
+        if not start <= when < end:
+            _fail("tool_outside_coverage")
+        windows[(session, when // window_ns * window_ns)].add(item["id"])
+    tool_evaluable = tool_supplied and coverage["complete"]
+    for (session, window_start), ids in sorted(windows.items()):
+        window_end = window_start + window_ns
+        if window_start < start or window_end > end:
+            tool_evaluable = False
+            diagnostics.add("partial_window")
+            continue
+        if not coverage["complete"]:
+            continue
+        if len(ids) > rate["threshold"]:
+            details = {
+                "baseline_id": rate["baseline_id"],
+                "baseline_version": rate["baseline_version"],
+                "baseline_count": rate["threshold"],
+                "observed_count": len(ids),
+                "difference_count": len(ids) - rate["threshold"],
+                "window_start_ns": window_start,
+                "window_end_ns": window_end,
+                "group_by": "subject_id,session_id",
+            }
+            findings.append(
+                _event(
+                    data,
+                    policy,
+                    "fixed_threshold_exceeded",
+                    "tool.calls.fixed_window",
+                    window_end,
+                    sorted(ids),
+                    details,
+                    session,
+                )
+            )
+    if not coverage["complete"]:
+        diagnostics.add("coverage_unconfirmed")
+
     findings.sort(key=lambda event: (event["observed_at_ns"], event["event_id"]))
     permission_evaluable = bool(observations or changes) and not diagnostics.intersection(
         {"permission_mode_unknown", "sequence_gap", "timestamp_regression"}
     )
+    evaluations = {"permission": "evaluated" if permission_evaluable else "not_evaluable"}
+    if tool_supplied or rate is not None:
+        evaluations["tool_rate"] = "evaluated" if tool_evaluable else "not_evaluable"
     report = {
         "schema_version": 1,
         "input_integrity": "valid",
@@ -287,12 +346,13 @@ def evaluate(bundle: object, raw_policy: object) -> tuple[list[dict], dict]:
         "source_id": data["source_id"],
         "policy_id": policy["policy_id"],
         "policy_version": policy["policy_version"],
-        "evaluations": {
-            "permission": "evaluated" if permission_evaluable else "not_evaluable",
-        },
+        "evaluations": evaluations,
         "diagnostics": sorted(diagnostics),
-        "received": len(data["permission_observations"]) + len(changes) + change_dups,
-        "duplicates": permission_dups + change_dups,
+        "received": len(data["permission_observations"])
+        + len(changes)
+        + change_dups
+        + len(data.get("tool_calls", [])),
+        "duplicates": permission_dups + change_dups + tool_dups,
         "findings": len(findings),
     }
     return findings, report

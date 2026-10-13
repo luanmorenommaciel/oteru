@@ -1,8 +1,9 @@
 # Operational risk v1: permission observation (#63)
 
-This branch starts the shared, opt-in operational-risk contract and delivers one
-vertical slice: explicit Claude Code permission evidence to a versioned finding,
-report, OTLP log, and queryable ClickHouse row. The evaluator is finite and
+The #63 base branch starts the shared, opt-in operational-risk contract and
+delivers permission evidence to a versioned finding, report, OTLP log, and
+queryable ClickHouse row. This stacked #64 branch adds a fixed, declared
+tool-call baseline. The evaluator is finite and
 offline. It does not install hooks, monitor continuously, or change permissions.
 
 ## Scope and boundaries
@@ -64,7 +65,7 @@ make test                  # full emitter suite passes
 make lint                  # full lint and formatting pass
 make pii-guard             # captures and generated payloads contain no PII leak
 make dry-run               # existing 523-batch sample still parses
-make e2e-risk              # Docker: 1 logical finding, 2 rows after replay
+make e2e-risk              # Docker: 2 logical findings, 4 rows after replay
 ```
 
 The offline demo exercises capture → adapter → detector → finding → output.
@@ -87,5 +88,40 @@ cd oteru-emitter
 The caller must provide `policy.json`. New captures may contain identity; do
 not commit or forward raw captures. Rollback is to stop invoking this opt-in
 runner/replay and revert the branch. Previously stored findings retain their
-scope and IDs. #64 adds a versioned tool-call baseline, and #66 adds declared
-inventory comparison in stacked, separately reviewable branches.
+scope and IDs. #66 adds declared inventory comparison in a stacked,
+separately reviewable branch.
+
+## Fixed tool-call baseline (#64)
+
+This branch adds an optional `tool_calls` list to the bundle and an optional
+`tool_rate` block to the policy. Each call contains a unique `id`, `session_id`,
+and `time_unix_nano`; the surrounding bundle already supplies `subject_id` and
+coverage. When calls are supplied, `tool_rate` is required and invalid or
+missing baseline metadata fails with exit 2. An absent call list is
+`not_evaluable` if a baseline was configured; an explicit empty list with
+complete coverage evaluates to zero findings. This preserves the #63 input
+contract for callers that do not use #64.
+
+The baseline declares `baseline_id`, `baseline_version`, `window_seconds`
+(1–3600), and `threshold` (0–10000). Unique call IDs are counted by subject,
+session, and UTC epoch-aligned `[start,end)` window. A window is evaluated only
+when the producer declares complete coverage for the entire window. A count
+strictly above the threshold emits `fixed_threshold_exceeded`. The finding
+includes baseline ID/version/count, observed count, difference, window bounds,
+and `group_by: subject_id,session_id`. It is a fixed threshold, not a learned
+anomaly or claim about behavioral intent. The producer's completeness claim
+is not independently verified.
+
+```bash
+make test-risk             # 9, 10, 11-call boundaries and failure cases pass
+make demo-risk-tool-rate   # 10 calls normal; 11 calls -> one finding
+make lint-risk             # detector, demo, tests and E2E script pass Ruff
+make pii-guard             # generated normal/anomalous output is scanned
+make dry-run               # existing capture still parses
+make e2e-risk              # Docker: 2 logical findings, 4 rows after replay
+```
+
+The synthetic demonstration threshold and severity require owner calibration
+before operational use: choose the population, expected rate, false-positive
+budget, policy version owner, and alert route. No adaptive learning or
+continuous monitor is implemented.
