@@ -1,7 +1,7 @@
 # #65 — decisão humana proporcional à consequência
 
-Revisão: 2026-10-12. Status: plano para revisão; não implementado.
-O commit deste documento não autoriza implementação ou enforcement real.
+Revisão: 2026-10-13. Status: vertical slice local implementado para revisão.
+A integração com produtores reais e qualquer enforcement permanecem fora do escopo.
 
 Relacionado ao [plano integrado de cinco dias](operational-risk-5-day-plan.md)
 e à [issue #65](https://github.com/luanmorenommaciel/oteru/issues/65).
@@ -268,7 +268,7 @@ não é critério suficiente: deixa de representar a política por ação e cobe
 
 ## 9. Definition of Done verificável
 
-Requisitos da implementação futura; não são resultados já executados. Cada grupo
+Critérios do vertical slice; resultados executados são relatados na PR. Cada grupo
 usa run isolado, política e relógio fixos. Preservar evidência de teste vermelho
 antes do mecanismo, verde depois e falha ao remover a proteção pertinente.
 
@@ -366,9 +366,8 @@ ignorado e distinto; não sobrescrever runs anteriores ou apagar logs no rollbac
 ### Comandos e aceite executável planejado
 
 O Makefile atual executa `make test` e `make lint` somente no emitter. Eles **não
-comprovam cobertura do gate**. Os targets novos abaixo são requisitos para a
-implementação posterior e ainda não existem; devem entrar no CI junto com os
-paths do módulo escolhido, testes, fixtures e políticas.
+comprovam cobertura do gate**. Os targets abaixo foram adicionados à branch e devem rodar no CI com os paths
+do módulo, testes, fixtures e política.
 
 | Comando | Resultado esperado após implementação |
 |---|---|
@@ -386,6 +385,34 @@ O README da entrega deve documentar bootstrap dos novos targets, paths de saída
 códigos de erro, um exemplo de falha e rollback. O canário de auditoria é teste
 separado do guard; a demo não requer Docker nem serviços externos.
 
-A implementação só começa após validar: recorte único, operação/catálogo fixture,
-contrato de cobertura com os produtores e localização do módulo. Testes da
-seção 9 e targets planejados são aceite futuro, não verificações já executadas.
+O recorte implementado usa o pacote `oteru_gate/` e fixtures locais. Falta
+validar com os responsáveis pelos produtores um contrato de `check_result`
+autenticado e com validade antes de integrar dados reais. Os testes e o roteiro
+da PR são a evidência desta simulação; não provam enforcement operacional.
+
+### Contrato implementado e dependências abertas
+
+O recorte entregue aceita `request` sintético com `request_id`, `action_id`,
+`revision`, solicitante, operação, recurso, ambiente, alcance, reversibilidade,
+sensibilidade, mudança de privilégio, parâmetros e `created_at`. Cada check
+fixture tem `check_id`, `status` e referências de evidência. `evaluate` exige
+resultado explícito para `inventory`, `permission` e `anomaly`; um evento prévio
+não mapeado é rejeitado em vez de ser ignorado. A recomendação, o digest da ação
+e o digest do snapshot aparecem no relatório. A resposta de revisão deve citar
+ambos os digests e um aprovador presente no roster fixture para a operação.
+
+O contrato completo de `check_result/v1` descrito acima **ainda não está
+implementado**: a fixture não autentica origem, não vincula criptograficamente
+cada resultado ao pedido, não carrega versão/validade individual nem prova que
+os produtores concluíram a coleta. `expired` é um status explícito da fixture.
+Essas lacunas impedem ligar o simulador a dados reais ou afirmar autorização
+confiável. A integração exige acordo de schema com #63/#64/#66 e testes de
+proveniência, validade e correlação. O digest local detecta mudança entre o
+snapshot avaliado e um `current_checks` fornecido na tentativa simulada, mas
+não substitui essas garantias.
+
+Não foi criada máquina de casos de incidente. Eventos posteriores são apenas
+marcados `not_authorization_input`; o workflow de triagem é outro produto.
+Não existe token, interceptador, aprovação autenticada, fila durável ou SLA.
+Rollback é retirar a invocação explícita da demo/reverter o commit funcional;
+o collector e o emitter continuam com os mesmos defaults.

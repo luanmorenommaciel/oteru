@@ -1,7 +1,8 @@
 # Plano de 5 dias — Operational Risk (#21, #63–#67)
 
-Revisão: 2026-10-12. Plano para revisão; implementação não iniciada nesta entrega.
-O timebox começa após validação para implementar. Detalhamento da resposta humana:
+Revisão: 2026-10-13. A #65 tem um simulador local isolado nesta branch;
+as outras issues do plano não são implementadas aqui. O timebox integrado
+permanece como plano para validação. Detalhamento da resposta humana:
 [proposta da #65](issue-65-human-response-proposal.md).
 
 ## 1. Problema
