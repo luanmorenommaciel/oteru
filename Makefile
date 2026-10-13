@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals test-risk lint-risk demo-risk-permission demo-risk-tool-rate e2e-risk up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals test-risk lint-risk demo-risk-permission demo-risk-tool-rate demo-risk-inventory e2e-risk up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -64,6 +64,9 @@ demo-risk-permission: ## project synthetic Claude events and evaluate permission
 
 demo-risk-tool-rate: ## compare normal and elevated tool-call windows offline
 	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.risk.demo_tool_rate
+
+demo-risk-inventory: ## compare declared components with a versioned allowlist offline
+	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.risk.demo_inventory
 
 e2e-risk: ## send risk logs to an isolated collector and ClickHouse
 	$(VENV)/$(BINDIR)/python scripts/check_risk_e2e.py

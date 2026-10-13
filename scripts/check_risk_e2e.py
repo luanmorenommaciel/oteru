@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 from oteru_emitter.risk.demo import synthetic_capture
+from oteru_emitter.risk.demo_inventory import example as inventory_example
 from oteru_emitter.risk.demo_tool_rate import example as tool_rate_example
 from oteru_emitter.risk.output import canonical, write_output
 from oteru_emitter.risk.rules import evaluate
@@ -125,12 +126,16 @@ def main() -> int:
             bundle, risk_policy = tool_rate_example(11, anchor_ns=anchor)
             bundle["permission_observations"] = []
             bundle["permission_changes"] = projected["permission_changes"]
+            inventory_bundle, inventory_policy = inventory_example(anchor_ns=anchor)
+            bundle["inventory"] = inventory_bundle["inventory"]
+            risk_policy["allowlist"] = inventory_policy["allowlist"]
+            risk_policy["severity"].update(inventory_policy["severity"])
             findings, report = evaluate(bundle, risk_policy)
             output = work / "result"
             write_output(output, findings, report)
             capture = output / "otlp.jsonl"
             url = f"http://{clickhouse}/?user=otel&password=otel"
-            for expected in (2, 4):
+            for expected in (5, 10):
                 _run(
                     [
                         sys.executable,
@@ -148,12 +153,12 @@ def main() -> int:
                     ]
                 )
                 physical, distinct, kinds, versions = _wait_count(url, expected)
-                if (physical, distinct, kinds, versions) != (expected, 2, 2, 1):
+                if (physical, distinct, kinds, versions) != (expected, 5, 3, 1):
                     raise RuntimeError(
                         f"risk_count_mismatch: rows={physical}, distinct={distinct}, "
                         f"kinds={kinds}, versions={versions}"
                     )
-            print("e2e-risk: 2 distinct findings, 4 rows after replay")
+            print("e2e-risk: 5 distinct findings, 10 rows after replay")
             return 0
         finally:
             # The unique Compose project owns this named volume; no existing stack is touched.

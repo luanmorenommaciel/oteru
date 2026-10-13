@@ -2,8 +2,9 @@
 
 The #63 base branch starts the shared, opt-in operational-risk contract and
 delivers permission evidence to a versioned finding, report, OTLP log, and
-queryable ClickHouse row. This stacked #64 branch adds a fixed, declared
-tool-call baseline. The evaluator is finite and
+queryable ClickHouse row. The stacked #64 branch adds a fixed, declared
+tool-call baseline. This stacked #66 branch adds declared inventory comparison.
+The evaluator is finite and
 offline. It does not install hooks, monitor continuously, or change permissions.
 
 ## Scope and boundaries
@@ -65,7 +66,7 @@ make test                  # full emitter suite passes
 make lint                  # full lint and formatting pass
 make pii-guard             # captures and generated payloads contain no PII leak
 make dry-run               # existing 523-batch sample still parses
-make e2e-risk              # Docker: 2 logical findings, 4 rows after replay
+make e2e-risk              # Docker: 5 logical findings, 10 rows after replay
 ```
 
 The offline demo exercises capture → adapter → detector → finding → output.
@@ -88,8 +89,7 @@ cd oteru-emitter
 The caller must provide `policy.json`. New captures may contain identity; do
 not commit or forward raw captures. Rollback is to stop invoking this opt-in
 runner/replay and revert the branch. Previously stored findings retain their
-scope and IDs. #66 adds declared inventory comparison in a stacked,
-separately reviewable branch.
+scope and IDs. The #66 comparison is delivered by this stacked branch.
 
 ## Fixed tool-call baseline (#64)
 
@@ -118,10 +118,43 @@ make demo-risk-tool-rate   # 10 calls normal; 11 calls -> one finding
 make lint-risk             # detector, demo, tests and E2E script pass Ruff
 make pii-guard             # generated normal/anomalous output is scanned
 make dry-run               # existing capture still parses
-make e2e-risk              # Docker: 2 logical findings, 4 rows after replay
+make e2e-risk              # Docker: 5 logical findings, 10 rows after replay
 ```
 
 The synthetic demonstration threshold and severity require owner calibration
 before operational use: choose the population, expected rate, false-positive
 budget, policy version owner, and alert route. No adaptive learning or
 continuous monitor is implemented.
+
+## Declared component inventory (#66)
+
+The caller may supply an `inventory` object with `snapshot_id`,
+`observed_at_ns`, and `components`. Every component has `kind` (`mcp`,
+`plugin`, or `skill`), opaque `id`, `version`, and a lowercase 64-character
+SHA-256 `digest`. When inventory is supplied, the policy must include a
+versioned `allowlist` with `allowlist_id`, `allowlist_version`, and `entries`
+using the same component schema. Missing policy, malformed metadata, or
+conflicting declarations fail with exit 2. An explicit empty inventory is
+evaluated; an absent inventory with a configured allowlist is `not_evaluable`.
+
+Comparison is exact. `report.json` lists each declared component's projected
+identity and one status: `allowed`, `unknown`, `version_mismatch`, or
+`digest_mismatch`. The latter three each emit a
+`declared_component_unapproved` finding with the reason and allowlist version.
+Approved components do not create risk findings. The digest is supplied by the
+caller; this evaluator does not compute a hash of installed code or certify a
+host. No automatic discovery is in scope.
+
+```bash
+make test-risk             # schema, 3 kinds × 4 outcomes, duplicates pass
+make demo-risk-inventory   # 1 allowed and 3 unapproved synthetic components
+make lint-risk             # evaluator, demo, tests and E2E script pass Ruff
+make pii-guard             # inventory fixture and all output layers are scanned
+make dry-run               # existing capture still parses
+make e2e-risk              # Docker: 5 logical findings, 10 rows after replay
+```
+
+An inventory producer, its completeness guarantee, and an allowlist owner
+remain open production decisions. The delivered result describes supplied
+declarations only; it does not discover installed MCP servers, plugins, or
+skills.
