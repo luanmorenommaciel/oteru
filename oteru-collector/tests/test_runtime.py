@@ -7,11 +7,15 @@ All published ports are random, loopback-only. Only synthetic data is sent.
 from __future__ import annotations
 
 import copy
+import io
 import json
 import subprocess
+import tarfile
+import tempfile
 import time
 import uuid
 from contextlib import contextmanager
+from pathlib import Path
 
 import grpc
 import pytest
@@ -58,17 +62,32 @@ CONTENT = (
     "gen_ai.output.messages",
 )
 CANARY = "privacy-canary@example.com"
+OUTPUT_CONTAINERS = {}
+
+
+@pytest.fixture(autouse=True)
+def docker_mount_access(tmp_path):
+    """Allow the container UID to traverse pytest's private Linux temp parents."""
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    for directory in (tmp_path, *tmp_path.parents):
+        if directory == temp_root:
+            break
+        directory.chmod(directory.stat().st_mode | 0o111)
 
 
 def docker(*args, check=True):
-    return subprocess.run(
-        ["docker", *args], check=check, text=True, capture_output=True, timeout=120
+    result = subprocess.run(
+        ["docker", *args], check=False, text=True, capture_output=True, timeout=120
     )
+    if check and result.returncode:
+        raise AssertionError(f"docker {args[0]} failed: {result.stderr}")
+    return result
 
 
 @contextmanager
 def collector(tmp_path, config, network=None):
     name = "oteru-privacy-" + uuid.uuid4().hex[:12]
+    output = tmp_path / "telemetry.json"
     tmp_path.mkdir(parents=True, exist_ok=True)
     tmp_path.chmod(0o777)
     path = tmp_path / "config.json"
@@ -108,8 +127,10 @@ def collector(tmp_path, config, network=None):
                 + docker("logs", name).stdout
                 + docker("logs", name).stderr
             )
-        yield name, http, grpc_endpoint, tmp_path / "telemetry.json"
+        OUTPUT_CONTAINERS[output] = (name, "/out/telemetry.json")
+        yield name, http, grpc_endpoint, output
     finally:
+        OUTPUT_CONTAINERS.pop(output, None)
         docker("rm", "-f", name, check=False)
 
 
@@ -207,7 +228,25 @@ def send(instance, signal, transport, data):
 def read_batches(path):
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    try:
+        content = path.read_text()
+    except PermissionError:
+        # On Linux the Collector owns its 0600 file. Inspect the same output
+        # through Docker without changing the Collector's production UID.
+        name, container_path = OUTPUT_CONTAINERS[path]
+        archive = subprocess.run(
+            ["docker", "cp", f"{name}:{container_path}", "-"],
+            check=True,
+            capture_output=True,
+            timeout=120,
+        ).stdout
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as stream:
+            member = stream.next()
+            assert member is not None
+            file = stream.extractfile(member)
+            assert file is not None
+            content = file.read().decode("utf-8")
+    return [json.loads(line) for line in content.splitlines() if line.strip()]
 
 
 def records(batches, signal):
@@ -434,6 +473,7 @@ def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path):
                 IMAGE,
                 "--config=/out/config.json",
             )
+            OUTPUT_CONTAINERS[sink_dir / "telemetry.json"] = (sink_name, "/out/telemetry.json")
             source_config = config_for(profile="clickstack")
             source_config["exporters"]["otlphttp/clickstack"]["endpoint"] = "http://sink:4318"
             with collector(tmp_path / "source", source_config, network) as source:
@@ -447,6 +487,7 @@ def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path):
                 assert all(len(records(batches, signal)) == 1 for signal in SIGNALS)
                 assert CANARY not in json.dumps(read_batches(source[3]))
         finally:
+            OUTPUT_CONTAINERS.pop(sink_dir / "telemetry.json", None)
             docker("rm", "-f", sink_name, check=False)
 
 
@@ -645,6 +686,7 @@ def test_policy_activation_replaces_valid_policy_and_stops_on_invalid(tmp_path, 
             "",
             stack / "telemetry/telemetry.json",
         )
+        OUTPUT_CONTAINERS[instance[3]] = (container_id, "/telemetry/telemetry.json")
         time.sleep(0.5)
         send(instance, "logs", "http", payload("logs"))
         assert CANARY not in json.dumps(wait_records(instance[3], "logs", 1))
@@ -655,6 +697,7 @@ def test_policy_activation_replaces_valid_policy_and_stops_on_invalid(tmp_path, 
         new_id = docker(*compose, "ps", "-q", "oteru-collector").stdout.strip()
         ports = json.loads(docker("inspect", new_id).stdout)[0]["NetworkSettings"]["Ports"]
         instance = (new_id, "http://127.0.0.1:" + ports["4318/tcp"][0]["HostPort"], "", instance[3])
+        OUTPUT_CONTAINERS[instance[3]] = (new_id, "/telemetry/telemetry.json")
         time.sleep(0.5)
         send(instance, "logs", "http", payload("logs"))
         data = wait_records(instance[3], "logs", 2)
@@ -670,4 +713,5 @@ def test_policy_activation_replaces_valid_policy_and_stops_on_invalid(tmp_path, 
             *compose, "ps", "-q", "--status", "running", "oteru-collector"
         ).stdout.strip()
     finally:
+        OUTPUT_CONTAINERS.pop(stack / "telemetry/telemetry.json", None)
         docker(*compose, "down", "-v", "--remove-orphans", check=False)
