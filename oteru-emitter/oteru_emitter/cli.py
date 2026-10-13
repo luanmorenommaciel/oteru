@@ -20,6 +20,7 @@ from collections import Counter
 
 from . import __version__
 from .profiles import get_profile, list_profiles
+from .rewrite.mark import SYNTHETIC, TRAFFIC_KEY, mark_synthetic
 from .rewrite.restamp import restamp
 from .scheduler.realtime import run_realtime
 from .sources.replay import (
@@ -170,6 +171,8 @@ def cmd_replay(args) -> int:
         rotate_trace_ids=not args.no_restamp,
         seed=args.seed,
     )
+    if args.mark_synthetic:
+        mark_synthetic(batches)
 
     print(f"oteru-emitter {__version__} — replay")
     print(f"  file:      {args.file}")
@@ -185,6 +188,10 @@ def cmd_replay(args) -> int:
             if args.no_restamp
             else f"  (offset {offset_ns / 1e9:+.1f}s, rotates IDs={list(rotate_keys)})"
         )
+    )
+    print(
+        "  synthetic: "
+        + (f"{TRAFFIC_KEY}={SYNTHETIC} on every resource" if args.mark_synthetic else "off")
     )
     print(_summarize(batches))
 
@@ -296,6 +303,12 @@ def build_parser() -> argparse.ArgumentParser:
         "e.g. authorization=<api-key> for ClickStack/HyperDX",
     )
     r.add_argument("--limit", type=int, default=0, help="send only the first N batches")
+    r.add_argument(
+        "--mark-synthetic",
+        action="store_true",
+        help=f"tag every resource with {TRAFFIC_KEY}={SYNTHETIC} so the replay can be told "
+        "from real traffic on the same collector (records stay byte-identical)",
+    )
     r.add_argument("--seed", type=int, default=None, help="seed for ID rotation (reproducible)")
     r.add_argument("--timeout", type=float, default=30.0, help="network timeout (s)")
     r.add_argument("--dry-run", action="store_true", help="validate and summarize only; no send")
