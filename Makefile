@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals privacy-config-check e2e-privacy apply-privacy up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals privacy-config-check e2e-privacy demo-privacy apply-privacy up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -72,6 +72,15 @@ privacy-config-check: ## verify policy contract and all Collector pipelines (no 
 
 e2e-privacy: ## exercise privacy policy and sinks in isolated Docker containers
 	$(VENV)/$(BINDIR)/python -m pytest $(COLLECTOR)/tests/test_runtime.py
+
+demo-privacy: ## prove synthetic PII is absent from Collector outputs (isolated Docker)
+	@echo 'Synthetic input: privacy-canary@example.com; success means the canary is absent from every tested output.'
+	$(VENV)/$(BINDIR)/python -m pytest -v --tb=short \
+		$(COLLECTOR)/tests/test_runtime.py::test_identity_is_scrubbed_before_file_and_stdout \
+		$(COLLECTOR)/tests/test_runtime.py::test_uninspectable_links_and_exemplars_are_rejected \
+		$(COLLECTOR)/tests/test_runtime.py::test_clickstack_forwarder_receives_only_scrubbed_otlp \
+		$(COLLECTOR)/tests/test_runtime.py::test_clickhouse_tables_receive_only_scrubbed_records \
+		$(COLLECTOR)/tests/test_runtime.py::test_policy_activation_replaces_valid_policy_and_stops_on_invalid
 
 apply-privacy: ## stop ingestion, compile a new policy and recreate Collector (PROFILE=base|clickhouse|clickstack|clickstack-local|hyperdx)
 	$(PYTHON) scripts/apply_privacy.py --profile $(or $(PROFILE),base)

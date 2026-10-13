@@ -96,6 +96,7 @@ CI (GitHub Actions) runs lint + tests on Ubuntu and Windows × Python 3.10 and
 ### PII guard
 
 The Collector also has a runtime privacy policy for known identity and content fields. See [Collector privacy policy](docs/privacy.md) for the catalog, explicit data-loss decisions, activation procedure and limitations. `make privacy-config-check` validates the policy and every pipeline; `make e2e-privacy` checks actual Collector outputs in isolated Docker containers. The PII guard below protects committed fixtures and is a separate check.
+Run `make demo-privacy` for a short, reproducible proof with synthetic PII across the Collector's output paths.
 
 The #1 documented risk here is committing an un-redacted capture.
 `scripts/check_pii.py` (stdlib-only) scans `oteru-emitter/samples/` and
