@@ -17,8 +17,8 @@ end-to-end without depending on live AI sessions:
 oteru-emitter / Claude Code CLI / future emitters
         │  OTLP (gRPC :4317 │ HTTP :4318)
         ▼
-oteru-collector ──► debug (stdout)
-                └─► file  (telemetry/telemetry.json)
+oteru-collector ──► privacy policy ──► debug (stdout)
+                                  └─► file  (telemetry/telemetry.json)
 ```
 
 ## Quickstart
@@ -93,6 +93,8 @@ CI (GitHub Actions) runs lint + tests on Ubuntu and Windows × Python 3.10 and
 `scripts/` or the workflow itself.
 
 ### PII guard
+
+The Collector also has a runtime privacy policy for known identity and content fields. See [Collector privacy policy](docs/privacy.md) for the catalog, explicit data-loss decisions, activation procedure and limitations. `make privacy-config-check` validates the policy and every pipeline; `make e2e-privacy` checks actual Collector outputs in isolated Docker containers. The PII guard below protects committed fixtures and is a separate check.
 
 The #1 documented risk here is committing an un-redacted capture.
 `scripts/check_pii.py` (stdlib-only) scans `oteru-emitter/samples/` and
