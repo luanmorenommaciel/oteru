@@ -13,11 +13,19 @@ on:
     paths:
       - "oteru-emitter/**"
       - "scripts/**"
+      - "oteru_gate/**"
+      - "tests/test_human_gate.py"
+      - "ruff.toml"
+      - "Makefile"
       - ".github/workflows/ci.yml"
   pull_request:
     paths:
       - "oteru-emitter/**"
       - "scripts/**"
+      - "oteru_gate/**"
+      - "tests/test_human_gate.py"
+      - "ruff.toml"
+      - "Makefile"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
   schedule:
@@ -64,6 +72,12 @@ jobs:
         run: ruff format --check .
       - name: Tests
         run: pytest
+      - name: Human gate lint and tests
+        run: |
+          python -m ruff check ../oteru_gate ../tests/test_human_gate.py
+          python -m ruff format --check ../oteru_gate ../tests/test_human_gate.py
+          cd ..
+          python -m pytest -q tests/test_human_gate.py
       - name: Smoke (sample dry-run, no network)
         run: oteru-emitter replay samples/telemetry-sample.json --dry-run
 
