@@ -15,4 +15,8 @@ separately. Mark new replays with `oteru-emitter replay ... --mark-synthetic`.
 The service runs through the existing Collector and ClickHouse Compose stack.
 Use `make down-attention` to stop it without deleting volumes.
 
+Ask Oteru accepts bounded natural-language questions about priority, failures,
+activity, cost and permissions. It maps recognized questions to reviewed,
+read-only product rules and explicitly declines unsupported questions.
+
 Run `make test-attention` and `make lint-attention` after `make setup`.

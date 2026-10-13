@@ -22,6 +22,12 @@
         <div id="notice" class="notice" role="status" hidden></div>
         <section class="coverage-bar" aria-label="Cobertura dos dados"><strong id="coverage-title">Carregando telemetria</strong><span id="coverage-window">—</span><span id="coverage-detail">—</span></section>
         <section class="panel queue-panel" aria-labelledby="queue-title"><div class="panel-head"><div><p class="section-number">01 / TRIAGEM</p><h2 id="queue-title">Fila de atenção</h2></div><span id="queue-count" class="count-pill">—</span></div><p class="panel-intro">Falhas, rejeições e mudanças de permissão observadas nesta janela.</p><div id="queue-list" class="queue-list" aria-live="polite"></div></section>
+        <section class="panel ask-panel" aria-labelledby="ask-title">
+          <div class="panel-head"><div><p class="section-number">02 / INVESTIGAÇÃO</p><h2 id="ask-title">Pergunte ao Oteru</h2></div></div>
+          <p class="panel-intro">Perguntas suportadas usam consultas de leitura revisadas.</p>
+          <form id="ask-form" class="ask-form"><label class="visually-hidden" for="question">Sua pergunta</label><input id="question" name="question" maxlength="300" autocomplete="off" placeholder="Ex.: Quais ferramentas falharam?" required><button class="button button-primary" type="submit">Perguntar</button></form>
+          <div id="suggestions" class="suggestions"></div><div id="answer" class="answer" hidden aria-live="polite"></div>
+        </section>
       </main>
     </div>
   </body>

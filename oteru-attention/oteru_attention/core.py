@@ -1,11 +1,83 @@
-"""Product rules for the prioritized attention queue."""
+"""Product rules shared by the queue, supervisor, answers and indicators."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
+
+INTENTS = {
+    "priority": {
+        "title": "Itens que pedem atenção",
+        "example": "Onde devo olhar primeiro?",
+        "metric_label": "itens na fila",
+    },
+    "failures": {
+        "title": "Falhas observadas",
+        "example": "Quais ferramentas falharam?",
+        "metric_label": "falhas",
+    },
+    "activity": {
+        "title": "Atividade dos agentes",
+        "example": "Quais agentes tiveram atividade recente?",
+        "metric_label": "sessões recentes",
+    },
+    "cost": {
+        "title": "Custo registrado",
+        "example": "Quanto custaram as requisições?",
+        "metric_label": "USD registrados",
+    },
+    "permissions": {
+        "title": "Mudanças de permissão",
+        "example": "Houve mudanças de permissão?",
+        "metric_label": "mudanças de modo",
+    },
+}
+
+
+def classify_question(question: str) -> str | None:
+    """Map a natural-language question to a reviewed, read-only intent."""
+    normalized = "".join(
+        c for c in unicodedata.normalize("NFKD", question.lower()) if not unicodedata.combining(c)
+    )
+    normalized = re.sub(r"[^a-z0-9 ]+", " ", normalized)
+    words = set(normalized.split())
+    if words & {
+        "custo",
+        "custos",
+        "custou",
+        "custaram",
+        "gasto",
+        "gastos",
+        "spend",
+        "cost",
+        "preco",
+    }:
+        return "cost"
+    if words & {"permissao", "permissoes", "permission", "permissions", "modo"}:
+        return "permissions"
+    if words & {
+        "falha",
+        "falhas",
+        "falhou",
+        "falharam",
+        "erro",
+        "erros",
+        "failed",
+        "failure",
+        "failures",
+        "errors",
+    }:
+        return "failures"
+    if words & {"ativo", "ativos", "atividade", "agente", "agentes", "sessoes", "sessao"}:
+        return "activity"
+    if words & {"prioridade", "prioridades", "fila", "atencao", "olhar", "primeiro"}:
+        return "priority"
+    return None
 
 
 def utc_time(milliseconds: int) -> str:
@@ -168,3 +240,126 @@ class Snapshot:
     @staticmethod
     def _time_ms(iso: str) -> int:
         return int(datetime.fromisoformat(iso).timestamp() * 1000)
+
+    def sessions(self) -> list[dict]:
+        grouped: dict[tuple[str, str, str], dict] = {}
+        for observation in self.observations:
+            session = observation.session_id or (
+                observation.trace_id if observation.source == "trace" else ""
+            )
+            if not session:
+                continue
+            agent = observation.agent_id or observation.service
+            key = (observation.service, agent, session)
+            if key not in grouped:
+                grouped[key] = {
+                    "service": observation.service,
+                    "agent": agent,
+                    "identity_basis": "agent.id" if observation.agent_id else "service.name",
+                    "session_id": session,
+                    "last_seen": utc_time(observation.ts_ms),
+                    "last_seen_ms": observation.ts_ms,
+                    "records": 0,
+                    "signals": set(),
+                    "provenance": observation.provenance,
+                    "evidence": observation.evidence(),
+                }
+            item = grouped[key]
+            item["records"] += 1
+            item["signals"].add(observation.source)
+        sessions = []
+        for item in grouped.values():
+            recent = (
+                item["last_seen_ms"] <= self.now_ms
+                and self.now_ms - item["last_seen_ms"] <= self.recent_minutes * 60_000
+                and item["provenance"] != "sample"
+            )
+            item["activity"] = "recent" if recent else "not_recent_or_sample"
+            item["signals"] = sorted(item["signals"])
+            del item["last_seen_ms"]
+            sessions.append(item)
+        return sorted(sessions, key=lambda item: item["last_seen"], reverse=True)
+
+    def evidence(self, evidence_id: str) -> dict | None:
+        for observation in self.observations:
+            evidence = observation.evidence()
+            if evidence["id"] == evidence_id:
+                return evidence
+        return None
+
+    def answer(self, intent: str) -> dict:
+        if intent not in INTENTS:
+            raise ValueError("unsupported intent")
+        coverage = self.coverage()
+        evidence: list[dict] = []
+        metric: int | str = 0
+        status = "answered"
+        if intent == "priority":
+            queue = self.queue()
+            metric = len(queue)
+            evidence = [item["evidence"] for item in queue[:5]]
+            text = (
+                f"Há {metric} ocorrência(s) na fila. A primeira é: {queue[0]['title']}."
+                if queue
+                else "Nenhuma ocorrência priorizável foi observada nesta janela."
+            )
+        elif intent == "failures":
+            failures = [
+                item for item in self.queue() if item["kind"] in {"tool_failure", "trace_error"}
+            ]
+            metric = len(failures)
+            evidence = [item["evidence"] for item in failures[:5]]
+            text = f"Foram observadas {metric} falha(s) de ferramenta ou operação de agente."
+        elif intent == "permissions":
+            changes = [item for item in self.queue() if item["kind"] == "permission_change"]
+            metric = len(changes)
+            evidence = [item["evidence"] for item in changes[:5]]
+            text = f"Foram observadas {metric} mudança(s) de modo de permissão."
+        elif intent == "activity":
+            sessions = self.sessions()
+            recent = [item for item in sessions if item["activity"] == "recent"]
+            metric = len(recent)
+            evidence = [item["evidence"] for item in recent[:5]]
+            text = (
+                f"Há {len(sessions)} sessão(ões) observada(s); {metric} com sinal recente. "
+                "Sinal recente não confirma que o agente ainda está executando."
+            )
+        else:
+            priced = []
+            total = Decimal("0")
+            for observation in self.observations:
+                if observation.event_kind != "api_request" or not observation.cost_usd:
+                    continue
+                try:
+                    amount = Decimal(observation.cost_usd)
+                except InvalidOperation:
+                    continue
+                if not amount.is_finite() or amount < 0:
+                    continue
+                total += amount
+                priced.append(observation)
+            metric = str(total.quantize(Decimal("0.000001")))
+            evidence = [item.evidence() for item in priced[:5]]
+            text = (
+                f"USD {metric} registrados em {len(priced)} requisição(ões) nesta janela."
+                if priced
+                else "Não há custos registrados nos sinais consultados nesta janela."
+            )
+            if not priced:
+                status = "insufficient"
+        if not self.observations:
+            status = "insufficient"
+            text = "Não há telemetria de agente suficiente nesta janela para responder."
+        elif coverage["truncated"]:
+            status = "partial"
+            text += " A consulta atingiu o limite de registros; o total pode estar incompleto."
+        return {
+            "intent": intent,
+            "status": status,
+            "text": text,
+            "metric": metric,
+            "metric_label": INTENTS[intent]["metric_label"],
+            "evidence": evidence,
+            "coverage": coverage,
+            "rule_version": "attention-v1",
+        }

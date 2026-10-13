@@ -5,13 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from .clickhouse import ClickHouseStore, StoreConfig, StoreUnavailable
-from .core import Snapshot
+from .core import INTENTS, Snapshot, classify_question
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -23,6 +24,7 @@ class AttentionApp:
         self.store = store
         self.window_hours = window_hours
         self.row_limit = row_limit
+        self.csrf_token = secrets.token_urlsafe(32)
 
     def snapshot(self, *, demo: bool = False) -> Snapshot:
         rows, truncated = self.store.observations(
@@ -44,6 +46,20 @@ class AttentionApp:
             "queue": queue[:50],
             "queue_total": len(queue),
         }
+
+    def ask(self, question: str, *, demo: bool = False) -> dict:
+        if not 1 <= len(question.strip()) <= 300:
+            raise ValueError("a pergunta deve ter entre 1 e 300 caracteres")
+        intent = classify_question(question)
+        if intent is None:
+            return {
+                "intent": None,
+                "status": "unsupported",
+                "text": "Ainda não consigo responder essa pergunta com uma consulta validada.",
+                "evidence": [],
+                "supported_questions": [spec["example"] for spec in INTENTS.values()],
+            }
+        return self.snapshot(demo=demo).answer(intent)
 
 
 def make_handler(app: AttentionApp):
@@ -68,6 +84,14 @@ def make_handler(app: AttentionApp):
                 if path == "/healthz":
                     app.store.query("SELECT 1 FORMAT JSONEachRow")
                     self._json(200, {"status": "ok"})
+                elif path == "/api/bootstrap":
+                    self._json(
+                        200,
+                        {
+                            "csrf_token": app.csrf_token,
+                            "questions": [spec["example"] for spec in INTENTS.values()],
+                        },
+                    )
                 elif path == "/api/dashboard":
                     demo = parse_qs(urlsplit(self.path).query).get("demo") == ["1"]
                     self._json(200, app.dashboard(demo=demo))
@@ -81,6 +105,32 @@ def make_handler(app: AttentionApp):
                     self._send(200, (STATIC_DIR / name).read_bytes(), media)
                 else:
                     self._json(404, {"error": "rota não encontrada"})
+            except StoreUnavailable as exc:
+                self._json(503, {"error": str(exc)})
+
+        def do_POST(self) -> None:  # noqa: N802
+            if not secrets.compare_digest(self.headers.get("X-Oteru-CSRF", ""), app.csrf_token):
+                self._json(403, {"error": "token de escrita inválido"})
+                return
+            origin = self.headers.get("Origin")
+            if origin and urlsplit(origin).netloc != self.headers.get("Host"):
+                self._json(403, {"error": "origem não permitida"})
+                return
+            try:
+                if urlsplit(self.path).path != "/api/ask":
+                    self._json(404, {"error": "rota não encontrada"})
+                    return
+                if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
+                    raise ValueError("envie application/json")
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 1 <= length <= 4096:
+                    raise ValueError("corpo JSON fora do limite de 4096 bytes")
+                body = json.loads(self.rfile.read(length))
+                if not isinstance(body, dict) or not isinstance(body.get("question"), str):
+                    raise ValueError("question deve ser texto")
+                self._json(200, app.ask(body["question"], demo=body.get("demo") is True))
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
             except StoreUnavailable as exc:
                 self._json(503, {"error": str(exc)})
 

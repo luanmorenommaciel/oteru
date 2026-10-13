@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 let demo = false;
+let csrf = "";
 
 function date(value) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
@@ -52,5 +53,41 @@ async function refresh() {
 
 $("refresh").addEventListener("click", refresh);
 $("demo-mode").addEventListener("change", (event) => { demo = event.target.checked; refresh(); });
+$("ask-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const response = await fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Oteru-CSRF": csrf },
+      body: JSON.stringify({ question: $("question").value, demo }),
+    });
+    const answer = await response.json();
+    if (!response.ok) throw new Error(answer.error || `HTTP ${response.status}`);
+    const box = $("answer");
+    box.replaceChildren();
+    box.hidden = false;
+    const text = document.createElement("p");
+    text.className = "answer-text";
+    text.textContent = answer.text;
+    box.append(text);
+    if (answer.coverage) {
+      const coverage = document.createElement("p");
+      coverage.className = "answer-note";
+      coverage.textContent = `Janela: ${date(answer.coverage.from)} a ${date(answer.coverage.to)} · ${answer.status}`;
+      box.append(coverage);
+    }
+  } catch (error) { $("notice").hidden = false; $("notice").textContent = error.message; }
+});
+fetch("/api/bootstrap").then((response) => response.json()).then((data) => {
+  csrf = data.csrf_token;
+  for (const question of data.questions) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "suggestion";
+    button.textContent = question;
+    button.addEventListener("click", () => { $("question").value = question; });
+    $("suggestions").append(button);
+  }
+});
 refresh();
 setInterval(refresh, 15000);
