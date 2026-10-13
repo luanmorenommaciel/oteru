@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "identity": {
+    "user.email": "mask",
+    "user.id": "mask",
+    "user.account_uuid": "mask",
+    "user.account_id": "mask",
+    "organization.id": "mask",
+    "host.name": "mask"
+  },
+  "content": {
+    "known_fields": "drop",
+    "log_body": "preserve"
+  },
+  "metrics": "reject_sensitive"
+}
