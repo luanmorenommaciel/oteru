@@ -45,6 +45,9 @@ make up-direct            # ClickStack alone; emitter ingests direct on :4318
 make up-clickstack-local  # collector + ClickStack (collector forwards internally)
 ```
 
+Direct ingest bypasses the Collector privacy policy. Use `up-clickstack-local`
+for telemetry that requires its masking and dropping rules.
+
 ## Forwarding to ClickStack (optional)
 
 The alternative config `oteru-collector-config.clickstack.yml` keeps `debug` +

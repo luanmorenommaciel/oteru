@@ -67,7 +67,8 @@ See [`oteru-emitter/README.md`](oteru-emitter/README.md#choosing-which-signals-t
 
 To land everything in a **local ClickStack** (ClickHouse + HyperDX) with a
 searchable UI at http://localhost:8080, use `make up-direct` + `make ingest`
-(direct, simplest) or `make up-clickstack-local` (through the collector) — see
+(direct, without Collector privacy processing) or `make up-clickstack-local`
+(through the collector) — see
 [`docs/clickstack.md`](docs/clickstack.md). For a remote/cloud ClickStack, set
 `CLICKSTACK_ENDPOINT` + `CLICKSTACK_API_KEY` and use `make up-clickstack` —
 see [`oteru-collector/README.md`](oteru-collector/README.md). Credentials go

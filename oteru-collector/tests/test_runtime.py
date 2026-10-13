@@ -551,7 +551,9 @@ def test_production_config_validates_in_pinned_collector(tmp_path, profile):
     )
 
 
-@pytest.mark.parametrize("profile", ["base", "clickhouse", "clickstack", "clickstack-local", "hyperdx"])
+@pytest.mark.parametrize(
+    "profile", ["base", "clickhouse", "clickstack", "clickstack-local", "hyperdx"]
+)
 def test_effective_compose_mounts_policy_before_every_profile(profile):
     import os
 
