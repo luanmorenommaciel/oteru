@@ -441,7 +441,14 @@ def test_uninspectable_links_and_exemplars_are_rejected(tmp_path, signal):
         assert CANARY not in json.dumps(batches) + output.stdout + output.stderr
 
 
-def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path):
+@pytest.mark.parametrize(
+    "profile,exporter",
+    [
+        ("clickstack", "otlphttp/clickstack"),
+        ("clickstack-local", "otlp_http/hyperdx"),
+    ],
+)
+def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path, profile, exporter):
     sink_dir = tmp_path / "sink"
     sink_dir.mkdir(mode=0o777)
     sink_dir.chmod(0o777)
@@ -475,8 +482,9 @@ def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path):
                 "--config=/out/config.json",
             )
             OUTPUT_CONTAINERS[sink_dir / "telemetry.json"] = (sink_name, "/out/telemetry.json")
-            source_config = config_for(profile="clickstack")
-            source_config["exporters"]["otlphttp/clickstack"]["endpoint"] = "http://sink:4318"
+            source_config = config_for(profile=profile)
+            source_config["exporters"][exporter]["endpoint"] = "http://sink:4318"
+            source_config["exporters"][exporter]["headers"] = {"authorization": "test-only"}
             with collector(tmp_path / "source", source_config, network) as source:
                 for signal in ("logs", "traces", "metrics"):
                     send(source, signal, "http", payload(signal))

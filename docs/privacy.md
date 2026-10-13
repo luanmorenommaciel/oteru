@@ -42,13 +42,13 @@ For rollback, restore the last reviewed **sanitizing** policy and run the same `
 
 ### Reproducible privacy demo
 
-From the repository root, run `make setup` once, then `make demo-privacy` with Docker running. The command starts isolated Collector, ClickHouse and OTLP receiver containers, sends only synthetic telemetry containing `privacy-canary@example.com`, and runs seven black-box checks. It needs no API keys, existing stack or production data. A failure returns a nonzero exit code; a pass means each assertion below held:
+From the repository root, run `make setup` once, then `make demo-privacy` with Docker running. The command starts isolated Collector, ClickHouse and OTLP receiver containers, sends only synthetic telemetry containing `privacy-canary@example.com`, and runs eight black-box checks. It needs no API keys, existing stack or production data. A failure returns a nonzero exit code; a pass means each assertion below held:
 
 | Destination or behavior | Evidence checked |
 | --- | --- |
 | Collector `debug` output and local `file` exporter | The original canary is absent; identity is `REDACTED` under `mask` and absent under `drop`; benign correlation and operational body survive. |
 | Native ClickHouse exporter | Queries of logs, traces and metrics tables contain no original canary; one benign record per signal arrives. |
-| OTLP forwarding to ClickStack | An isolated OTLP receiver standing in for the downstream endpoint captures logs, traces and metrics without the original canary; benign records arrive. This proves the Collector's outgoing payload, not a live ClickStack installation. |
+| OTLP forwarding to remote and local ClickStack profiles | An isolated OTLP receiver standing in for the downstream endpoint captures logs, traces and metrics from both profiles without the original canary; benign records arrive. This proves the Collector's outgoing payload, not a live ClickStack installation. |
 | Unsafe span links and metric exemplars | The unsafe record is rejected, a benign control arrives, and debug/file output contains no original canary. |
 | Policy update and invalid configuration | A valid policy change takes effect after Collector recreation; an invalid policy leaves ingestion stopped rather than exporting unprocessed data. |
 
