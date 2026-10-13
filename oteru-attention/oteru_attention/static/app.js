@@ -1,179 +1,189 @@
+const state = { csrf: "", demo: false, dashboard: null };
 const $ = (id) => document.getElementById(id);
-let demo = false;
-let csrf = "";
+
+function node(tag, className = "", value = "") {
+  const item = document.createElement(tag);
+  if (className) item.className = className;
+  if (value !== "") item.textContent = String(value);
+  return item;
+}
+
+function clear(element) { element.replaceChildren(); }
+function date(value) {
+  if (!value) return "sem horário";
+  const result = new Date(value);
+  return Number.isNaN(result.getTime()) ? value : new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(result);
+}
+function short(value) { return value && value.length > 19 ? `${value.slice(0, 9)}…${value.slice(-6)}` : (value || "sem sessão"); }
+function notice(message = "") { $("notice").textContent = message; $("notice").hidden = !message; }
+
+async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (options.body) { headers["Content-Type"] = "application/json"; headers["X-Oteru-CSRF"] = state.csrf; }
+  if (options.method === "DELETE") headers["X-Oteru-CSRF"] = state.csrf;
+  const response = await fetch(path, { ...options, headers, cache: "no-store" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
+}
 
 async function showEvidence(evidence) {
   try {
-    const response = await fetch(`/api/evidence/${encodeURIComponent(evidence.id)}${demo ? "?demo=1" : ""}`);
-    const detail = await response.json();
-    if (!response.ok) throw new Error(detail.error || `HTTP ${response.status}`);
-    const grid = document.createElement("dl");
-    grid.className = "evidence-grid";
-    for (const [label, value] of [
+    const suffix = state.demo ? "?demo=1" : "";
+    const detail = await api(`/api/evidence/${encodeURIComponent(evidence.id)}${suffix}`);
+    const labels = [
       ["Origem", detail.source_table], ["Horário", date(detail.time)],
       ["Emissor", detail.service], ["Sessão", detail.session_id || "—"],
       ["Evento", detail.event], ["Ferramenta", detail.tool_name || "—"],
       ["Chamada", detail.tool_use_id || "—"], ["Trace ID", detail.trace_id || "—"],
       ["Span ID", detail.span_id || "—"], ["Resultado", detail.status || "—"],
-    ]) {
-      const term = document.createElement("dt");
-      term.textContent = label;
-      const description = document.createElement("dd");
-      description.textContent = value;
-      grid.append(term, description);
-    }
-    $("evidence-content").replaceChildren(grid);
+      ["Origem do dado", detail.provenance]
+    ];
+    const grid = node("dl", "evidence-grid");
+    labels.forEach(([label, value]) => { grid.append(node("dt", "", label), node("dd", "", value)); });
+    const content = $("evidence-content"); clear(content);
+    content.append(grid, node("p", "evidence-foot", "Esta referência aponta para um registro da tabela indicada. Conteúdo de prompt, identidade e saída de ferramentas não são exibidos nesta tela."));
     $("evidence-dialog").showModal();
-  } catch (error) { $("notice").hidden = false; $("notice").textContent = error.message; }
+  } catch (error) { notice(error.message); }
 }
 
-function evidenceButton(evidence) {
-  const button = document.createElement("button");
+function evidenceButton(evidence, label = "Ver evidência ↗") {
+  const button = node("button", "evidence-link", label);
   button.type = "button";
-  button.className = "evidence-link";
-  button.textContent = "Ver evidência ↗";
   button.addEventListener("click", () => showEvidence(evidence));
   return button;
 }
 
-async function promote(intent) {
-  await fetch("/api/indicators", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Oteru-CSRF": csrf },
-    body: JSON.stringify({ intent }),
-  });
-  refresh();
+function renderCoverage(coverage, queue, sessions, queueTotal, sessionsTotal) {
+  $("connection").textContent = "ClickHouse conectado";
+  $("connection").classList.add("ok");
+  $("coverage-title").textContent = coverage.demo ? "Amostra incluída na análise" : "Dados observados";
+  $("coverage-window").textContent = `Janela: ${date(coverage.from)} → ${date(coverage.to)}`;
+  $("coverage-detail").textContent = `${coverage.logs} logs · ${coverage.agent_spans} spans de agente · ${coverage.services.length} emissores`;
+  $("queue-count").textContent = queueTotal > queue.length ? `${queue.length} de ${queueTotal} ocorrências` : `${queueTotal} ocorrência${queueTotal === 1 ? "" : "s"}`;
+  $("agent-count").textContent = sessionsTotal > sessions.length ? `${sessions.length} de ${sessionsTotal} sessões` : `${sessionsTotal} sessão${sessionsTotal === 1 ? "" : "ões"}`;
+  if (coverage.demo && coverage.future_sample_records) {
+    notice(`${coverage.future_sample_records} registro(s) da amostra têm horário futuro. Eles aparecem para demonstração e não contam como atividade recente.`);
+  } else if (coverage.truncated) {
+    notice("A consulta atingiu o limite de registros. Totais e respostas podem estar incompletos.");
+  } else { notice(); }
 }
 
-async function removeIndicator(intent) {
-  await fetch(`/api/indicators/${encodeURIComponent(intent)}`, {
-    method: "DELETE", headers: { "X-Oteru-CSRF": csrf },
+function renderQueue(queue) {
+  const list = $("queue-list"); clear(list);
+  if (!queue.length) { list.append(node("div", "empty", "Nenhuma falha, rejeição ou mudança de permissão encontrada na janela consultada.")); return; }
+  queue.forEach((item) => {
+    const row = node("article", "queue-item");
+    const score = node("div", `severity ${item.score < 80 ? "medium" : ""}`, item.score);
+    score.title = `Prioridade ${item.score} · ${item.kind}`;
+    const body = node("div");
+    body.append(node("div", "item-title", item.title), node("div", "item-reason", item.reason));
+    const meta = node("div", "item-meta");
+    meta.append(node("span", "", item.service), node("span", "", date(item.time)), node("span", "", `sessão ${short(item.session_id)}`));
+    if (item.provenance === "sample") meta.append(node("span", "sample-tag", "AMOSTRA"));
+    body.append(meta);
+    row.append(score, body, evidenceButton(item.evidence));
+    list.append(row);
   });
-  refresh();
+}
+
+function renderSessions(sessions) {
+  const list = $("agent-list"); clear(list);
+  if (!sessions.length) { list.append(node("div", "empty", "Nenhuma sessão de agente identificável nesta janela. Emissores internos sem sinal de agente não são interpretados como agentes ativos.")); return; }
+  sessions.forEach((item) => {
+    const row = node("article", "agent-item");
+    row.append(node("div", "agent-icon", item.service.slice(0, 1).toUpperCase()));
+    const body = node("div", "agent-body");
+    body.append(node("div", "agent-name", item.agent), node("div", "agent-meta", `${short(item.session_id)} · ${date(item.last_seen)} · ${item.signals.join(" + ")} · ${item.identity_basis}`));
+    row.append(body, node("div", `activity ${item.activity === "recent" ? "recent" : ""}`, item.activity === "recent" ? "sinal recente" : "sem sinal recente"));
+    list.append(row);
+  });
+}
+
+function renderAnswer(answer) {
+  const box = $("answer"); clear(box); box.hidden = false;
+  box.append(node("div", "answer-kicker", answer.status === "unsupported" ? "FORA DO ESCOPO ATUAL" : `RESPOSTA · ${answer.status}`));
+  box.append(node("div", "answer-text", answer.text));
+  if (answer.coverage) box.append(node("div", "answer-note", `${answer.coverage.interpretation} Janela: ${date(answer.coverage.from)} a ${date(answer.coverage.to)}. Regra: ${answer.rule_version}.`));
+  if (answer.recurrence_count) box.append(node("div", "answer-note", `Pergunta desta categoria feita ${answer.recurrence_count} vez(es). O texto original não é armazenado.`));
+  if (answer.evidence?.length) {
+    const row = node("div", "evidence-row");
+    answer.evidence.forEach((evidence, index) => {
+      const button = node("button", "evidence-chip", `Evidência ${index + 1} ↗`);
+      button.type = "button";
+      button.addEventListener("click", () => showEvidence(evidence));
+      row.append(button);
+    });
+    box.append(row);
+  }
+  if (answer.supported_questions?.length) box.append(node("div", "answer-note", `Experimente: ${answer.supported_questions.join(" · ")}`));
 }
 
 function renderCuration(curation) {
-  $("candidates").replaceChildren();
-  $("indicators").replaceChildren();
-  for (const item of curation.candidates) {
-    const row = document.createElement("div");
-    row.className = "candidate";
-    const label = document.createElement("span");
-    label.textContent = `${item.title} · ${item.asks} perguntas`;
-    const button = document.createElement("button");
-    button.className = "small-button";
-    button.textContent = "Promover indicador";
-    button.addEventListener("click", () => promote(item.intent));
-    row.append(label, button);
-    $("candidates").append(row);
-  }
-  for (const item of curation.indicators) {
-    const card = document.createElement("article");
-    card.className = "indicator-card";
-    const label = document.createElement("div");
-    label.className = "indicator-label";
-    label.textContent = item.title;
-    const metric = document.createElement("div");
-    metric.className = "indicator-value";
-    metric.textContent = item.answer.metric;
-    const button = document.createElement("button");
-    button.className = "small-button danger";
-    button.textContent = "Remover";
-    button.addEventListener("click", () => removeIndicator(item.intent));
-    card.append(label, metric, button);
-    $("indicators").append(card);
-  }
-}
-
-function date(value) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  const indicators = $("indicators"); clear(indicators);
+  if (!curation.indicators.length) indicators.append(node("div", "empty", "Nenhum indicador promovido. As perguntas frequentes aparecem abaixo para revisão."));
+  curation.indicators.forEach((item) => {
+    const card = node("article", "indicator-card");
+    card.append(node("div", "indicator-label", item.title), node("div", "indicator-value", item.answer.metric));
+    card.append(node("div", "agent-meta", `${item.answer.metric_label} · ${item.answer.status} · ${item.asks} perguntas`));
+    const actions = node("div", "indicator-actions");
+    if (item.answer.evidence.length) actions.append(evidenceButton(item.answer.evidence[0]));
+    const remove = node("button", "small-button danger", "Remover"); remove.type = "button";
+    remove.addEventListener("click", async () => {
+      try { await api(`/api/indicators/${encodeURIComponent(item.intent)}`, { method: "DELETE" }); await refresh(); }
+      catch (error) { notice(error.message); }
+    });
+    actions.append(remove); card.append(actions); indicators.append(card);
+  });
+  const candidates = $("candidates"); clear(candidates);
+  curation.candidates.forEach((item) => {
+    const row = node("div", "candidate");
+    const label = node("div"); label.append(node("strong", "", item.title), node("span", "", `${item.asks} perguntas · mínimo ${curation.threshold}`));
+    const promote = node("button", "small-button", "Promover indicador"); promote.type = "button";
+    promote.addEventListener("click", async () => {
+      try { await api("/api/indicators", { method: "POST", body: JSON.stringify({ intent: item.intent }) }); await refresh(); }
+      catch (error) { notice(error.message); }
+    });
+    row.append(label, promote); candidates.append(row);
+  });
 }
 
 async function refresh() {
+  const button = $("refresh"); button.disabled = true;
   try {
-    const response = await fetch(`/api/dashboard${demo ? "?demo=1" : ""}`, { cache: "no-store" });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    $("connection").textContent = "ClickHouse conectado";
-    $("connection").classList.add("ok");
-    $("coverage-title").textContent = data.coverage.demo ? "Amostra incluída" : "Dados observados";
-    $("coverage-window").textContent = `Janela: ${date(data.coverage.from)} → ${date(data.coverage.to)}`;
-    $("coverage-detail").textContent = `${data.coverage.logs} logs · ${data.coverage.agent_spans} spans de agente`;
-    $("queue-count").textContent = data.queue_total > data.queue.length ? `${data.queue.length} de ${data.queue_total}` : String(data.queue_total);
-    renderCuration(data.curation);
-    const list = $("queue-list");
-    list.replaceChildren();
-    for (const item of data.queue) {
-      const row = document.createElement("article");
-      row.className = "queue-item";
-      const score = document.createElement("div");
-      score.className = "severity";
-      score.textContent = item.score;
-      const body = document.createElement("div");
-      const title = document.createElement("div");
-      title.className = "item-title";
-      title.textContent = item.title;
-      const detail = document.createElement("div");
-      detail.className = "item-reason";
-      detail.textContent = `${item.reason} · ${item.service} · ${date(item.time)}`;
-      body.append(title, detail);
-      row.append(score, body, evidenceButton(item.evidence));
-      list.append(row);
-    }
-    if (!data.queue.length) {
-      const empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = "Nenhuma ocorrência prioritária observada nesta janela.";
-      list.append(empty);
-    }
-    $("notice").hidden = !data.coverage.truncated;
-    $("notice").textContent = data.coverage.truncated ? "A consulta atingiu o limite de registros; os totais podem estar incompletos." : "";
+    const dashboard = await api(`/api/dashboard${state.demo ? "?demo=1" : ""}`);
+    state.dashboard = dashboard;
+    renderCoverage(dashboard.coverage, dashboard.queue, dashboard.sessions, dashboard.queue_total, dashboard.sessions_total);
+    renderQueue(dashboard.queue); renderSessions(dashboard.sessions);
+    renderCuration(dashboard.curation);
   } catch (error) {
-    $("connection").textContent = "Conexão indisponível";
-    $("notice").hidden = false;
-    $("notice").textContent = error.message;
-  }
+    $("connection").textContent = "Conexão indisponível"; $("connection").classList.remove("ok");
+    notice(error.message);
+  } finally { button.disabled = false; }
 }
 
-$("refresh").addEventListener("click", refresh);
-$("demo-mode").addEventListener("change", (event) => { demo = event.target.checked; refresh(); });
-$("ask-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
+async function init() {
   try {
-    const response = await fetch("/api/ask", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Oteru-CSRF": csrf },
-      body: JSON.stringify({ question: $("question").value, demo }),
+    const bootstrap = await api("/api/bootstrap"); state.csrf = bootstrap.csrf_token;
+    bootstrap.questions.forEach((question) => {
+      const button = node("button", "suggestion", question); button.type = "button";
+      button.addEventListener("click", () => { $("question").value = question; $("question").focus(); });
+      $("suggestions").append(button);
     });
-    const answer = await response.json();
-    if (!response.ok) throw new Error(answer.error || `HTTP ${response.status}`);
-    const box = $("answer");
-    box.replaceChildren();
-    box.hidden = false;
-    const text = document.createElement("p");
-    text.className = "answer-text";
-    text.textContent = answer.text;
-    box.append(text);
-    for (const evidence of answer.evidence || []) box.append(evidenceButton(evidence));
-    if (answer.coverage) {
-      const coverage = document.createElement("p");
-      coverage.className = "answer-note";
-      coverage.textContent = `Janela: ${date(answer.coverage.from)} a ${date(answer.coverage.to)} · ${answer.status}`;
-      box.append(coverage);
-    }
-  } catch (error) { $("notice").hidden = false; $("notice").textContent = error.message; }
-});
-$("close-evidence").addEventListener("click", () => $("evidence-dialog").close());
-fetch("/api/bootstrap").then((response) => response.json()).then((data) => {
-  csrf = data.csrf_token;
-  for (const question of data.questions) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "suggestion";
-    button.textContent = question;
-    button.addEventListener("click", () => { $("question").value = question; });
-    $("suggestions").append(button);
-  }
-});
-refresh();
-setInterval(refresh, 15000);
+    $("ask-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const question = $("question").value.trim(); if (!question) return;
+      const button = $("ask-form").querySelector("button"); button.disabled = true;
+      try {
+        const answer = await api("/api/ask", { method: "POST", body: JSON.stringify({ question, demo: state.demo }) });
+        renderAnswer(answer); await refresh();
+      } catch (error) { notice(error.message); }
+      finally { button.disabled = false; }
+    });
+    $("refresh").addEventListener("click", refresh);
+    $("demo-mode").addEventListener("change", (event) => { state.demo = event.target.checked; $("answer").hidden = true; refresh(); });
+    $("close-evidence").addEventListener("click", () => $("evidence-dialog").close());
+    await refresh(); setInterval(refresh, 15000);
+  } catch (error) { notice(error.message); }
+}
+init();

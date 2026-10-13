@@ -12,6 +12,7 @@ end-to-end without depending on live AI sessions:
 |---|---|---|
 | [`oteru-emitter/`](oteru-emitter/) | **Sends.** Forges OTLP telemetry traffic faithful to what Claude Code emits — replay (and, later, synthetic generation) of logs/metrics/traces. Python CLI. | [README](oteru-emitter/README.md) |
 | [`oteru-collector/`](oteru-collector/) | **Receives.** OpenTelemetry Collector (contrib) sandbox via Docker Compose — OTLP ingress on gRPC `:4317` and HTTP `:4318`, output to stdout (`debug`) and to disk (`file`). | [README](oteru-collector/README.md) |
+| [`oteru-attention/`](oteru-attention/) | **Investigates.** Local console for prioritized attention, agent observations, evidence-backed questions and curated indicators over ClickHouse. | [README](oteru-attention/README.md) |
 
 ```
 oteru-emitter / Claude Code CLI / future emitters
@@ -78,19 +79,27 @@ no API key, nothing leaving the machine — use `make up-hyperdx`. It adds the
 HyperDX UI on `:8080` on top of the ClickHouse this repo already runs, so the
 collector keeps writing exactly where `make up-clickhouse` puts it.
 
+To triage agent signals in the local Oteru console, use `make up-attention` and
+open http://127.0.0.1:8081. This starts the collector, ClickHouse and the
+attention console. The dashboard shows a prioritized queue, observed agent
+sessions, evidence-backed questions and manually promoted indicators. It keeps
+replayed sample data separate from observed traffic. See
+[`oteru-attention/README.md`](oteru-attention/README.md) for coverage and limits.
+
 ## Development
 
 ```bash
-make test         # pytest suite (oteru-emitter/tests)
+make test         # emitter and attention pytest suites
 make lint         # ruff check + format check
 make format       # apply ruff format + autofixes
 make pii-guard    # scan committed captures for real identity (system python)
 make e2e-signals  # verify every --emit combination reaches ClickHouse (needs make up-clickhouse)
+make test-attention  # attention acceptance tests
 ```
 
 CI (GitHub Actions) runs lint + tests on Ubuntu and Windows × Python 3.10 and
 3.13, plus the PII guard, for any change touching `oteru-emitter/`,
-`scripts/` or the workflow itself.
+`oteru-attention/`, `scripts/` or the workflow itself.
 
 ### PII guard
 

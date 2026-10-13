@@ -1,4 +1,4 @@
-"""Local HTTP console for the prioritized attention queue."""
+"""Local HTTP console and bounded JSON API for the attention layer."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import secrets
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -34,34 +35,47 @@ class AttentionApp:
         self.window_hours = window_hours
         self.row_limit = row_limit
         self.csrf_token = secrets.token_urlsafe(32)
+        self._cache: dict[bool, tuple[float, Snapshot]] = {}
+        self._lock = threading.Lock()
 
     def snapshot(self, *, demo: bool = False) -> Snapshot:
+        with self._lock:
+            cached = self._cache.get(demo)
+            if cached and time.monotonic() - cached[0] < 3:
+                return cached[1]
         rows, truncated = self.store.observations(
             hours=self.window_hours, limit=self.row_limit, demo=demo
         )
-        return Snapshot(
+        snapshot = Snapshot(
             rows,
             now_ms=int(time.time() * 1000),
             hours=self.window_hours,
             demo=demo,
             truncated=truncated,
         )
+        with self._lock:
+            self._cache[demo] = (time.monotonic(), snapshot)
+        return snapshot
 
     def dashboard(self, *, demo: bool = False) -> dict:
         snapshot = self.snapshot(demo=demo)
-        queue = snapshot.queue()
         curation = self.ledger.overview()
+        queue = snapshot.queue()
+        sessions = snapshot.sessions()
+        indicators = [
+            {**item, "answer": snapshot.answer(item["intent"])} for item in curation["promoted"]
+        ]
         return {
+            "as_of": snapshot.coverage()["to"],
             "coverage": snapshot.coverage(),
             "queue": queue[:50],
             "queue_total": len(queue),
+            "sessions": sessions[:100],
+            "sessions_total": len(sessions),
             "curation": {
                 "threshold": curation["threshold"],
                 "candidates": curation["candidates"],
-                "indicators": [
-                    {**item, "answer": snapshot.answer(item["intent"])}
-                    for item in curation["promoted"]
-                ],
+                "indicators": indicators,
             },
         }
 
@@ -78,6 +92,7 @@ class AttentionApp:
                 "supported_questions": [spec["example"] for spec in INTENTS.values()],
             }
         answer = self.snapshot(demo=demo).answer(intent)
+        # No raw question, prompt, identity or unsupported text is persisted.
         if answer["status"] in {"answered", "partial"}:
             answer["recurrence_count"] = self.ledger.record(intent)
         return answer
@@ -93,13 +108,45 @@ def make_handler(app: AttentionApp):
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; connect-src 'self'; img-src 'self' data:; "
+                "script-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+            )
             self.end_headers()
             self.wfile.write(body)
 
         def _json(self, status: int, value: dict) -> None:
-            self._send(status, json.dumps(value, ensure_ascii=False).encode(), "application/json")
+            self._send(
+                status, json.dumps(value, ensure_ascii=False).encode("utf-8"), "application/json"
+            )
 
-        def do_GET(self) -> None:  # noqa: N802
+        def _demo(self) -> bool:
+            return parse_qs(urlsplit(self.path).query).get("demo") == ["1"]
+
+        def _read_json(self) -> dict:
+            if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
+                raise ValueError("envie application/json")
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 1 <= length <= 4096:
+                raise ValueError("corpo JSON fora do limite de 4096 bytes")
+            value = json.loads(self.rfile.read(length))
+            if not isinstance(value, dict):
+                raise ValueError("o corpo deve ser um objeto JSON")
+            return value
+
+        def _check_write(self) -> bool:
+            if not secrets.compare_digest(self.headers.get("X-Oteru-CSRF", ""), app.csrf_token):
+                self._json(403, {"error": "token de escrita inválido"})
+                return False
+            origin = self.headers.get("Origin")
+            if origin and urlsplit(origin).netloc != self.headers.get("Host"):
+                self._json(403, {"error": "origem não permitida"})
+                return False
+            return True
+
+        def do_GET(self) -> None:  # noqa: N802 (BaseHTTPRequestHandler API)
             path = urlsplit(self.path).path
             try:
                 if path == "/healthz":
@@ -111,24 +158,22 @@ def make_handler(app: AttentionApp):
                         {
                             "csrf_token": app.csrf_token,
                             "questions": [spec["example"] for spec in INTENTS.values()],
+                            "window_hours": app.window_hours,
                         },
                     )
                 elif path == "/api/dashboard":
-                    demo = parse_qs(urlsplit(self.path).query).get("demo") == ["1"]
-                    self._json(200, app.dashboard(demo=demo))
+                    self._json(200, app.dashboard(demo=self._demo()))
                 elif path.startswith("/api/evidence/"):
                     evidence_id = path.removeprefix("/api/evidence/")
                     if len(evidence_id) != 24 or any(
-                        char not in "0123456789abcdef" for char in evidence_id
+                        c not in "0123456789abcdef" for c in evidence_id
                     ):
                         self._json(400, {"error": "identificador de evidência inválido"})
                         return
-                    demo = parse_qs(urlsplit(self.path).query).get("demo") == ["1"]
-                    evidence = app.snapshot(demo=demo).evidence(evidence_id)
-                    if evidence:
-                        self._json(200, evidence)
-                    else:
-                        self._json(404, {"error": "evidência não encontrada na janela consultada"})
+                    evidence = app.snapshot(demo=self._demo()).evidence(evidence_id)
+                    self._json(200, evidence) if evidence else self._json(
+                        404, {"error": "evidência não encontrada na janela consultada"}
+                    )
                 elif path in {"/", "/index.html", "/app.js", "/style.css"}:
                     name = "index.html" if path == "/" else path[1:]
                     media = {
@@ -142,32 +187,17 @@ def make_handler(app: AttentionApp):
             except StoreUnavailable as exc:
                 self._json(503, {"error": str(exc)})
 
-        def do_POST(self) -> None:  # noqa: N802
-            if not secrets.compare_digest(self.headers.get("X-Oteru-CSRF", ""), app.csrf_token):
-                self._json(403, {"error": "token de escrita inválido"})
-                return
-            origin = self.headers.get("Origin")
-            if origin and urlsplit(origin).netloc != self.headers.get("Host"):
-                self._json(403, {"error": "origem não permitida"})
+        def do_POST(self) -> None:  # noqa: N802 (BaseHTTPRequestHandler API)
+            if not self._check_write():
                 return
             try:
+                body = self._read_json()
                 path = urlsplit(self.path).path
-                if path not in {"/api/ask", "/api/indicators"}:
-                    self._json(404, {"error": "rota não encontrada"})
-                    return
-                if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
-                    raise ValueError("envie application/json")
-                length = int(self.headers.get("Content-Length", "0"))
-                if not 1 <= length <= 4096:
-                    raise ValueError("corpo JSON fora do limite de 4096 bytes")
-                body = json.loads(self.rfile.read(length))
-                if not isinstance(body, dict):
-                    raise ValueError("o corpo deve ser um objeto JSON")
                 if path == "/api/ask":
                     if not isinstance(body.get("question"), str):
                         raise ValueError("question deve ser texto")
                     self._json(200, app.ask(body["question"], demo=body.get("demo") is True))
-                else:
+                elif path == "/api/indicators":
                     intent = body.get("intent")
                     if not isinstance(intent, str) or intent not in INTENTS:
                         raise ValueError("indicador desconhecido")
@@ -177,34 +207,33 @@ def make_handler(app: AttentionApp):
                         self._json(
                             409, {"error": "a pergunta ainda não atingiu a recorrência mínima"}
                         )
-            except ValueError as exc:
+                else:
+                    self._json(404, {"error": "rota não encontrada"})
+            except (ValueError, json.JSONDecodeError) as exc:
                 self._json(400, {"error": str(exc)})
             except StoreUnavailable as exc:
                 self._json(503, {"error": str(exc)})
 
-        def do_DELETE(self) -> None:  # noqa: N802
-            if not secrets.compare_digest(self.headers.get("X-Oteru-CSRF", ""), app.csrf_token):
-                self._json(403, {"error": "token de escrita inválido"})
-                return
-            origin = self.headers.get("Origin")
-            if origin and urlsplit(origin).netloc != self.headers.get("Host"):
-                self._json(403, {"error": "origem não permitida"})
+        def do_DELETE(self) -> None:  # noqa: N802 (BaseHTTPRequestHandler API)
+            if not self._check_write():
                 return
             path = urlsplit(self.path).path
             if not path.startswith("/api/indicators/"):
                 self._json(404, {"error": "rota não encontrada"})
                 return
+            intent = path.removeprefix("/api/indicators/")
             try:
-                removed = app.ledger.remove(path.removeprefix("/api/indicators/"))
-                self._json(200, {"removed": removed})
+                removed = app.ledger.remove(intent)
             except ValueError as exc:
                 self._json(400, {"error": str(exc)})
+                return
+            self._json(200, {"removed": removed})
 
     return Handler
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Oteru attention queue")
+    parser = argparse.ArgumentParser(description="Oteru attention console")
     parser.add_argument("--host", default=os.getenv("OTERU_ATTENTION_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("OTERU_ATTENTION_PORT", "8081")))
     args = parser.parse_args(argv)
@@ -216,9 +245,8 @@ def main(argv: list[str] | None = None) -> None:
         )
     )
     ledger = QuestionLedger(os.getenv("OTERU_ATTENTION_DB", "state/attention.sqlite3"))
-    with ThreadingHTTPServer(
-        (args.host, args.port), make_handler(AttentionApp(store, ledger))
-    ) as server:
+    app = AttentionApp(store, ledger)
+    with ThreadingHTTPServer((args.host, args.port), make_handler(app)) as server:
         print(f"Oteru Attention: http://{args.host}:{args.port}", flush=True)
         server.serve_forever()
 

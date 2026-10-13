@@ -11,28 +11,91 @@
   <body>
     <div class="shell">
       <header class="topbar">
-        <a class="brand" href="/" aria-label="Oteru, início"><span>oteru<span class="brand-dot">.</span></span></a>
-        <div class="topbar-right"><span class="topbar-label">Console de atenção</span><span id="connection" class="connection">Conectando</span></div>
+        <a class="brand" href="/" aria-label="Oteru, início">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span>oteru<span class="brand-dot">.</span></span>
+        </a>
+        <div class="topbar-right">
+          <span class="topbar-label">Console de atenção</span>
+          <span id="connection" class="connection">Conectando</span>
+        </div>
       </header>
+
       <main>
         <section class="intro" aria-labelledby="page-title">
-          <div><p class="eyebrow">OBSERVAR · PRIORIZAR</p><h1 id="page-title">Onde olhar agora<span class="accent">.</span></h1><p class="intro-copy">Uma fila de ocorrências ordenada por regras verificáveis.</p></div>
-          <div class="intro-controls"><label class="demo-control" for="demo-mode"><input id="demo-mode" type="checkbox"><span class="switch" aria-hidden="true"></span><span>Incluir amostra</span></label><button id="refresh" class="button button-quiet" type="button">Atualizar dados</button></div>
+          <div>
+            <p class="eyebrow">OBSERVAR · PRIORIZAR · ENTENDER</p>
+            <h1 id="page-title">Onde olhar agora<span class="accent">.</span></h1>
+            <p class="intro-copy">Sinais dos agentes reunidos em uma fila com origem verificável. Cada resposta mostra o que os dados sustentam.</p>
+          </div>
+          <div class="intro-controls">
+            <label class="demo-control" for="demo-mode">
+              <input id="demo-mode" type="checkbox">
+              <span class="switch" aria-hidden="true"></span>
+              <span>Incluir amostra</span>
+            </label>
+            <button id="refresh" class="button button-quiet" type="button">Atualizar dados <span aria-hidden="true">↗</span></button>
+          </div>
         </section>
+
         <div id="notice" class="notice" role="status" hidden></div>
-        <section class="coverage-bar" aria-label="Cobertura dos dados"><strong id="coverage-title">Carregando telemetria</strong><span id="coverage-window">—</span><span id="coverage-detail">—</span></section>
-        <section class="panel queue-panel" aria-labelledby="queue-title"><div class="panel-head"><div><p class="section-number">01 / TRIAGEM</p><h2 id="queue-title">Fila de atenção</h2></div><span id="queue-count" class="count-pill">—</span></div><p class="panel-intro">Falhas, rejeições e mudanças de permissão observadas nesta janela.</p><div id="queue-list" class="queue-list" aria-live="polite"></div></section>
-        <section class="panel ask-panel" aria-labelledby="ask-title">
-          <div class="panel-head"><div><p class="section-number">02 / INVESTIGAÇÃO</p><h2 id="ask-title">Pergunte ao Oteru</h2></div></div>
-          <p class="panel-intro">Perguntas suportadas usam consultas de leitura revisadas.</p>
-          <form id="ask-form" class="ask-form"><label class="visually-hidden" for="question">Sua pergunta</label><input id="question" name="question" maxlength="300" autocomplete="off" placeholder="Ex.: Quais ferramentas falharam?" required><button class="button button-primary" type="submit">Perguntar</button></form>
-          <div id="suggestions" class="suggestions"></div><div id="answer" class="answer" hidden aria-live="polite"></div>
+        <section class="coverage-bar" aria-label="Cobertura dos dados">
+          <div class="coverage-main"><span class="pulse" aria-hidden="true"></span><strong id="coverage-title">Carregando telemetria</strong></div>
+          <span id="coverage-window">—</span>
+          <span id="coverage-detail">—</span>
         </section>
-        <section class="panel curation-panel" aria-labelledby="curation-title"><div class="panel-head"><div><p class="section-number">03 / CURADORIA</p><h2 id="curation-title">Indicadores da operação</h2></div></div><p class="panel-intro">Perguntas recorrentes podem ser promovidas por uma pessoa.</p><div id="indicators" class="indicator-grid"></div><div id="candidates" class="candidate-list"></div></section>
+
+        <div class="main-grid">
+          <section class="panel queue-panel" aria-labelledby="queue-title">
+            <div class="panel-head">
+              <div><p class="section-number">01 / TRIAGEM</p><h2 id="queue-title">Fila de atenção</h2></div>
+              <span id="queue-count" class="count-pill">—</span>
+            </div>
+            <p class="panel-intro">Ocorrências ordenadas por regra explícita. Falha, rejeição e mudança de permissão são sinais observados.</p>
+            <div id="queue-list" class="queue-list" aria-live="polite"></div>
+          </section>
+
+          <section class="panel agents-panel" aria-labelledby="agents-title">
+            <div class="panel-head">
+              <div><p class="section-number">02 / OPERAÇÃO</p><h2 id="agents-title">Agentes observados</h2></div>
+              <span id="agent-count" class="count-pill">—</span>
+            </div>
+            <p class="panel-intro">A última atividade recebida indica recência do sinal, sem afirmar que a execução continua.</p>
+            <div id="agent-list" class="agent-list" aria-live="polite"></div>
+          </section>
+        </div>
+
+        <section class="panel ask-panel" aria-labelledby="ask-title">
+          <div class="panel-head">
+            <div><p class="section-number">03 / INVESTIGAÇÃO</p><h2 id="ask-title">Pergunte ao Oteru</h2></div>
+            <span class="small-label">consultas de leitura validadas</span>
+          </div>
+          <p class="panel-intro">Faça uma pergunta sobre a operação. Se ainda não houver dados ou uma consulta segura para respondê-la, o Oteru dirá isso.</p>
+          <form id="ask-form" class="ask-form">
+            <label class="visually-hidden" for="question">Sua pergunta</label>
+            <input id="question" name="question" maxlength="300" autocomplete="off" placeholder="Ex.: Quais ferramentas falharam?" required>
+            <button class="button button-primary" type="submit">Perguntar <span aria-hidden="true">→</span></button>
+          </form>
+          <div id="suggestions" class="suggestions" aria-label="Perguntas sugeridas"></div>
+          <div id="answer" class="answer" hidden aria-live="polite"></div>
+        </section>
+
+        <section class="panel curation-panel" aria-labelledby="curation-title">
+          <div class="panel-head">
+            <div><p class="section-number">04 / CURADORIA</p><h2 id="curation-title">Indicadores da operação</h2></div>
+            <span class="small-label">promovidos por uma pessoa</span>
+          </div>
+          <p class="panel-intro">Perguntas recorrentes viram sugestões. A promoção fixa a consulta validada como indicador desta tela.</p>
+          <div id="indicators" class="indicator-grid"></div>
+          <div id="candidates" class="candidate-list"></div>
+        </section>
       </main>
+
+      <footer class="footer"><span>OTERU / AGENTIC OBSERVABILITY</span><span>Dados da janela consultada · evidências em cada ocorrência</span></footer>
     </div>
+
     <dialog id="evidence-dialog" class="evidence-dialog" aria-labelledby="evidence-title">
-      <div class="dialog-head"><h2 id="evidence-title">Evidência</h2><button id="close-evidence" class="close-button" type="button" aria-label="Fechar">×</button></div>
+      <div class="dialog-head"><div><p class="section-number">REGISTRO DE ORIGEM</p><h2 id="evidence-title">Evidência</h2></div><button id="close-evidence" class="close-button" type="button" aria-label="Fechar">×</button></div>
       <div id="evidence-content"></div>
     </dialog>
   </body>
