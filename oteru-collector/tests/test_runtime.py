@@ -444,6 +444,7 @@ def test_uninspectable_links_and_exemplars_are_rejected(tmp_path, signal):
 def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path):
     sink_dir = tmp_path / "sink"
     sink_dir.mkdir(mode=0o777)
+    sink_dir.chmod(0o777)
     sink_config = {
         "receivers": {"otlp": {"protocols": {"http": {"endpoint": "0.0.0.0:4318"}}}},
         "exporters": {"file": {"path": "/out/telemetry.json", "flush_interval": "100ms"}},
@@ -643,6 +644,7 @@ def test_policy_activation_replaces_valid_policy_and_stops_on_invalid(tmp_path, 
         ROOT / "privacy", stack / "privacy", ignore=shutil.ignore_patterns("__pycache__")
     )
     (stack / "telemetry").mkdir(mode=0o777)
+    (stack / "telemetry").chmod(0o777)
     # Isolate both volumes and ports from any live Oteru installation.
     override = stack / "test.yml"
     override.write_text(
