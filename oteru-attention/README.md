@@ -19,4 +19,8 @@ Ask Oteru accepts bounded natural-language questions about priority, failures,
 activity, cost and permissions. It maps recognized questions to reviewed,
 read-only product rules and explicitly declines unsupported questions.
 
+Queue items and supported answers provide source references. The detail panel
+resolves them in the current window and displays only correlation fields and
+status, excluding prompt content, tool output and user identity.
+
 Run `make test-attention` and `make lint-attention` after `make setup`.

@@ -95,6 +95,19 @@ def make_handler(app: AttentionApp):
                 elif path == "/api/dashboard":
                     demo = parse_qs(urlsplit(self.path).query).get("demo") == ["1"]
                     self._json(200, app.dashboard(demo=demo))
+                elif path.startswith("/api/evidence/"):
+                    evidence_id = path.removeprefix("/api/evidence/")
+                    if len(evidence_id) != 24 or any(
+                        char not in "0123456789abcdef" for char in evidence_id
+                    ):
+                        self._json(400, {"error": "identificador de evidência inválido"})
+                        return
+                    demo = parse_qs(urlsplit(self.path).query).get("demo") == ["1"]
+                    evidence = app.snapshot(demo=demo).evidence(evidence_id)
+                    if evidence:
+                        self._json(200, evidence)
+                    else:
+                        self._json(404, {"error": "evidência não encontrada na janela consultada"})
                 elif path in {"/", "/index.html", "/app.js", "/style.css"}:
                     name = "index.html" if path == "/" else path[1:]
                     media = {

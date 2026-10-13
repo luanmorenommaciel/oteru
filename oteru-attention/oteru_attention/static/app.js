@@ -2,6 +2,40 @@ const $ = (id) => document.getElementById(id);
 let demo = false;
 let csrf = "";
 
+async function showEvidence(evidence) {
+  try {
+    const response = await fetch(`/api/evidence/${encodeURIComponent(evidence.id)}${demo ? "?demo=1" : ""}`);
+    const detail = await response.json();
+    if (!response.ok) throw new Error(detail.error || `HTTP ${response.status}`);
+    const grid = document.createElement("dl");
+    grid.className = "evidence-grid";
+    for (const [label, value] of [
+      ["Origem", detail.source_table], ["Horário", date(detail.time)],
+      ["Emissor", detail.service], ["Sessão", detail.session_id || "—"],
+      ["Evento", detail.event], ["Ferramenta", detail.tool_name || "—"],
+      ["Chamada", detail.tool_use_id || "—"], ["Trace ID", detail.trace_id || "—"],
+      ["Span ID", detail.span_id || "—"], ["Resultado", detail.status || "—"],
+    ]) {
+      const term = document.createElement("dt");
+      term.textContent = label;
+      const description = document.createElement("dd");
+      description.textContent = value;
+      grid.append(term, description);
+    }
+    $("evidence-content").replaceChildren(grid);
+    $("evidence-dialog").showModal();
+  } catch (error) { $("notice").hidden = false; $("notice").textContent = error.message; }
+}
+
+function evidenceButton(evidence) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "evidence-link";
+  button.textContent = "Ver evidência ↗";
+  button.addEventListener("click", () => showEvidence(evidence));
+  return button;
+}
+
 function date(value) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
@@ -33,7 +67,7 @@ async function refresh() {
       detail.className = "item-reason";
       detail.textContent = `${item.reason} · ${item.service} · ${date(item.time)}`;
       body.append(title, detail);
-      row.append(score, body);
+      row.append(score, body, evidenceButton(item.evidence));
       list.append(row);
     }
     if (!data.queue.length) {
@@ -70,6 +104,7 @@ $("ask-form").addEventListener("submit", async (event) => {
     text.className = "answer-text";
     text.textContent = answer.text;
     box.append(text);
+    for (const evidence of answer.evidence || []) box.append(evidenceButton(evidence));
     if (answer.coverage) {
       const coverage = document.createElement("p");
       coverage.className = "answer-note";
@@ -78,6 +113,7 @@ $("ask-form").addEventListener("submit", async (event) => {
     }
   } catch (error) { $("notice").hidden = false; $("notice").textContent = error.message; }
 });
+$("close-evidence").addEventListener("click", () => $("evidence-dialog").close());
 fetch("/api/bootstrap").then((response) => response.json()).then((data) => {
   csrf = data.csrf_token;
   for (const question of data.questions) {

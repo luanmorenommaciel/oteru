@@ -64,6 +64,11 @@ def test_ask_uses_supported_intent_and_requires_csrf() -> None:
         assert answer["intent"] == "failures"
         assert answer["metric"] == 1
         assert answer["evidence"][0]["event"] == "codex.tool_result"
+        evidence_id = answer["evidence"][0]["id"]
+        with urlopen(base + "/api/evidence/" + evidence_id) as response:
+            detail = json.load(response)
+        assert detail == answer["evidence"][0]
+        assert detail["source_table"] == "otel.otel_logs"
     finally:
         server.shutdown()
         server.server_close()
