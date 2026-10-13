@@ -36,6 +36,55 @@ function evidenceButton(evidence) {
   return button;
 }
 
+async function promote(intent) {
+  await fetch("/api/indicators", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Oteru-CSRF": csrf },
+    body: JSON.stringify({ intent }),
+  });
+  refresh();
+}
+
+async function removeIndicator(intent) {
+  await fetch(`/api/indicators/${encodeURIComponent(intent)}`, {
+    method: "DELETE", headers: { "X-Oteru-CSRF": csrf },
+  });
+  refresh();
+}
+
+function renderCuration(curation) {
+  $("candidates").replaceChildren();
+  $("indicators").replaceChildren();
+  for (const item of curation.candidates) {
+    const row = document.createElement("div");
+    row.className = "candidate";
+    const label = document.createElement("span");
+    label.textContent = `${item.title} · ${item.asks} perguntas`;
+    const button = document.createElement("button");
+    button.className = "small-button";
+    button.textContent = "Promover indicador";
+    button.addEventListener("click", () => promote(item.intent));
+    row.append(label, button);
+    $("candidates").append(row);
+  }
+  for (const item of curation.indicators) {
+    const card = document.createElement("article");
+    card.className = "indicator-card";
+    const label = document.createElement("div");
+    label.className = "indicator-label";
+    label.textContent = item.title;
+    const metric = document.createElement("div");
+    metric.className = "indicator-value";
+    metric.textContent = item.answer.metric;
+    const button = document.createElement("button");
+    button.className = "small-button danger";
+    button.textContent = "Remover";
+    button.addEventListener("click", () => removeIndicator(item.intent));
+    card.append(label, metric, button);
+    $("indicators").append(card);
+  }
+}
+
 function date(value) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
@@ -51,6 +100,7 @@ async function refresh() {
     $("coverage-window").textContent = `Janela: ${date(data.coverage.from)} → ${date(data.coverage.to)}`;
     $("coverage-detail").textContent = `${data.coverage.logs} logs · ${data.coverage.agent_spans} spans de agente`;
     $("queue-count").textContent = data.queue_total > data.queue.length ? `${data.queue.length} de ${data.queue_total}` : String(data.queue_total);
+    renderCuration(data.curation);
     const list = $("queue-list");
     list.replaceChildren();
     for (const item of data.queue) {

@@ -23,4 +23,8 @@ Queue items and supported answers provide source references. The detail panel
 resolves them in the current window and displays only correlation fields and
 status, excluding prompt content, tool output and user identity.
 
+Supported, answered question categories are counted in SQLite without storing
+the original question. Three asks create a candidate; a person can promote it
+to an indicator or remove it. The saved state survives container restarts.
+
 Run `make test-attention` and `make lint-attention` after `make setup`.

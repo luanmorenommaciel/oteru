@@ -13,15 +13,24 @@ from urllib.parse import parse_qs, urlsplit
 
 from .clickhouse import ClickHouseStore, StoreConfig, StoreUnavailable
 from .core import INTENTS, Snapshot, classify_question
+from .curation import QuestionLedger
 
 STATIC_DIR = Path(__file__).parent / "static"
 
 
 class AttentionApp:
-    def __init__(self, store: ClickHouseStore, *, window_hours: int = 24, row_limit: int = 5000):
+    def __init__(
+        self,
+        store: ClickHouseStore,
+        ledger: QuestionLedger,
+        *,
+        window_hours: int = 24,
+        row_limit: int = 5000,
+    ):
         if not 1 <= window_hours <= 168 or not 1 <= row_limit <= 10000:
             raise ValueError("window or row limit outside supported bounds")
         self.store = store
+        self.ledger = ledger
         self.window_hours = window_hours
         self.row_limit = row_limit
         self.csrf_token = secrets.token_urlsafe(32)
@@ -41,10 +50,19 @@ class AttentionApp:
     def dashboard(self, *, demo: bool = False) -> dict:
         snapshot = self.snapshot(demo=demo)
         queue = snapshot.queue()
+        curation = self.ledger.overview()
         return {
             "coverage": snapshot.coverage(),
             "queue": queue[:50],
             "queue_total": len(queue),
+            "curation": {
+                "threshold": curation["threshold"],
+                "candidates": curation["candidates"],
+                "indicators": [
+                    {**item, "answer": snapshot.answer(item["intent"])}
+                    for item in curation["promoted"]
+                ],
+            },
         }
 
     def ask(self, question: str, *, demo: bool = False) -> dict:
@@ -59,7 +77,10 @@ class AttentionApp:
                 "evidence": [],
                 "supported_questions": [spec["example"] for spec in INTENTS.values()],
             }
-        return self.snapshot(demo=demo).answer(intent)
+        answer = self.snapshot(demo=demo).answer(intent)
+        if answer["status"] in {"answered", "partial"}:
+            answer["recurrence_count"] = self.ledger.record(intent)
+        return answer
 
 
 def make_handler(app: AttentionApp):
@@ -130,7 +151,8 @@ def make_handler(app: AttentionApp):
                 self._json(403, {"error": "origem não permitida"})
                 return
             try:
-                if urlsplit(self.path).path != "/api/ask":
+                path = urlsplit(self.path).path
+                if path not in {"/api/ask", "/api/indicators"}:
                     self._json(404, {"error": "rota não encontrada"})
                     return
                 if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
@@ -139,13 +161,44 @@ def make_handler(app: AttentionApp):
                 if not 1 <= length <= 4096:
                     raise ValueError("corpo JSON fora do limite de 4096 bytes")
                 body = json.loads(self.rfile.read(length))
-                if not isinstance(body, dict) or not isinstance(body.get("question"), str):
-                    raise ValueError("question deve ser texto")
-                self._json(200, app.ask(body["question"], demo=body.get("demo") is True))
+                if not isinstance(body, dict):
+                    raise ValueError("o corpo deve ser um objeto JSON")
+                if path == "/api/ask":
+                    if not isinstance(body.get("question"), str):
+                        raise ValueError("question deve ser texto")
+                    self._json(200, app.ask(body["question"], demo=body.get("demo") is True))
+                else:
+                    intent = body.get("intent")
+                    if not isinstance(intent, str) or intent not in INTENTS:
+                        raise ValueError("indicador desconhecido")
+                    if app.ledger.promote(intent):
+                        self._json(200, {"promoted": intent})
+                    else:
+                        self._json(
+                            409, {"error": "a pergunta ainda não atingiu a recorrência mínima"}
+                        )
             except ValueError as exc:
                 self._json(400, {"error": str(exc)})
             except StoreUnavailable as exc:
                 self._json(503, {"error": str(exc)})
+
+        def do_DELETE(self) -> None:  # noqa: N802
+            if not secrets.compare_digest(self.headers.get("X-Oteru-CSRF", ""), app.csrf_token):
+                self._json(403, {"error": "token de escrita inválido"})
+                return
+            origin = self.headers.get("Origin")
+            if origin and urlsplit(origin).netloc != self.headers.get("Host"):
+                self._json(403, {"error": "origem não permitida"})
+                return
+            path = urlsplit(self.path).path
+            if not path.startswith("/api/indicators/"):
+                self._json(404, {"error": "rota não encontrada"})
+                return
+            try:
+                removed = app.ledger.remove(path.removeprefix("/api/indicators/"))
+                self._json(200, {"removed": removed})
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
 
     return Handler
 
@@ -162,7 +215,10 @@ def main(argv: list[str] | None = None) -> None:
             password=os.getenv("OTERU_CLICKHOUSE_PASSWORD", "otel"),
         )
     )
-    with ThreadingHTTPServer((args.host, args.port), make_handler(AttentionApp(store))) as server:
+    ledger = QuestionLedger(os.getenv("OTERU_ATTENTION_DB", "state/attention.sqlite3"))
+    with ThreadingHTTPServer(
+        (args.host, args.port), make_handler(AttentionApp(store, ledger))
+    ) as server:
         print(f"Oteru Attention: http://{args.host}:{args.port}", flush=True)
         server.serve_forever()
 
