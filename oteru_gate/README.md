@@ -17,8 +17,10 @@ make demo-human-gate GATE_OUTPUT=tmp/human-gate-demo
 ```
 
 `GATE_OUTPUT` must name a **new** directory. The command writes `audit.jsonl` and
-`report.json` there, then prints a summary. The committed demo produces exactly
-`allow=1`, `review=1`, `deny=1`, `would_execute=1`. `tmp/` is ignored by Git.
+`report.json` there, then prints a summary. The committed V1 demo checks 13
+valid scenarios: `allow=1`, `review=11`, `deny=1`, `would_execute=2`. It also
+requires an invalid check fixture to fail with `invalid_check_status` before
+creating output. `tmp/` is ignored by Git.
 Run the demo again with a different output path; existing runs are never overwritten.
 The demo uses no Docker, ClickHouse, collector, IdP or network connection.
 
@@ -33,8 +35,10 @@ contracts, policy precedence, limitations and acceptance cases. The CLI accepts
 one run with 1–20 cases. Every case contains a `request`, explicit `checks`,
 `now`, and optional `review_response`, `execute_at`, `current_request`,
 `current_checks` and `current_policy_version`.
-The `entry` holds `request`, `checks`, and optional `roster` and `risk_events`. See [`fixtures/demo.json`](fixtures/demo.json) for a complete
-example. The checks are **fixture inputs**, not results fetched from #63/#64/#66.
+The `entry` holds `request`, `checks`, and optional `roster` and `risk_events`.
+See [`fixtures/demo.json`](fixtures/demo.json) for the full scenario matrix and
+[`fixtures/invalid-check.json`](fixtures/invalid-check.json) for the expected
+rejection. The checks are **fixture inputs**, not results fetched from #63/#64/#66.
 An event with `phase=after` is reported as `not_authorization_input`; a raw
 `phase=before` event without a mapped check fails explicitly.
 
@@ -63,9 +67,16 @@ fixture, **not authentication**.
   evidence references, digests, decisions and timestamps. They never copy raw
   action parameters. Files are created with private permissions; failed audit
   writes do not yield a success report. This is local evidence, not tamper-proof
-storage. POSIX files are created with mode `0600`; Windows uses the inherited
-ACL. The repository PII guard does not scan generated run output; a
+  storage. POSIX files are created with mode `0600`; Windows uses the inherited
+  ACL. The repository PII guard does not scan generated run output; a
   dedicated canary test checks the output projection.
+
+The V1 matrix shows low-risk allow, pending review, approved and rejected
+reviews, explicit deny, expiry, parameter/evidence/policy changes, absent and
+expired checks, execution attempted without approval, and a post-action
+finding. Only the low-risk allow and the valid review approval can yield
+`would_execute=true`. Invalid check input is a separate expected failure; it
+does not produce a decision or an audit report.
 
 ## Boundaries, decisions still needed and rollback
 

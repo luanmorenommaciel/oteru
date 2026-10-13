@@ -373,7 +373,7 @@ do módulo, testes, fixtures e política.
 |---|---|
 | `make test-human-gate` (novo) | Exit 0; todos os grupos da seção 9 passam, sem testes skipped/xfail para requisitos obrigatórios |
 | `make lint-human-gate` (novo) | Exit 0; zero erros Ruff e zero arquivos fora de formato no módulo/testes novos |
-| `make demo-human-gate` (novo) | Exit 0; cenário fixo com 3 pedidos: initial_allow=1, initial_review=1, initial_deny=1; review fica pending; would_execute=1 e zero efeitos externos |
+| `make demo-human-gate GATE_OUTPUT=tmp/<novo-run>` | Exit 0; 13 cenários válidos: initial_allow=1, initial_review=11, initial_deny=1, would_execute=2; check inválido rejeitado sem artefato; zero efeitos externos |
 | `make test` | Exit 0; suíte existente sem regressão |
 | `make lint` | Exit 0; zero erros existentes |
 | `make dry-run` | Exit 0; replay valida sample sem envio de rede |

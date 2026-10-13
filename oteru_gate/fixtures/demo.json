@@ -1,31 +1,767 @@
 {
   "schema_version": 1,
-  "run_id": "human-gate-demo",
+  "run_id": "human-gate-v1-demo",
   "cases": [
     {
       "case_id": "safe-read",
       "now": "2026-10-13T00:00:00+00:00",
-      "execute_at": "2026-10-13T00:00:01+00:00",
       "entry": {
-        "request": {"schema_version": 1, "request_id": "request-read", "action_id": "action-read", "revision": 1, "requester_subject": "requester-demo", "operation": "read", "resource_ref": "resource-demo", "environment": "sandbox", "impact_scope": "limited", "reversible": true, "sensitive_data": false, "privilege_change": false, "parameters": {"sample": "read"}, "created_at": "2026-10-13T00:00:00+00:00"},
-        "checks": [{"check_id": "inventory", "status": "pass", "evidence_refs": ["inventory-ok"]}, {"check_id": "permission", "status": "pass", "evidence_refs": ["permission-ok"]}, {"check_id": "anomaly", "status": "pass", "evidence_refs": ["anomaly-ok"]}]
-      }
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-safe-read",
+          "action_id": "action-safe-read",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "read",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "safe-read"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ]
+      },
+      "execute_at": "2026-10-13T00:00:01+00:00"
     },
     {
       "case_id": "moderate-change",
       "now": "2026-10-13T00:00:00+00:00",
       "entry": {
-        "request": {"schema_version": 1, "request_id": "request-change", "action_id": "action-change", "revision": 1, "requester_subject": "requester-demo", "operation": "modify", "resource_ref": "resource-demo", "environment": "sandbox", "impact_scope": "limited", "reversible": true, "sensitive_data": false, "privilege_change": false, "parameters": {"sample": "modify"}, "created_at": "2026-10-13T00:00:00+00:00"},
-        "checks": [{"check_id": "inventory", "status": "pass", "evidence_refs": ["inventory-ok"]}, {"check_id": "permission", "status": "pass", "evidence_refs": ["permission-ok"]}, {"check_id": "anomaly", "status": "pass", "evidence_refs": ["anomaly-ok"]}]
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-moderate-change",
+          "action_id": "action-moderate-change",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "moderate-change"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "approved-review",
+      "now": "2026-10-13T00:00:00+00:00",
+      "entry": {
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-approved-review",
+          "action_id": "action-approved-review",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "approved-review"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ],
+        "roster": [
+          {
+            "reviewer_subject": "reviewer-demo",
+            "operations": [
+              "modify"
+            ]
+          }
+        ]
+      },
+      "execute_at": "2026-10-13T00:00:11+00:00",
+      "review_response": {
+        "reviewer_subject": "reviewer-demo",
+        "decision": "approve",
+        "reason_code": "reviewed-fixture",
+        "at": "2026-10-13T00:00:10+00:00",
+        "action_digest": "20621856ac71e6db3a697e759075dbb40d381592daa1a08054f90faeba5cd9a2",
+        "snapshot_digest": "a266a1e0a01b34a75271241a78a75f9def0b0eafe51dd2653b5b446908d27430"
+      }
+    },
+    {
+      "case_id": "rejected-review",
+      "now": "2026-10-13T00:00:00+00:00",
+      "entry": {
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-rejected-review",
+          "action_id": "action-rejected-review",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "rejected-review"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ],
+        "roster": [
+          {
+            "reviewer_subject": "reviewer-demo",
+            "operations": [
+              "modify"
+            ]
+          }
+        ]
+      },
+      "execute_at": "2026-10-13T00:00:11+00:00",
+      "review_response": {
+        "reviewer_subject": "reviewer-demo",
+        "decision": "reject",
+        "reason_code": "reviewed-fixture",
+        "at": "2026-10-13T00:00:10+00:00",
+        "action_digest": "0429c85c6bedca8a7e54797386b089eacbe13d4ebfc6a6421ed41aaeda1f39eb",
+        "snapshot_digest": "a108cba35daea7ce4ae0ef5566239dcac18262e757a41d202dfb645f917d3686"
       }
     },
     {
       "case_id": "denied-inventory",
       "now": "2026-10-13T00:00:00+00:00",
       "entry": {
-        "request": {"schema_version": 1, "request_id": "request-deny", "action_id": "action-deny", "revision": 1, "requester_subject": "requester-demo", "operation": "modify", "resource_ref": "resource-demo", "environment": "sandbox", "impact_scope": "limited", "reversible": true, "sensitive_data": false, "privilege_change": false, "parameters": {"sample": "deny"}, "created_at": "2026-10-13T00:00:00+00:00"},
-        "checks": [{"check_id": "inventory", "status": "fail", "evidence_refs": ["inventory-denied"]}, {"check_id": "permission", "status": "pass", "evidence_refs": ["permission-ok"]}, {"check_id": "anomaly", "status": "pass", "evidence_refs": ["anomaly-ok"]}]
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-denied-inventory",
+          "action_id": "action-denied-inventory",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "denied-inventory"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "fail",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ]
+      },
+      "execute_at": "2026-10-13T00:00:11+00:00"
+    },
+    {
+      "case_id": "expired-approval",
+      "now": "2026-10-13T00:00:00+00:00",
+      "entry": {
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-expired-approval",
+          "action_id": "action-expired-approval",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "expired-approval"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ],
+        "roster": [
+          {
+            "reviewer_subject": "reviewer-demo",
+            "operations": [
+              "modify"
+            ]
+          }
+        ]
+      },
+      "execute_at": "2026-10-13T00:05:00+00:00",
+      "review_response": {
+        "reviewer_subject": "reviewer-demo",
+        "decision": "approve",
+        "reason_code": "reviewed-fixture",
+        "at": "2026-10-13T00:00:10+00:00",
+        "action_digest": "ddb8965c85769c43c7f7a97d2c13e79b9817f61bc5ca2ebe720b12e46a82a9e5",
+        "snapshot_digest": "18a062c921063238556ab2521b982b6396fff8a1d44f773cb86a72c74f3436d9"
       }
+    },
+    {
+      "case_id": "changed-parameters",
+      "now": "2026-10-13T00:00:00+00:00",
+      "entry": {
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-changed-parameters",
+          "action_id": "action-changed-parameters",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "changed-parameters"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ],
+        "roster": [
+          {
+            "reviewer_subject": "reviewer-demo",
+            "operations": [
+              "modify"
+            ]
+          }
+        ]
+      },
+      "execute_at": "2026-10-13T00:00:11+00:00",
+      "review_response": {
+        "reviewer_subject": "reviewer-demo",
+        "decision": "approve",
+        "reason_code": "reviewed-fixture",
+        "at": "2026-10-13T00:00:10+00:00",
+        "action_digest": "35e99e24020719906154dc1f3be25fb201ee7ab62b944cb300dfade33f3a9e58",
+        "snapshot_digest": "95d54a062fa409b7167f78c8e15610c3447bb7fed9d1d219e4236cdd3096e316"
+      },
+      "current_request": {
+        "schema_version": 1,
+        "request_id": "request-changed-parameters",
+        "action_id": "action-changed-parameters",
+        "revision": 1,
+        "requester_subject": "requester-demo",
+        "operation": "modify",
+        "resource_ref": "resource-demo",
+        "environment": "sandbox",
+        "impact_scope": "limited",
+        "reversible": true,
+        "sensitive_data": false,
+        "privilege_change": false,
+        "parameters": {
+          "scenario": "tampered"
+        },
+        "created_at": "2026-10-13T00:00:00+00:00"
+      }
+    },
+    {
+      "case_id": "changed-evidence",
+      "now": "2026-10-13T00:00:00+00:00",
+      "entry": {
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-changed-evidence",
+          "action_id": "action-changed-evidence",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "changed-evidence"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ],
+        "roster": [
+          {
+            "reviewer_subject": "reviewer-demo",
+            "operations": [
+              "modify"
+            ]
+          }
+        ]
+      },
+      "execute_at": "2026-10-13T00:00:11+00:00",
+      "review_response": {
+        "reviewer_subject": "reviewer-demo",
+        "decision": "approve",
+        "reason_code": "reviewed-fixture",
+        "at": "2026-10-13T00:00:10+00:00",
+        "action_digest": "9472db0b7d9289eceb903e2ab6f1065fb43cc5b19a6d4724e8419076b812cd96",
+        "snapshot_digest": "5ac1f1af09b8c2b12a2ab498782dd4d3a8c3016426ade80212f005175cc155b9"
+      },
+      "current_checks": [
+        {
+          "check_id": "inventory",
+          "status": "pass",
+          "evidence_refs": [
+            "evidence-new"
+          ]
+        },
+        {
+          "check_id": "permission",
+          "status": "pass",
+          "evidence_refs": [
+            "evidence-permission"
+          ]
+        },
+        {
+          "check_id": "anomaly",
+          "status": "pass",
+          "evidence_refs": [
+            "evidence-anomaly"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "changed-policy",
+      "now": "2026-10-13T00:00:00+00:00",
+      "entry": {
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-changed-policy",
+          "action_id": "action-changed-policy",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "changed-policy"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ],
+        "roster": [
+          {
+            "reviewer_subject": "reviewer-demo",
+            "operations": [
+              "modify"
+            ]
+          }
+        ]
+      },
+      "execute_at": "2026-10-13T00:00:11+00:00",
+      "review_response": {
+        "reviewer_subject": "reviewer-demo",
+        "decision": "approve",
+        "reason_code": "reviewed-fixture",
+        "at": "2026-10-13T00:00:10+00:00",
+        "action_digest": "044d13071a3026d40b1d50218bda7df14e070251a374e4b057507f528b7bed3a",
+        "snapshot_digest": "3ca1852a46e57a8cda2c2ddd1fd759747b919ec621a510e86ed16874c10b99a0"
+      },
+      "current_policy_version": "human-response-v2"
+    },
+    {
+      "case_id": "missing-check",
+      "now": "2026-10-13T00:00:00+00:00",
+      "entry": {
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-missing-check",
+          "action_id": "action-missing-check",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "missing-check"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ]
+      },
+      "execute_at": "2026-10-13T00:00:11+00:00"
+    },
+    {
+      "case_id": "expired-check",
+      "now": "2026-10-13T00:00:00+00:00",
+      "entry": {
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-expired-check",
+          "action_id": "action-expired-check",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "expired-check"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "expired",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ]
+      },
+      "execute_at": "2026-10-13T00:00:11+00:00"
+    },
+    {
+      "case_id": "execution-without-review",
+      "now": "2026-10-13T00:00:00+00:00",
+      "entry": {
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-execution-without-review",
+          "action_id": "action-execution-without-review",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "execution-without-review"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ]
+      },
+      "execute_at": "2026-10-13T00:00:11+00:00"
+    },
+    {
+      "case_id": "post-action-finding",
+      "now": "2026-10-13T00:00:00+00:00",
+      "entry": {
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-post-action-finding",
+          "action_id": "action-post-action-finding",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "post-action-finding"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ],
+        "risk_events": [
+          {
+            "event_id": "finding-after",
+            "action_id": "action-post-action-finding",
+            "phase": "after"
+          }
+        ]
+      },
+      "execute_at": "2026-10-13T00:00:11+00:00"
     }
   ]
 }

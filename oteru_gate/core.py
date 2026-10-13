@@ -65,7 +65,11 @@ def _request(value: Any) -> dict:
         "parameters",
         "created_at",
     }
-    if set(request) != expected or request.get("schema_version") != SCHEMA_VERSION:
+    if (
+        set(request) != expected
+        or type(request.get("schema_version")) is not int
+        or request["schema_version"] != SCHEMA_VERSION
+    ):
         raise GateError("invalid_request_schema")
     for name in ("request_id", "action_id", "requester_subject", "resource_ref"):
         _safe_id(request[name])
@@ -107,7 +111,7 @@ def _checks(value: Any) -> tuple[dict[str, str], dict[str, list[str]]]:
         if set(check) != {"check_id", "status", "evidence_refs"}:
             raise GateError("invalid_check_schema")
         name = check["check_id"]
-        if name not in REQUIRED_CHECKS or name in statuses:
+        if not isinstance(name, str) or name not in REQUIRED_CHECKS or name in statuses:
             raise GateError("invalid_check_id")
         if check["status"] not in ("pass", "fail", "unknown", "error", "expired"):
             raise GateError("invalid_check_status")

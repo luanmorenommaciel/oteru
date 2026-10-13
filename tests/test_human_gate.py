@@ -221,8 +221,8 @@ def test_cli_writes_redacted_audit_and_does_not_overwrite(tmp_path):
     output = tmp_path / "run"
     assert main([str(demo), str(output)]) == 0
     report = json.loads((output / "report.json").read_text())
-    assert report["summary"]["initial_outcomes"] == {"allow": 1, "review": 1, "deny": 1}
-    assert report["summary"]["would_execute"] == 1
+    assert report["summary"]["initial_outcomes"] == {"allow": 1, "review": 11, "deny": 1}
+    assert report["summary"]["would_execute"] == 2
     audit = (output / "audit.jsonl").read_text()
     assert len(audit.splitlines()) >= 3
     assert "simulated" in audit
@@ -342,3 +342,89 @@ def test_cli_does_not_copy_raw_parameters_or_extra_fields(tmp_path):
     run(source, output)
     assert "CANARY_PRIVATE_VALUE" not in (output / "audit.jsonl").read_text()
     assert "CANARY_PRIVATE_VALUE" not in (output / "report.json").read_text()
+
+
+def test_full_demo_fixture_covers_v1_acceptance_matrix(tmp_path):
+    from pathlib import Path
+
+    from oteru_gate.cli import run
+
+    output = tmp_path / "demo"
+    summary = run(Path("oteru_gate/fixtures/demo.json"), output)
+    decisions = {
+        item["case_id"]: item
+        for item in json.loads((output / "report.json").read_text())["decisions"]
+    }
+    expected = {
+        "safe-read": ("allow", "allowed_simulated", True),
+        "moderate-change": ("review", "pending_review", False),
+        "approved-review": ("review", "approved_simulated", True),
+        "rejected-review": ("review", "rejected_simulated", False),
+        "denied-inventory": ("deny", "denied_simulated", False),
+        "expired-approval": ("review", "expired_simulated", False),
+        "changed-parameters": ("review", "invalidated_simulated", False),
+        "changed-evidence": ("review", "invalidated_simulated", False),
+        "changed-policy": ("review", "invalidated_simulated", False),
+        "missing-check": ("review", "pending_review", False),
+        "expired-check": ("review", "pending_review", False),
+        "execution-without-review": ("review", "pending_review", False),
+        "post-action-finding": ("review", "pending_review", False),
+    }
+    assert set(decisions) == set(expected)
+    assert summary["cases"] == len(expected)
+    assert summary["would_execute"] == 2
+    for case_id, (outcome, state, would_execute) in expected.items():
+        decision = decisions[case_id]
+        assert (decision["initial_outcome"], decision["state"], decision["would_execute"]) == (
+            outcome,
+            state,
+            would_execute,
+        )
+        assert decision["enforcement"] == "simulated"
+    assert decisions["post-action-finding"]["not_authorization_input"] == ["finding-after"]
+
+
+def test_invalid_demo_fixture_fails_without_report(tmp_path):
+    from pathlib import Path
+
+    from oteru_gate.cli import run
+
+    output = tmp_path / "invalid"
+    with pytest.raises(GateError, match="invalid_check_status"):
+        run(Path("oteru_gate/fixtures/invalid-check.json"), output)
+    assert not output.exists()
+
+
+def test_cli_error_output_declares_simulation(tmp_path, capsys):
+    from oteru_gate.cli import main
+
+    source = tmp_path / "bad.json"
+    source.write_text("not json")
+    assert main([str(source), str(tmp_path / "output")]) == 2
+    assert "enforcement=simulated" in capsys.readouterr().err
+
+
+def test_demo_command_verifies_every_scenario(tmp_path, capsys):
+    from oteru_gate.demo import main
+
+    output = tmp_path / "v1"
+    assert main([str(output)]) == 0
+    printed = capsys.readouterr().out
+    assert "SIMULAÇÃO" in printed
+    assert '"cases": 13' in printed
+    assert '"invalid_check_rejected": true' in printed
+    assert (output / "report.json").exists()
+    assert (output / "audit.jsonl").exists()
+    assert not (output / "invalid-check").exists()
+
+
+def test_unhashable_check_id_fails_as_contract_error():
+    entry = case()
+    entry["checks"][0]["check_id"] = ["inventory"]
+    with pytest.raises(GateError, match="invalid_check_id"):
+        evaluate(entry, NOW)
+
+
+def test_boolean_schema_version_does_not_equal_supported_integer():
+    with pytest.raises(GateError, match="invalid_request_schema"):
+        evaluate(case(request=action(schema_version=True)), NOW)

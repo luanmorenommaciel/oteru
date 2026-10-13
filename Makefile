@@ -55,9 +55,9 @@ lint-human-gate: ## lint and check formatting for the issue #65 simulator
 	$(VENV)/$(BINDIR)/python -m ruff check oteru_gate tests/test_human_gate.py
 	$(VENV)/$(BINDIR)/python -m ruff format --check oteru_gate tests/test_human_gate.py
 
-demo-human-gate: ## simulate three decisions; set GATE_OUTPUT to a new directory
+demo-human-gate: ## verify all V1 scenarios; set GATE_OUTPUT to a new directory
 	@test -n "$(GATE_OUTPUT)" || { echo "Set GATE_OUTPUT to a new local directory"; exit 2; }
-	$(VENV)/$(BINDIR)/python -m oteru_gate.cli oteru_gate/fixtures/demo.json "$(GATE_OUTPUT)"
+	$(VENV)/$(BINDIR)/python -m oteru_gate.demo "$(GATE_OUTPUT)"
 
 format: ## apply ruff format + autofixes
 	cd $(EMITTER) && $(VENV_PY) -m ruff check --fix oteru_emitter tests

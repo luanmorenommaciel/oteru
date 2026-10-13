@@ -31,7 +31,7 @@ def run(input_path: Path, output_dir: Path) -> dict:
         raise GateError("invalid_json") from exc
     if not isinstance(document, dict) or set(document) != {"schema_version", "run_id", "cases"}:
         raise GateError("invalid_run_schema")
-    if document["schema_version"] != 1:
+    if type(document["schema_version"]) is not int or document["schema_version"] != 1:
         raise GateError("invalid_run_schema")
     run_id = _safe_id(document["run_id"])
     cases = document["cases"]
@@ -140,10 +140,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         summary = run(args.input, args.output)
     except GateError as exc:
-        print(f"gate input error: {exc}", file=sys.stderr)
+        print(f"enforcement=simulated gate input error: {exc}", file=sys.stderr)
         return 2
     except OSError:
-        print("gate operational error: io_failure", file=sys.stderr)
+        print("enforcement=simulated gate operational error: io_failure", file=sys.stderr)
         return 1
     print("SIMULAÇÃO — não controla execução real")
     print(json.dumps(summary, sort_keys=True))
