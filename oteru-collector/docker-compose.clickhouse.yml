@@ -10,7 +10,7 @@
 services:
   oteru-collector:
     volumes:
-      - ./oteru-collector-config.clickhouse.yml:/etc/oteru-collector-config.yml
+      - ./oteru-collector-config.clickhouse.yml:/etc/oteru-collector-config.yml:ro
       - ./telemetry:/telemetry
     depends_on:
       clickhouse:
