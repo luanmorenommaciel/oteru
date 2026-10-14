@@ -17,9 +17,9 @@ def assert_privacy_topology(config):
     assert set(pipelines) == {"logs", "traces", "metrics"}
     for signal, pipeline in pipelines.items():
         expected = {
-            "logs": ["transform/privacy"],
-            "traces": ["filter/privacy_links", "transform/privacy"],
-            "metrics": ["filter/privacy_metrics"],
+            "logs": ["filter/privacy_invalid", "transform/privacy"],
+            "traces": ["filter/privacy_links", "filter/privacy_invalid", "transform/privacy"],
+            "metrics": ["filter/privacy_invalid", "transform/privacy", "filter/privacy_metrics"],
         }[signal]
         assert pipeline["processors"] == expected
         assert {"debug", "file"}.issubset(pipeline["exporters"])

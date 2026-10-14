@@ -30,7 +30,7 @@ CONTENT_KEYS = (
     "gen_ai.input.messages",
     "gen_ai.output.messages",
 )
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2
 
 
 class PolicyError(ValueError):
@@ -64,15 +64,17 @@ def validate_policy(source: dict) -> None:
         raise PolicyError("unsupported policy version")
     _keys(source["identity"], IDENTITY_KEYS, "identity")
     for action in source["identity"].values():
-        if action not in ("mask", "drop"):
-            raise PolicyError("identity action must be mask or drop; encrypt is not supported")
+        if action not in ("hash", "mask", "drop"):
+            raise PolicyError(
+                "identity action must be hash, mask or drop; encrypt is not supported"
+            )
     _keys(source["content"], ("known_fields", "log_body"), "content")
     if source["content"]["known_fields"] not in ("drop", "preserve"):
         raise PolicyError("known_fields must be drop or preserve")
     if source["content"]["log_body"] not in ("drop", "preserve"):
         raise PolicyError("log_body must be drop or preserve")
-    if source["metrics"] != "reject_sensitive":
-        raise PolicyError("metrics must reject sensitive dimensions")
+    if source["metrics"] != "preserve_hashed":
+        raise PolicyError("metrics must preserve hashed dimensions")
 
 
 def _present(attributes: str, key: str) -> str:
@@ -80,10 +82,21 @@ def _present(attributes: str, key: str) -> str:
     return f'ContainsValue(Keys({attributes}), "{key}")'
 
 
+def _hash_statement(attributes: str, key: str) -> str:
+    return (
+        f'set({attributes}["{key}"], '
+        f'Concat(["sha256:v1:", SHA256(Concat(['
+        f'"oteru-pii:v1|{key}|", {attributes}["{key}"]], ""))], "")) '
+        f"where {_present(attributes, key)}"
+    )
+
+
 def _statements(attributes: str, source: dict) -> list[str]:
     result = []
     for key, action in source["identity"].items():
-        if action == "mask":
+        if action == "hash":
+            result.append(_hash_statement(attributes, key))
+        elif action == "mask":
             result.append(
                 f'set({attributes}["{key}"], "REDACTED") where {_present(attributes, key)}'
             )
@@ -91,6 +104,20 @@ def _statements(attributes: str, source: dict) -> list[str]:
             result.append(f'delete_key({attributes}, "{key}")')
     if source["content"]["known_fields"] == "drop":
         result.extend(f'delete_key({attributes}, "{key}")' for key in CONTENT_KEYS)
+    return result
+
+
+def _invalid_hash_conditions(contexts: tuple[str, ...], source: dict) -> list[str]:
+    result = []
+    for context in contexts:
+        attributes = f"{context}.attributes"
+        for key, action in source["identity"].items():
+            if action == "hash":
+                result.append(
+                    f"{_present(attributes, key)} and "
+                    f'(not IsString({attributes}["{key}"]) or '
+                    f'{attributes}["{key}"] == "")'
+                )
     return result
 
 
@@ -109,11 +136,32 @@ def compile_policy(source: dict) -> dict:
         ]
     if source["content"]["log_body"] == "drop":
         transform["log_statements"][-1]["statements"].append('set(log.body, "REDACTED")')
-    sensitive = list(IDENTITY_KEYS)
+    transform["metric_statements"] = [
+        {
+            "context": context,
+            "statements": [
+                _hash_statement(f"{context}.attributes", key)
+                for key, action in source["identity"].items()
+                if action == "hash"
+            ],
+        }
+        for context in ("resource", "scope", "datapoint")
+    ]
+    sensitive = [key for key, action in source["identity"].items() if action != "hash"]
     if source["content"]["known_fields"] == "drop":
         sensitive.extend(CONTENT_KEYS)
     return {
         "transform/privacy": transform,
+        "filter/privacy_invalid": {
+            "error_mode": "propagate",
+            "log_conditions": _invalid_hash_conditions(("resource", "scope", "log"), source),
+            "trace_conditions": _invalid_hash_conditions(
+                ("resource", "scope", "span", "spanevent"), source
+            ),
+            "metric_conditions": _invalid_hash_conditions(
+                ("resource", "scope", "datapoint"), source
+            ),
+        },
         # Link attributes cannot be transformed in this Collector release.
         # Reject the containing span before any exporter sees the link.
         "filter/privacy_links": {

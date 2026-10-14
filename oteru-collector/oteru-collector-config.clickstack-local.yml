@@ -38,13 +38,13 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [filter/privacy_links, transform/privacy]
+      processors: [filter/privacy_links, filter/privacy_invalid, transform/privacy]
       exporters: [debug, file, otlp_http/hyperdx]
     logs:
       receivers: [otlp]
-      processors: [transform/privacy]
+      processors: [filter/privacy_invalid, transform/privacy]
       exporters: [debug, file, otlp_http/hyperdx]
     metrics:
       receivers: [otlp]
-      processors: [filter/privacy_metrics]
+      processors: [filter/privacy_invalid, transform/privacy, filter/privacy_metrics]
       exporters: [debug, file, otlp_http/hyperdx]

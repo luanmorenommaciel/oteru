@@ -73,13 +73,17 @@ privacy-config-check: ## verify policy contract and all Collector pipelines (no 
 e2e-privacy: ## exercise privacy policy and sinks in isolated Docker containers
 	$(VENV)/$(BINDIR)/python -m pytest $(COLLECTOR)/tests/test_runtime.py
 
-demo-privacy: ## prove synthetic PII is absent from Collector outputs (isolated Docker)
-	@echo 'Synthetic input: privacy-canary@example.com; success means the canary is absent from every tested output.'
+demo-privacy: ## prove identity pseudonymization and metric continuity (isolated Docker)
+	@echo 'Synthetic input only; success means cataloged identity is replaced and safe metrics retain their measurements.'
 	$(VENV)/$(BINDIR)/python -m pytest -v --tb=short \
 		$(COLLECTOR)/tests/test_runtime.py::test_identity_is_scrubbed_before_file_and_stdout \
+		$(COLLECTOR)/tests/test_runtime.py::test_hash_uses_versioned_field_domain_and_preserves_metric_identity \
+		$(COLLECTOR)/tests/test_runtime.py::test_reference_metrics_keep_all_934_points_and_measurements \
+		$(COLLECTOR)/tests/test_runtime.py::test_two_principals_keep_stable_pseudonyms_across_signals_and_restart \
 		$(COLLECTOR)/tests/test_runtime.py::test_uninspectable_links_and_exemplars_are_rejected \
 		$(COLLECTOR)/tests/test_runtime.py::test_clickstack_forwarder_receives_only_scrubbed_otlp \
 		$(COLLECTOR)/tests/test_runtime.py::test_clickhouse_tables_receive_only_scrubbed_records \
+		$(COLLECTOR)/tests/test_runtime.py::test_clickhouse_cost_volume_and_trend_by_two_pseudonyms \
 		$(COLLECTOR)/tests/test_runtime.py::test_policy_activation_replaces_valid_policy_and_stops_on_invalid
 
 apply-privacy: ## stop ingestion, compile a new policy and recreate Collector (PROFILE=base|clickhouse|clickstack|clickstack-local|hyperdx)

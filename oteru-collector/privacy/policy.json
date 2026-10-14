@@ -1,16 +1,16 @@
 {
-  "version": 1,
+  "version": 2,
   "identity": {
-    "user.email": "mask",
-    "user.id": "mask",
-    "user.account_uuid": "mask",
-    "user.account_id": "mask",
-    "organization.id": "mask",
-    "host.name": "mask"
+    "user.email": "hash",
+    "user.id": "hash",
+    "user.account_uuid": "hash",
+    "user.account_id": "hash",
+    "organization.id": "hash",
+    "host.name": "hash"
   },
   "content": {
     "known_fields": "drop",
     "log_body": "preserve"
   },
-  "metrics": "reject_sensitive"
+  "metrics": "preserve_hashed"
 }

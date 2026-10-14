@@ -9,8 +9,27 @@ from support import default, policy
 def test_default_is_closed_and_reproducible():
     result = policy.compile_policy(default())
     assert result == policy.compile_policy(default())
-    assert set(result) == {"transform/privacy", "filter/privacy_links", "filter/privacy_metrics"}
+    assert set(result) == {
+        "transform/privacy",
+        "filter/privacy_invalid",
+        "filter/privacy_links",
+        "filter/privacy_metrics",
+    }
     assert all(p["error_mode"] == "propagate" for p in result.values())
+
+
+def test_default_preserves_identity_dimensioned_metrics_with_hash():
+    source = default()
+    assert source["version"] == 2
+    assert source["metrics"] == "preserve_hashed"
+    assert set(source["identity"].values()) == {"hash"}
+    result = policy.compile_policy(source)
+    assert {entry["context"] for entry in result["transform/privacy"]["metric_statements"]} == {
+        "resource",
+        "scope",
+        "datapoint",
+    }
+    assert "user.email" not in json.dumps(result["filter/privacy_metrics"])
 
 
 @pytest.mark.parametrize("action", ["ignore", "encrypt", "allow", "", None, [], {}])
@@ -24,7 +43,7 @@ def test_unsupported_identity_actions_fail(action):
 @pytest.mark.parametrize(
     "field,value",
     [
-        ("version", 2),
+        ("version", 3),
         ("version", True),
         ("metrics", "mask"),
         ("content", {}),

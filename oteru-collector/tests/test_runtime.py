@@ -7,6 +7,7 @@ All published ports are random, loopback-only. Only synthetic data is sent.
 from __future__ import annotations
 
 import copy
+import hashlib
 import io
 import json
 import subprocess
@@ -21,7 +22,7 @@ import grpc
 import pytest
 import requests
 import yaml
-from google.protobuf.json_format import ParseDict
+from google.protobuf.json_format import MessageToDict, ParseDict
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceRequest
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2_grpc import LogsServiceStub
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
@@ -142,6 +143,53 @@ def isolated_network():
         yield name
     finally:
         docker("network", "rm", name, check=False)
+
+
+@contextmanager
+def isolated_clickhouse(network):
+    name = "oteru-privacy-db-" + uuid.uuid4().hex[:12]
+    try:
+        docker(
+            "run",
+            "--rm",
+            "-d",
+            "--name",
+            name,
+            "--network",
+            network,
+            "--network-alias",
+            "clickhouse",
+            "-e",
+            "CLICKHOUSE_DB=otel",
+            "-e",
+            "CLICKHOUSE_USER=otel",
+            "-e",
+            "CLICKHOUSE_PASSWORD=otel",
+            "clickhouse/clickhouse-server:latest",
+        )
+        for _ in range(120):
+            result = docker(
+                "exec",
+                name,
+                "clickhouse-client",
+                "--host",
+                "clickhouse",
+                "--user",
+                "otel",
+                "--password",
+                "otel",
+                "--query",
+                "SELECT 1",
+                check=False,
+            )
+            if result.returncode == 0:
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError("isolated ClickHouse did not become ready")
+        yield name
+    finally:
+        docker("rm", "-f", name, check=False)
 
 
 def config_for(action="mask", profile="base"):
@@ -299,6 +347,200 @@ def test_identity_is_scrubbed_before_file_and_stdout(tmp_path, action):
         assert CANARY not in output.stdout + output.stderr
 
 
+def test_hash_uses_versioned_field_domain_and_preserves_metric_identity(tmp_path):
+    value = "same"
+    expected_email = "sha256:v1:117fba4f31a410110584fb7d44fc7d538f7284118c6c33b3805d32b537a7fde6"
+    expected_id = "sha256:v1:2455b2dcff68f09b9b99c20d4c1b89454473477df2cac17a951d8662d6cadd61"
+    assert (
+        expected_email == "sha256:v1:" + hashlib.sha256(b"oteru-pii:v1|user.email|same").hexdigest()
+    )
+    assert expected_id == "sha256:v1:" + hashlib.sha256(b"oteru-pii:v1|user.id|same").hexdigest()
+    with collector(tmp_path, config_for("hash")) as instance:
+        send(instance, "logs", "http", payload("logs", value={"stringValue": value}))
+        metric = payload("metrics", value={"stringValue": value})
+        point = metric["resourceMetrics"][0]["scopeMetrics"][0]["metrics"][0]
+        point = point["gauge"]["dataPoints"][0]
+        point["attributes"] = [a for a in point["attributes"] if a["key"] not in CONTENT]
+        send(instance, "metrics", "http", metric)
+        log_batches = wait_records(instance[3], "logs", 1)
+        metric_batches = wait_records(instance[3], "metrics", 1)
+        for signal in ("logs", "metrics"):
+            batches = log_batches if signal == "logs" else metric_batches
+            record = records(batches, signal)[0]
+            attributes = (
+                record["attributes"]
+                if signal == "logs"
+                else record["gauge"]["dataPoints"][0]["attributes"]
+            )
+            values = {attribute["key"]: attribute["value"] for attribute in attributes}
+            assert values["user.email"] == {"stringValue": expected_email}
+            assert values["user.id"] == {"stringValue": expected_id}
+            assert expected_email != expected_id
+
+
+def test_reference_metrics_keep_all_934_points_and_measurements(tmp_path):
+    source = {"resourceMetrics": []}
+    sample = ROOT.parent / "oteru-emitter/samples/telemetry-sample.json"
+    for line in sample.read_text().splitlines():
+        source["resourceMetrics"].extend(json.loads(line).get("resourceMetrics", []))
+    normalized = MessageToDict(
+        ParseDict(source, ExportMetricsServiceRequest()), use_integers_for_enums=True
+    )
+
+    def points(envelopes):
+        return [
+            point
+            for resource in envelopes
+            for scope in resource.get("scopeMetrics", [])
+            for metric in scope.get("metrics", [])
+            for point in metric["sum"].get("dataPoints", [])
+        ]
+
+    assert len(points(normalized["resourceMetrics"])) == 934
+
+    def pseudonymized(value):
+        if isinstance(value, list):
+            return [pseudonymized(item) for item in value]
+        if isinstance(value, dict):
+            if value.get("key") in IDENTITY and isinstance(value.get("value"), dict):
+                original = value["value"]["stringValue"]
+                digest = hashlib.sha256(
+                    f"oteru-pii:v1|{value['key']}|{original}".encode()
+                ).hexdigest()
+                return {**value, "value": {"stringValue": "sha256:v1:" + digest}}
+            return {key: pseudonymized(item) for key, item in value.items()}
+        return value
+
+    with collector(tmp_path, config_for("hash")) as instance:
+        send(instance, "metrics", "http", source)
+        batches = wait_records(instance[3], "metrics", 439)
+        actual = {
+            "resourceMetrics": [
+                resource for batch in batches for resource in batch.get("resourceMetrics", [])
+            ]
+        }
+        assert len(points(actual["resourceMetrics"])) == 934
+        # Compares every metric name, value, timestamp, temporality, monotonicity,
+        # non-sensitive dimension and independently computed pseudonym.
+        assert actual == pseudonymized(normalized)
+
+
+@pytest.mark.parametrize("signal", ["logs", "traces", "metrics"])
+def test_hash_covers_six_fields_in_every_supported_context(tmp_path, signal):
+    contexts = ["resource", "scope", "record"] + (["event"] if signal == "traces" else [])
+    value = "principal-a"
+    with collector(tmp_path, config_for("hash")) as instance:
+        for context in contexts:
+            data = payload(signal, context, {"stringValue": value})
+            if signal == "metrics":
+                for item in walk(data):
+                    if isinstance(item.get("attributes"), list):
+                        item["attributes"] = [
+                            attr for attr in item["attributes"] if attr["key"] not in CONTENT
+                        ]
+            send(instance, signal, "grpc", data)
+        batches = wait_records(instance[3], signal, len(contexts))
+        for key in IDENTITY:
+            expected = (
+                "sha256:v1:" + hashlib.sha256(f"oteru-pii:v1|{key}|{value}".encode()).hexdigest()
+            )
+            values = [
+                item["value"]["stringValue"] for item in walk(batches) if item.get("key") == key
+            ]
+            assert values == [expected] * len(contexts)
+        assert value not in json.dumps(batches)
+
+
+def test_two_principals_keep_stable_pseudonyms_across_signals_and_restart(tmp_path):
+    seen = {}
+    for run in ("before", "after"):
+        with collector(tmp_path / run, config_for("hash")) as instance:
+            for signal in ("logs", "traces", "metrics"):
+                for value in ("principal-a", "principal-b", "principal-a"):
+                    data = payload(signal, "record", {"stringValue": value})
+                    if signal == "metrics":
+                        point = data["resourceMetrics"][0]["scopeMetrics"][0]
+                        point = point["metrics"][0]["gauge"]["dataPoints"][0]
+                        point["attributes"] = [
+                            attr for attr in point["attributes"] if attr["key"] not in CONTENT
+                        ]
+                    send(instance, signal, "http", data)
+                batches = wait_records(instance[3], signal, 3)
+                for value, record in zip(
+                    ("principal-a", "principal-b", "principal-a"),
+                    records(batches, signal),
+                    strict=True,
+                ):
+                    attrs = (
+                        record["attributes"]
+                        if signal != "metrics"
+                        else record["gauge"]["dataPoints"][0]["attributes"]
+                    )
+                    user_id = next(
+                        a["value"]["stringValue"] for a in attrs if a["key"] == "user.id"
+                    )
+                    expected = (
+                        "sha256:v1:"
+                        + hashlib.sha256(f"oteru-pii:v1|user.id|{value}".encode()).hexdigest()
+                    )
+                    assert user_id == expected
+                    seen.setdefault(value, set()).add(user_id)
+            assert "principal-a" not in json.dumps(read_batches(instance[3]))
+            assert "principal-b" not in json.dumps(read_batches(instance[3]))
+    assert len(seen["principal-a"]) == len(seen["principal-b"]) == 1
+    assert seen["principal-a"] != seen["principal-b"]
+
+
+@pytest.mark.parametrize("signal", ["logs", "traces", "metrics"])
+@pytest.mark.parametrize("context", ["resource", "scope", "record"])
+@pytest.mark.parametrize("invalid", [{"stringValue": ""}, {"intValue": "17"}])
+def test_invalid_hash_input_rejects_only_unsafe_item(tmp_path, signal, context, invalid):
+    unsafe = payload(signal, context, invalid)
+    control = payload(signal, "benign")
+    resource_key = SIGNALS[signal][0]
+    if signal == "metrics":
+        for item in walk(unsafe):
+            if isinstance(item.get("attributes"), list):
+                item["attributes"] = [
+                    attr for attr in item["attributes"] if attr["key"] not in CONTENT
+                ]
+    with collector(tmp_path, config_for("hash")) as instance:
+        send(instance, signal, "http", {resource_key: unsafe[resource_key] + control[resource_key]})
+        batches = wait_records(instance[3], signal, 1)
+        time.sleep(0.2)
+        assert len(records(read_batches(instance[3]), signal)) == 1
+        record = records(batches, signal)[0]
+        attrs = (
+            record["attributes"]
+            if signal != "metrics"
+            else record["gauge"]["dataPoints"][0]["attributes"]
+        )
+        assert {a["key"]: a["value"] for a in attrs}["test.id"] == {"stringValue": "control"}
+        assert all(a["key"] not in IDENTITY for a in attrs)
+
+
+@pytest.mark.parametrize("invalid", [{"stringValue": ""}, {"intValue": "17"}])
+def test_invalid_hash_input_drops_span_event_but_keeps_spans(tmp_path, invalid):
+    unsafe = payload("traces", "event", invalid)
+    control = payload("traces", "benign")
+    with collector(tmp_path, config_for("hash")) as instance:
+        send(
+            instance,
+            "traces",
+            "http",
+            {"resourceSpans": unsafe["resourceSpans"] + control["resourceSpans"]},
+        )
+        batches = wait_records(instance[3], "traces", 2)
+        spans = records(batches, "traces")
+        assert len(spans) == 2
+        assert all(not span.get("events") for span in spans)
+        assert all(
+            {a["key"]: a["value"] for a in span["attributes"]}["test.id"]
+            == {"stringValue": "control"}
+            for span in spans
+        )
+
+
 VALUES = [
     {"stringValue": CANARY},
     {"stringValue": ""},
@@ -397,7 +639,10 @@ def test_content_controls_are_independent(tmp_path):
         record = records(batches, "logs")[0]
         assert record["body"] == {"stringValue": "REDACTED"}
         attrs = {a["key"]: a["value"] for a in record["attributes"]}
-        assert attrs["user.email"] == {"stringValue": "REDACTED"}
+        assert attrs["user.email"] == {
+            "stringValue": "sha256:v1:"
+            + hashlib.sha256(b"oteru-pii:v1|user.email|privacy-canary@example.com").hexdigest()
+        }
         assert attrs["user_prompt"] == {"stringValue": CANARY}
 
 
@@ -410,8 +655,9 @@ def test_bypass_mutation_is_detectable(tmp_path):
 
 
 @pytest.mark.parametrize("signal", ["traces", "metrics"])
-def test_uninspectable_links_and_exemplars_are_rejected(tmp_path, signal):
-    with collector(tmp_path, config_for()) as instance:
+@pytest.mark.parametrize("action", ["mask", "hash"])
+def test_uninspectable_links_and_exemplars_are_rejected(tmp_path, signal, action):
+    with collector(tmp_path, config_for(action)) as instance:
         unsafe = payload(signal, "benign")
         if signal == "traces":
             span = unsafe["resourceSpans"][0]["scopeSpans"][0]["spans"][0]
@@ -448,7 +694,8 @@ def test_uninspectable_links_and_exemplars_are_rejected(tmp_path, signal):
         ("clickstack-local", "otlp_http/hyperdx"),
     ],
 )
-def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path, profile, exporter):
+@pytest.mark.parametrize("action", ["mask", "hash"])
+def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path, profile, exporter, action):
     sink_dir = tmp_path / "sink"
     sink_dir.mkdir(mode=0o777)
     sink_dir.chmod(0o777)
@@ -482,25 +729,44 @@ def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path, profile, exp
                 "--config=/out/config.json",
             )
             OUTPUT_CONTAINERS[sink_dir / "telemetry.json"] = (sink_name, "/out/telemetry.json")
-            source_config = config_for(profile=profile)
+            source_config = config_for(action, profile=profile)
             source_config["exporters"][exporter]["endpoint"] = "http://sink:4318"
             source_config["exporters"][exporter]["headers"] = {"authorization": "test-only"}
             with collector(tmp_path / "source", source_config, network) as source:
                 for signal in ("logs", "traces", "metrics"):
-                    send(source, signal, "http", payload(signal))
+                    data = payload(signal)
+                    if signal == "metrics" and action == "hash":
+                        point = data["resourceMetrics"][0]["scopeMetrics"][0]
+                        point = point["metrics"][0]["gauge"]["dataPoints"][0]
+                        point["attributes"] = [
+                            attr for attr in point["attributes"] if attr["key"] not in CONTENT
+                        ]
+                    send(source, signal, "http", data)
                 send(source, "metrics", "http", payload("metrics", "benign"))
                 for signal in ("logs", "traces", "metrics"):
-                    wait_records(sink_dir / "telemetry.json", signal, 1)
+                    expected_count = 2 if signal == "metrics" and action == "hash" else 1
+                    wait_records(sink_dir / "telemetry.json", signal, expected_count)
                 batches = read_batches(sink_dir / "telemetry.json")
                 assert CANARY not in json.dumps(batches)
-                assert all(len(records(batches, signal)) == 1 for signal in SIGNALS)
+                assert len(records(batches, "logs")) == 1
+                assert len(records(batches, "traces")) == 1
+                assert len(records(batches, "metrics")) == (2 if action == "hash" else 1)
+                if action == "hash":
+                    expected = (
+                        "sha256:v1:"
+                        + hashlib.sha256(
+                            b"oteru-pii:v1|user.email|privacy-canary@example.com"
+                        ).hexdigest()
+                    )
+                    assert expected in json.dumps(batches)
                 assert CANARY not in json.dumps(read_batches(source[3]))
         finally:
             OUTPUT_CONTAINERS.pop(sink_dir / "telemetry.json", None)
             docker("rm", "-f", sink_name, check=False)
 
 
-def test_clickhouse_tables_receive_only_scrubbed_records(tmp_path):
+@pytest.mark.parametrize("action", ["mask", "hash"])
+def test_clickhouse_tables_receive_only_scrubbed_records(tmp_path, action):
     database_name = "oteru-privacy-db-" + uuid.uuid4().hex[:12]
     with isolated_network() as network:
         try:
@@ -543,13 +809,21 @@ def test_clickhouse_tables_receive_only_scrubbed_records(tmp_path):
             else:
                 raise AssertionError("isolated ClickHouse did not become ready")
             with collector(
-                tmp_path / "source", config_for(profile="clickhouse"), network
+                tmp_path / "source", config_for(action, profile="clickhouse"), network
             ) as source:
                 for signal in ("logs", "traces", "metrics"):
-                    send(source, signal, "grpc", payload(signal))
+                    data = payload(signal)
+                    if signal == "metrics" and action == "hash":
+                        point = data["resourceMetrics"][0]["scopeMetrics"][0]
+                        point = point["metrics"][0]["gauge"]["dataPoints"][0]
+                        point["attributes"] = [
+                            attr for attr in point["attributes"] if attr["key"] not in CONTENT
+                        ]
+                    send(source, signal, "grpc", data)
                 send(source, "metrics", "grpc", payload("metrics", "benign"))
                 tables = ("otel_logs", "otel_traces", "otel_metrics_gauge")
                 for table in tables:
+                    expected_count = 2 if table == "otel_metrics_gauge" and action == "hash" else 1
                     for _ in range(100):
                         result = docker(
                             "exec",
@@ -563,16 +837,126 @@ def test_clickhouse_tables_receive_only_scrubbed_records(tmp_path):
                             f"SELECT * FROM otel.{table} FORMAT JSONEachRow",
                             check=False,
                         )
-                        if result.returncode == 0 and result.stdout.strip():
+                        if (
+                            result.returncode == 0
+                            and len(result.stdout.splitlines()) == expected_count
+                        ):
                             break
                         time.sleep(0.1)
                     else:
                         raise AssertionError(f"no records in {table}")
-                    assert len(result.stdout.splitlines()) == 1
+                    assert len(result.stdout.splitlines()) == expected_count
                     assert CANARY not in result.stdout
+                    if action == "hash":
+                        expected = (
+                            "sha256:v1:"
+                            + hashlib.sha256(
+                                b"oteru-pii:v1|user.email|privacy-canary@example.com"
+                            ).hexdigest()
+                        )
+                        assert expected in result.stdout
                 assert CANARY not in json.dumps(read_batches(source[3]))
         finally:
             docker("rm", "-f", database_name, check=False)
+
+
+def test_clickhouse_cost_volume_and_trend_by_two_pseudonyms(tmp_path):
+    minute = time.time_ns() // 60_000_000_000 * 60_000_000_000
+    expected = {}
+    with isolated_network() as network, isolated_clickhouse(network) as database:
+        with collector(tmp_path, config_for("hash", profile="clickhouse"), network) as instance:
+            for principal, period, name, value in (
+                ("principal-a", 0, "privacy.cost", 1.25),
+                ("principal-a", 0, "privacy.volume", 100.0),
+                ("principal-a", 1, "privacy.cost", 2.5),
+                ("principal-a", 1, "privacy.volume", 150.0),
+                ("principal-b", 0, "privacy.cost", 3.0),
+                ("principal-b", 0, "privacy.volume", 200.0),
+                ("principal-b", 1, "privacy.cost", 4.0),
+                ("principal-b", 1, "privacy.volume", 300.0),
+            ):
+                timestamp = minute + (period * 60 + 10) * 1_000_000_000
+                data = {
+                    "resourceMetrics": [
+                        {
+                            "scopeMetrics": [
+                                {
+                                    "scope": {"name": "privacy-analytics"},
+                                    "metrics": [
+                                        {
+                                            "name": name,
+                                            "sum": {
+                                                "aggregationTemporality": 1,
+                                                "isMonotonic": False,
+                                                "dataPoints": [
+                                                    {
+                                                        "timeUnixNano": str(timestamp),
+                                                        "asDouble": value,
+                                                        "attributes": [
+                                                            {
+                                                                "key": "user.id",
+                                                                "value": {"stringValue": principal},
+                                                            },
+                                                            {
+                                                                "key": "environment",
+                                                                "value": {"stringValue": "test"},
+                                                            },
+                                                        ],
+                                                    }
+                                                ],
+                                            },
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+                send(instance, "metrics", "http", data)
+                pseudonym = (
+                    "sha256:v1:"
+                    + hashlib.sha256(f"oteru-pii:v1|user.id|{principal}".encode()).hexdigest()
+                )
+                expected[(pseudonym, name, period)] = value
+
+            query = (
+                "SELECT Attributes['user.id'] AS principal, MetricName AS metric, "
+                "intDiv(toUnixTimestamp(TimeUnix), 60) AS minute, sum(Value) AS total "
+                "FROM otel.otel_metrics_sum WHERE MetricName IN ('privacy.cost', 'privacy.volume') "
+                "GROUP BY principal, metric, minute ORDER BY principal, metric, minute "
+                "FORMAT JSONEachRow"
+            )
+            for _ in range(100):
+                result = docker(
+                    "exec",
+                    database,
+                    "clickhouse-client",
+                    "--user",
+                    "otel",
+                    "--password",
+                    "otel",
+                    "--query",
+                    query,
+                    check=False,
+                )
+                if result.returncode == 0 and len(result.stdout.splitlines()) == 8:
+                    break
+                time.sleep(0.1)
+            else:
+                raise AssertionError("eight cost/volume trend buckets were not queryable")
+            rows = [json.loads(line) for line in result.stdout.splitlines()]
+            actual = {
+                (
+                    row["principal"],
+                    row["metric"],
+                    int(row["minute"]) - minute // 60_000_000_000,
+                ): float(row["total"])
+                for row in rows
+            }
+            assert actual == expected
+            assert len({row["principal"] for row in rows}) == 2
+            assert "principal-a" not in result.stdout
+            assert "principal-b" not in result.stdout
 
 
 @pytest.mark.parametrize("profile", ["base", "clickhouse", "clickstack", "clickstack-local"])
