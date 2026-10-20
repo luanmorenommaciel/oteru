@@ -5,7 +5,7 @@
     order_by='(day_utc, actor_id)',
     unique_key=['day_utc', 'actor_id'],
     incremental_strategy='delete+insert',
-    ttl='day_utc + INTERVAL {{ var("actor_cost_ttl_days", 90) }} DAY'
+    ttl='day_utc + INTERVAL ' ~ var('actor_cost_ttl_days', 90) ~ ' DAY'
   )
 }}
 
