@@ -249,7 +249,14 @@ pathlib.Path(sys.argv[2]).write_text(
 )
 PY
 inject_run_id "$MCP" "$SCOPED_MCP" || fail "could not tag the MCP capture"
-if ! curl -sf "$CH" --data-binary @"$ROOT/oteru-collector/clickhouse/views/mcp_calls.sql" >/dev/null; then
+# ClickHouse 24.8 rejects LowCardinality(UInt8) from `StatusCode = 'Error'`
+# unless this setting is on; Compose images used by make up-clickhouse accept it.
+MCP_CH="$CH"
+case "$MCP_CH" in
+  *\?*) MCP_CH="${MCP_CH}&allow_suspicious_low_cardinality_types=1" ;;
+  *) MCP_CH="${MCP_CH}?allow_suspicious_low_cardinality_types=1" ;;
+esac
+if ! curl -sf "$MCP_CH" --data-binary @"$ROOT/oteru-collector/clickhouse/views/mcp_calls.sql" >/dev/null; then
   fail "could not apply the otel.mcp_calls view"
 elif ! "$PY" -m oteru_emitter.cli replay "$SCOPED_MCP" --profile generic \
     --transport http --max-gap 0.2 >/dev/null 2>&1; then
@@ -474,6 +481,12 @@ hmac_isolated_checks() {
     sleep 2
     local logs
     logs="$("$CTR" logs "$name" 2>&1 || true)"
+    # Rootless podman writes bind-mount files as a mapped uid the host cannot
+    # read; copy out as the invoking user before removing the container.
+    "$CTR" cp "$name:/telemetry/telemetry.json" "$outdir/telemetry.json" 2>/dev/null || true
+    if [ "$CTR" = podman ]; then
+      podman unshare chmod -R a+rX "$outdir" >/dev/null 2>&1 || true
+    fi
     "$CTR" rm -f "$name" >/dev/null 2>&1 || true
     if printf '%s\n' "$logs" | grep -F -- "$key" >/dev/null; then
       fail "HMAC keyed run $name: key string appeared in collector logs"
