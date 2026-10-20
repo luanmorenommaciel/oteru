@@ -13,7 +13,7 @@ source_date_epoch: 1792536054 (Tue Oct 20 10:40:54 PM UTC 2026)
 image_created: 2026-10-20 22:40:54 +0000 UTC
 runtime: podman + ClickHouse 26.11.1.323
 oci_archive: /tmp/oteru-collector-fdf9825.oci /opt/cursor/artifacts/oteru-collector-fdf9825.oci
-oci_archive_sha256: 7932ba4917dbe96b00bea110386c2f657ce460c63b0abb79792db0a358720d81
+oci_archive_sha256: 5781ae48149f384c85e3e04ce7181dc901b6716e7009b0fba3a56a5f1cec3c70
 
 == podman image inspect oteru-collector:0.155.0 ==
 Id=d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
