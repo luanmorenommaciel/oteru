@@ -85,7 +85,7 @@ def _present(attributes: str, key: str) -> str:
 def _hash_statement(attributes: str, key: str) -> str:
     return (
         f'set({attributes}["{key}"], '
-        f'Concat(["sha256:v1:", SHA256(Concat(['
+        f'Concat(["hmac:v1:", HMACSHA256(Concat(['
         f'"oteru-pii:v1|{key}|", {attributes}["{key}"]], ""))], "")) '
         f"where {_present(attributes, key)}"
     )

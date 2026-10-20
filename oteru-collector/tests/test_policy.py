@@ -74,6 +74,15 @@ def test_invalid_policy_removes_stale_artifact(tmp_path):
     assert not output.exists()
 
 
+def test_hash_emits_factory_bound_hmac_without_key():
+    blob = json.dumps(policy.compile_policy(default()))
+    assert "HMACSHA256(" in blob
+    assert "hmac:v1:" in blob
+    assert "sha256:" + "v1:" not in blob
+    assert "OTERU_PII_HMAC_KEY" not in blob
+    assert "SHA256(" not in blob.replace("HMACSHA256(", "")
+
+
 def test_compile_publishes_valid_json(tmp_path):
     source, output = tmp_path / "policy.json", tmp_path / "processors.json"
     source.write_text(json.dumps(default()))

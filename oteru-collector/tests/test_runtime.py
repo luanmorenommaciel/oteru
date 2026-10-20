@@ -7,7 +7,6 @@ All published ports are random, loopback-only. Only synthetic data is sent.
 from __future__ import annotations
 
 import copy
-import hashlib
 import io
 import json
 import subprocess
@@ -29,7 +28,7 @@ from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportM
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2_grpc import MetricsServiceStub
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2_grpc import TraceServiceStub
-from support import ROOT, default, policy
+from support import HMAC_TEST_KEY, ROOT, default, hmac_v1, policy
 
 IMAGE = (
     "otel/opentelemetry-collector-contrib@"
@@ -108,6 +107,8 @@ def collector(tmp_path, config, network=None):
             *network_args,
             "--mount",
             f"type=bind,src={tmp_path},dst=/out",
+            "-e",
+            f"OTERU_PII_HMAC_KEY={HMAC_TEST_KEY}",
             IMAGE,
             "--config=/out/config.json",
         )
@@ -349,12 +350,10 @@ def test_identity_is_scrubbed_before_file_and_stdout(tmp_path, action):
 
 def test_hash_uses_versioned_field_domain_and_preserves_metric_identity(tmp_path):
     value = "same"
-    expected_email = "sha256:v1:117fba4f31a410110584fb7d44fc7d538f7284118c6c33b3805d32b537a7fde6"
-    expected_id = "sha256:v1:2455b2dcff68f09b9b99c20d4c1b89454473477df2cac17a951d8662d6cadd61"
-    assert (
-        expected_email == "sha256:v1:" + hashlib.sha256(b"oteru-pii:v1|user.email|same").hexdigest()
-    )
-    assert expected_id == "sha256:v1:" + hashlib.sha256(b"oteru-pii:v1|user.id|same").hexdigest()
+    expected_email = hmac_v1("user.email", value)
+    expected_id = hmac_v1("user.id", value)
+    assert expected_email.startswith("hmac:v1:")
+    assert expected_email != expected_id
     with collector(tmp_path, config_for("hash")) as instance:
         send(instance, "logs", "http", payload("logs", value={"stringValue": value}))
         metric = payload("metrics", value={"stringValue": value})
@@ -404,10 +403,7 @@ def test_reference_metrics_keep_all_934_points_and_measurements(tmp_path):
         if isinstance(value, dict):
             if value.get("key") in IDENTITY and isinstance(value.get("value"), dict):
                 original = value["value"]["stringValue"]
-                digest = hashlib.sha256(
-                    f"oteru-pii:v1|{value['key']}|{original}".encode()
-                ).hexdigest()
-                return {**value, "value": {"stringValue": "sha256:v1:" + digest}}
+                return {**value, "value": {"stringValue": hmac_v1(value["key"], original)}}
             return {key: pseudonymized(item) for key, item in value.items()}
         return value
 
@@ -441,9 +437,7 @@ def test_hash_covers_six_fields_in_every_supported_context(tmp_path, signal):
             send(instance, signal, "grpc", data)
         batches = wait_records(instance[3], signal, len(contexts))
         for key in IDENTITY:
-            expected = (
-                "sha256:v1:" + hashlib.sha256(f"oteru-pii:v1|{key}|{value}".encode()).hexdigest()
-            )
+            expected = hmac_v1(key, value)
             values = [
                 item["value"]["stringValue"] for item in walk(batches) if item.get("key") == key
             ]
@@ -479,10 +473,7 @@ def test_two_principals_keep_stable_pseudonyms_across_signals_and_restart(tmp_pa
                     user_id = next(
                         a["value"]["stringValue"] for a in attrs if a["key"] == "user.id"
                     )
-                    expected = (
-                        "sha256:v1:"
-                        + hashlib.sha256(f"oteru-pii:v1|user.id|{value}".encode()).hexdigest()
-                    )
+                    expected = hmac_v1("user.id", value)
                     assert user_id == expected
                     seen.setdefault(value, set()).add(user_id)
             assert "principal-a" not in json.dumps(read_batches(instance[3]))
@@ -640,8 +631,7 @@ def test_content_controls_are_independent(tmp_path):
         assert record["body"] == {"stringValue": "REDACTED"}
         attrs = {a["key"]: a["value"] for a in record["attributes"]}
         assert attrs["user.email"] == {
-            "stringValue": "sha256:v1:"
-            + hashlib.sha256(b"oteru-pii:v1|user.email|privacy-canary@example.com").hexdigest()
+            "stringValue": hmac_v1("user.email", "privacy-canary@example.com")
         }
         assert attrs["user_prompt"] == {"stringValue": CANARY}
 
@@ -752,12 +742,7 @@ def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path, profile, exp
                 assert len(records(batches, "traces")) == 1
                 assert len(records(batches, "metrics")) == (2 if action == "hash" else 1)
                 if action == "hash":
-                    expected = (
-                        "sha256:v1:"
-                        + hashlib.sha256(
-                            b"oteru-pii:v1|user.email|privacy-canary@example.com"
-                        ).hexdigest()
-                    )
+                    expected = hmac_v1("user.email", "privacy-canary@example.com")
                     assert expected in json.dumps(batches)
                 assert CANARY not in json.dumps(read_batches(source[3]))
         finally:
@@ -848,12 +833,7 @@ def test_clickhouse_tables_receive_only_scrubbed_records(tmp_path, action):
                     assert len(result.stdout.splitlines()) == expected_count
                     assert CANARY not in result.stdout
                     if action == "hash":
-                        expected = (
-                            "sha256:v1:"
-                            + hashlib.sha256(
-                                b"oteru-pii:v1|user.email|privacy-canary@example.com"
-                            ).hexdigest()
-                        )
+                        expected = hmac_v1("user.email", "privacy-canary@example.com")
                         assert expected in result.stdout
                 assert CANARY not in json.dumps(read_batches(source[3]))
         finally:
@@ -913,10 +893,7 @@ def test_clickhouse_cost_volume_and_trend_by_two_pseudonyms(tmp_path):
                     ],
                 }
                 send(instance, "metrics", "http", data)
-                pseudonym = (
-                    "sha256:v1:"
-                    + hashlib.sha256(f"oteru-pii:v1|user.id|{principal}".encode()).hexdigest()
-                )
+                pseudonym = hmac_v1("user.id", principal)
                 expected[(pseudonym, name, period)] = value
 
             query = (
