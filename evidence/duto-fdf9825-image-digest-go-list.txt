@@ -1,34 +1,42 @@
 tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
-image_digest: sha256:985551b117c7efd94c023fcb2667bcc8565722e9f78a3ea262fb74a11407c10b
-image_id: 68b35262bf611603c0fd5edc4870d45f75cfe1906d18258898681d5560dbf975
-image_tag: localhost/oteru-collector:0.155.0
-clickhouse_version: 26.11.1.323
-captured_at_utc: 2026-10-20T22:55:06Z
-built_with: buildah bud --no-cache --layers=false --isolation chroot -t localhost/oteru-collector:0.155.0 -f oteru-collector/Dockerfile oteru-collector
-manual_layer_assembly: none
-runtime: podman (collector + ClickHouse 26.11.1.323 binary bind-mounted into debian:bookworm-slim)
-note: docker.io/clickhouse/clickhouse-server has no 26.11 tag; used Modelo local binary /workspace/clickhouse 26.11.1.323
-oci_archive: /tmp/oteru-collector-fdf9825.oci and /opt/cursor/artifacts/oteru-collector-fdf9825.oci
-oci_archive_sha256: cbbf9cc6d77881161cf65488b6048b358ee221a67c9a202192f4cb3d71ac1963
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
 binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
-binary_version: otelcol-oteru version 0.155.0
+binary_path: /otelcol-oteru
+image_id: d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+image_tag: oteru-collector:0.155.0
+clickhouse_version: 26.11.1.323
+buildah_version: 1.33.7
+captured_at_utc: 2026-10-20T22:59:37Z
+built_with: exact team command at fdf9825
+build_command: buildah build --no-cache --layers=false --timestamp 1792536054 --build-arg SOURCE_DATE_EPOCH=1792536054 -f oteru-collector/Dockerfile -t oteru-collector:0.155.0 oteru-collector
+source_date_epoch: 1792536054 (Tue Oct 20 10:40:54 PM UTC 2026)
+image_created: 2026-10-20 22:40:54 +0000 UTC
+runtime: podman + ClickHouse 26.11.1.323
+oci_archive: /tmp/oteru-collector-fdf9825.oci /opt/cursor/artifacts/oteru-collector-fdf9825.oci
+oci_archive_sha256: 7932ba4917dbe96b00bea110386c2f657ce460c63b0abb79792db0a358720d81
 
-== podman image inspect localhost/oteru-collector:0.155.0 ==
-Id=68b35262bf611603c0fd5edc4870d45f75cfe1906d18258898681d5560dbf975
-Digest=sha256:985551b117c7efd94c023fcb2667bcc8565722e9f78a3ea262fb74a11407c10b
-Created=2026-10-20 22:51:42.895145236 +0000 UTC Size=58502752 RepoTags=[localhost/oteru-collector:0.155.0]
+== podman image inspect oteru-collector:0.155.0 ==
+Id=d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+Digest=sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+Created=2026-10-20 22:40:54 +0000 UTC Size=58502703 RepoTags=[localhost/oteru-collector:0.155.0]
 
-== HIGH-floor pins from go version -m on /otelcol-oteru (no leftover builder image; --layers=false) ==
-github.com/klauspost/compress => v1.18.7  h1:aUyZsS4kH3QTKurYhAOwAHxllVPnOthb3vPfnF1Ehjw=
-golang.org/x/net => v0.60.0  h1:79p50tfZlm0J9YfoDsSi639qSXNGVwEzOPLCxM2FsYU=
-golang.org/x/text => v0.41.0  h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
-google.golang.org/grpc => v1.83.2  h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU=
-hmacconverter v0.155.0 => ../hmacconverter (devel)  [local replace; no published h1 sum]
+== HIGH-floor pins from go version -m on /otelcol-oteru ==
+	dep	github.com/klauspost/compress	v1.18.6
+	=>	github.com/klauspost/compress	v1.18.7	h1:aUyZsS4kH3QTKurYhAOwAHxllVPnOthb3vPfnF1Ehjw=
+	dep	github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter	v0.155.0
+	=>	../hmacconverter	(devel)	
+	dep	golang.org/x/net	v0.60.0
+	=>	golang.org/x/net	v0.60.0	h1:79p50tfZlm0J9YfoDsSi639qSXNGVwEzOPLCxM2FsYU=
+	dep	golang.org/x/text	v0.42.0
+	=>	golang.org/x/text	v0.41.0	h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
+	dep	google.golang.org/grpc	v1.83.2
+	=>	google.golang.org/grpc	v1.83.2	h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU=
+	
 
-note: go list -m all from an OCB builder layer cannot run — --layers=false does not retain a builder image. The module inventory below is go version -m on the binary extracted from this digest, which is what the image actually contains.
+note: go list -m all from an OCB builder layer cannot run (--layers=false). Inventory is go version -m on the extracted binary.
 
 == go version -m /otelcol-oteru ==
-/tmp/otelcol-oteru-fdf9825: go1.26.10
+/tmp/otelcol-oteru-fdf9825-parity: go1.26.10
 	path	github.com/luanmorenommaciel/oteru/oteru-collector
 	mod	github.com/luanmorenommaciel/oteru/oteru-collector	(devel)	
 	dep	github.com/ClickHouse/ch-go	v0.71.0	h1:bUdZ/EZj/LcVHsMqaRUP2holqygrPWQKeMjc6nZoyRM=

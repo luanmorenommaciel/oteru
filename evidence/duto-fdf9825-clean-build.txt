@@ -1,69 +1,51 @@
 tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
-image_digest: sha256:985551b117c7efd94c023fcb2667bcc8565722e9f78a3ea262fb74a11407c10b
-image_id: 68b35262bf611603c0fd5edc4870d45f75cfe1906d18258898681d5560dbf975
-image_tag: localhost/oteru-collector:0.155.0
-clickhouse_version: 26.11.1.323
-captured_at_utc: 2026-10-20T22:55:06Z
-
-== build command ==
-cd /workspace
-buildah bud --no-cache --layers=false --isolation chroot -t localhost/oteru-collector:0.155.0 -f oteru-collector/Dockerfile oteru-collector
-wipe: deleted all localhost/oteru-collector tags and dangling OCB/runtime layers; buildah prune -af; no leftover oteru images before this build
-manual_layer_assembly: none (COMMIT 68b35262bf61 from this bud)
-collector_tree_vs_fdf9825: empty diff (evidence/duto-fdf9825 branch = fdf9825 + evidence files only)
-hmacconverter_tree_sha: 162f3347ee8bec217dbf5c80b018941057d1d903  (git rev-parse fdf98252227899b81976ef194790a4ef9e8484c1:oteru-collector/hmacconverter)
-
-== digest ==
-image_id: 68b35262bf611603c0fd5edc4870d45f75cfe1906d18258898681d5560dbf975
-image_digest: sha256:985551b117c7efd94c023fcb2667bcc8565722e9f78a3ea262fb74a11407c10b
-oci_archive_sha256: cbbf9cc6d77881161cf65488b6048b358ee221a67c9a202192f4cb3d71ac1963
-oci_archive_bytes: 19127808
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
 binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+binary_path: /otelcol-oteru
+image_id: d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+image_tag: oteru-collector:0.155.0
+clickhouse_version: 26.11.1.323
+buildah_version: 1.33.7
+captured_at_utc: 2026-10-20T22:59:38Z
 
-== binary version (extracted + inside image) ==
+== exact build command (agreed for digest parity) ==
+buildah build --no-cache --layers=false --timestamp "$(git log -1 --format=%ct fdf9825)" --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct fdf9825)" -f oteru-collector/Dockerfile -t oteru-collector:0.155.0 oteru-collector
+resolved_timestamp: 1792536054 (Tue Oct 20 10:40:54 PM UTC 2026)
+buildah: 1.33.7
+manual_layer_assembly: none
+collector_tree_vs_fdf9825: empty diff
+hmacconverter_tree_sha: 162f3347ee8bec217dbf5c80b018941057d1d903
+unused_build_arg_warning: SOURCE_DATE_EPOCH (Dockerfile has no ARG SOURCE_DATE_EPOCH; --timestamp set image Created)
+
+== digest + binary ==
+image_id: d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+oci_archive_sha256: 7932ba4917dbe96b00bea110386c2f657ce460c63b0abb79792db0a358720d81
+oci_archive_bytes: 19127808
+
+== binary version ==
 extracted: otelcol-oteru version 0.155.0
 inside_image: otelcol-oteru version 0.155.0
 
-== hmacconverter from go version -m on the binary ==
+== hmacconverter from go version -m ==
 	dep	github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter	v0.155.0
 	=>	../hmacconverter	(devel)	
-interpretation: module is v0.155.0 replaced by local ../hmacconverter (devel).
-A published module would carry an h1: sum; (devel) with empty sum is the local-tree stamp.
-The Dockerfile COPY of hmac/ at fdf98252227899b81976ef194790a4ef9e8484c1 (tree 162f3347ee8bec217dbf5c80b018941057d1d903) is what OCB compiled into this binary.
+local replace ../hmacconverter (devel); no published h1 sum
 
-== go version -m (hmacconverter + HIGH pins) ==
-	path	github.com/luanmorenommaciel/oteru/oteru-collector
-	mod	github.com/luanmorenommaciel/oteru/oteru-collector	(devel)	
-	dep	github.com/klauspost/compress	v1.18.6
-	=>	github.com/klauspost/compress	v1.18.7	h1:aUyZsS4kH3QTKurYhAOwAHxllVPnOthb3vPfnF1Ehjw=
-	dep	github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter	v0.155.0
-	=>	../hmacconverter	(devel)	
-	dep	golang.org/x/net	v0.60.0
-	=>	golang.org/x/net	v0.60.0	h1:79p50tfZlm0J9YfoDsSi639qSXNGVwEzOPLCxM2FsYU=
-	dep	golang.org/x/text	v0.42.0
-	=>	golang.org/x/text	v0.41.0	h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
-	dep	google.golang.org/grpc	v1.83.2
-	=>	google.golang.org/grpc	v1.83.2	h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU=
+== HIGH pins ==
+github.com/klauspost/compress => v1.18.7
+golang.org/x/net => v0.60.0
+golang.org/x/text => v0.41.0
+google.golang.org/grpc => v1.83.2
 
 == full build log ==
 [1/2] STEP 1/6: FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS builder
-Resolving "golang" using unqualified-search registries (/home/ubuntu/.config/containers/registries.conf)
-Trying to pull docker.io/library/golang@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf...
-Getting image source signatures
-Copying blob sha256:9f281840fb16f6a7f24b730945b4453d0b0e237983d23998aa8a0085341bb9c7
-Copying blob sha256:a4edf9c328e814bd91b20c8e2211065489ebf15a16c7663d68a880660dfc897d
-Copying blob sha256:8cb71386cfcfc55b27b559f73c6d5c0cdcb93b83be8281314116e271cc42cea6
-Copying blob sha256:a103977ae1cc4417e06744c41e334de89c278e302ac55e0436e57546094cee2d
-Copying blob sha256:c6c71fff0869aa9bd48cf80d66e30b83adc9a3fe5e77dd9aaf266282c6ec64ff
-Copying blob sha256:f64d732997a02e45cca29ef334d56f89f7599c8937c2617b6467edd19bc037d6
-Copying blob sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
-Copying config sha256:9a5c92f2d9fd6f14dd9d9fabc659bd929f61b9170c47e94f05c9f384ea2304ec
-Writing manifest to image destination
 [1/2] STEP 2/6: WORKDIR /src
 [1/2] STEP 3/6: ENV CGO_ENABLED=0     GOPROXY=https://proxy.golang.org,direct     GOBIN=/usr/local/bin     GOTOOLCHAIN=go1.26.10
 [1/2] STEP 4/6: RUN go install go.opentelemetry.io/collector/cmd/builder@v0.155.0     && mv /usr/local/bin/builder /usr/local/bin/ocb
-go: downloading go.opentelemetry.io/collector v0.155.0
 go: downloading go.opentelemetry.io/collector/cmd/builder v0.155.0
+go: downloading go.opentelemetry.io/collector v0.155.0
 go: downloading github.com/spf13/cobra v1.10.2
 go: downloading github.com/knadh/koanf/parsers/yaml v1.1.0
 go: downloading github.com/knadh/koanf/providers/env/v2 v2.0.0
@@ -73,45 +55,30 @@ go: downloading github.com/spf13/pflag v1.0.10
 go: downloading go.uber.org/multierr v1.11.0
 go: downloading go.uber.org/zap v1.28.0
 go: downloading go.yaml.in/yaml/v3 v3.0.4
+go: downloading github.com/fsnotify/fsnotify v1.9.0
 go: downloading golang.org/x/mod v0.37.0
 go: downloading github.com/knadh/koanf/providers/fs v1.0.0
-go: downloading github.com/fsnotify/fsnotify v1.9.0
-go: downloading golang.org/x/sys v0.41.0
 go: downloading github.com/knadh/koanf/maps v0.1.2
 go: downloading github.com/go-viper/mapstructure/v2 v2.4.0
 go: downloading github.com/mitchellh/copystructure v1.2.0
+go: downloading golang.org/x/sys v0.41.0
 go: downloading github.com/mitchellh/reflectwalk v1.0.2
 [1/2] STEP 5/6: COPY . /tmp/context
 [1/2] STEP 6/6: RUN cp /tmp/context/builder-config.yaml /src/builder-config.yaml     && if [ -d /tmp/context/hmacconverter ]; then          cp -a /tmp/context/hmacconverter /src/hmacconverter;        fi     && rm -rf /tmp/context     && if [ ! -f /src/hmacconverter/go.mod ]; then          mkdir -p /src/hmacconverter          && printf 'module github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter\n\ngo 1.26.0\n'               > /src/hmacconverter/go.mod;        fi     && ocb --config=/src/builder-config.yaml     && test -x /src/_build/otelcol-oteru
-2026-10-20T22:50:40.754Z	INFO	internal/command.go:97	OpenTelemetry Collector Builder	{"version": "v0.155.0"}
-2026-10-20T22:50:40.754Z	INFO	internal/command.go:102	Using config file	{"path": "/src/builder-config.yaml"}
-2026-10-20T22:50:40.755Z	INFO	builder/config.go:165	Using go	{"go-executable": "/usr/local/go/bin/go"}
-2026-10-20T22:50:40.755Z	INFO	builder/main.go:110	Sources created	{"path": "./_build"}
-2026-10-20T22:50:45.641Z	INFO	builder/main.go:229	Getting go modules
-2026-10-20T22:50:52.823Z	INFO	builder/main.go:121	Compiling
-2026-10-20T22:51:41.305Z	INFO	builder/main.go:153	Compiled	{"binary": "./_build/otelcol-oteru"}
+2026-10-20T22:56:26.755Z	INFO	internal/command.go:97	OpenTelemetry Collector Builder	{"version": "v0.155.0"}
+2026-10-20T22:56:26.755Z	INFO	internal/command.go:102	Using config file	{"path": "/src/builder-config.yaml"}
+2026-10-20T22:56:26.755Z	INFO	builder/config.go:165	Using go	{"go-executable": "/usr/local/go/bin/go"}
+2026-10-20T22:56:26.756Z	INFO	builder/main.go:110	Sources created	{"path": "./_build"}
+2026-10-20T22:56:38.408Z	INFO	builder/main.go:229	Getting go modules
+2026-10-20T22:56:43.204Z	INFO	builder/main.go:121	Compiling
+2026-10-20T22:57:28.242Z	INFO	builder/main.go:153	Compiled	{"binary": "./_build/otelcol-oteru"}
 [2/2] STEP 1/5: FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
-Trying to pull gcr.io/distroless/static-debian12@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab...
-Getting image source signatures
-Copying blob sha256:7c12895b777bcaa8ccae0605b4de635b68fc32d60fa08f421dc3818bf55ee212
-Copying blob sha256:a5789fc40e828c4e7467626e3f69ec5dea8e5da22fe660db8ae6d16f777b0bbf
-Copying blob sha256:2780920e5dbfbe103d03a583ed75345306e572ec5a48cb10361f046767d9f29a
-Copying blob sha256:bf7a4185f01524837d19abde915ffde84e64368b250f5b5e9f6f75aea62a11d4
-Copying blob sha256:39dc083afc39bd8dc43d456fe7ff7d39292e593bb2769972c11bb2e5f9119386
-Copying blob sha256:990a9c434e5e0f11549a8d4a41a1991e621b04e30cd63269adbc97b1dc38fd7e
-Copying blob sha256:3214acf345c0cc6bbdb56b698a41ccdefc624a09d6beb0d38b5de0b2303ecaf4
-Copying blob sha256:52630fc75a18675c530ed9eba5f55eca09b03e91bd5bc15307918bbc1a7e7296
-Copying blob sha256:dd64bf2dd177757451a98fcdc999a339c35dee5d9872d8f4dc69c8f3c4dd0112
-Copying blob sha256:b839dfae01f66e15c6a8b63520557ed315bdfe036342fa7a0c537259f10d7a9a
-Copying blob sha256:dcaa5a89b0ccda4b283e16d0b4d0891cd93d5fe05c6798f7806781a6a2d84354
-Copying blob sha256:96ed2737ae312e0bc637b40783f7c2f23416cb72ca957aa01855f1614278e64b
-Copying config sha256:12aa113e298cbae388b298c0dc163fa1547beba948153b23eb9094e16a07a770
-Writing manifest to image destination
 [2/2] STEP 2/5: COPY --from=builder --chown=nonroot:nonroot /src/_build/otelcol-oteru /otelcol-oteru
 [2/2] STEP 3/5: USER nonroot
 [2/2] STEP 4/5: ENTRYPOINT ["/otelcol-oteru"]
 [2/2] STEP 5/5: CMD ["--config=/etc/oteru-collector-config.yml"]
-[2/2] COMMIT localhost/oteru-collector:0.155.0
---> 68b35262bf61
+[2/2] COMMIT oteru-collector:0.155.0
+--> d7a637ceeed1
+[Warning] one or more build args were not consumed: [SOURCE_DATE_EPOCH]
 Successfully tagged localhost/oteru-collector:0.155.0
-68b35262bf611603c0fd5edc4870d45f75cfe1906d18258898681d5560dbf975
+d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9

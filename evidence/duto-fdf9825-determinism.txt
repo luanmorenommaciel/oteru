@@ -1,20 +1,22 @@
 tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
-image_digest: sha256:985551b117c7efd94c023fcb2667bcc8565722e9f78a3ea262fb74a11407c10b
-image_id: 68b35262bf611603c0fd5edc4870d45f75cfe1906d18258898681d5560dbf975
-image_tag: localhost/oteru-collector:0.155.0
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+image_id: d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+image_tag: oteru-collector:0.155.0
 clickhouse_version: 26.11.1.323
-captured_at_utc: 2026-10-20T22:54:45Z
+buildah_version: 1.33.7
+captured_at_utc: 2026-10-20T22:59:22Z
 keys: generated at runtime via openssl rand -hex 32 (in-memory only; not written)
 construction: HMAC-SHA256(key, 'oteru-pii:v1|<field>|<value>') -> hmac:v1:<64 hex>
 actor: user.email=user@example.com posted twice per key
 
 == independently computed HMAC-SHA256 vs collector output ==
-key_A_id_1=hmac:v1:886958b84a00b892c923fb5f67c95457c3f8649d21fc6fac4f030e86d81aad31
-key_A_id_2=hmac:v1:886958b84a00b892c923fb5f67c95457c3f8649d21fc6fac4f030e86d81aad31
+key_A_id_1=hmac:v1:424efd7fb9f107e9e358e5fd1bdf49d0f22fdf3a60c0da9f2c7f0761237978a7
+key_A_id_2=hmac:v1:424efd7fb9f107e9e358e5fd1bdf49d0f22fdf3a60c0da9f2c7f0761237978a7
 key_A_same=1
 key_A_matches_independent_compute=1
-key_B_id_1=hmac:v1:98f9552cbe52f754d4f078f707f763d62a7afec6afc4269c8d3d33808f778d02
-key_B_id_2=hmac:v1:98f9552cbe52f754d4f078f707f763d62a7afec6afc4269c8d3d33808f778d02
+key_B_id_1=hmac:v1:4a5ffc74b270d975d1443dcae37868436f1bd50bf984dbd24697dc96d80fe848
+key_B_id_2=hmac:v1:4a5ffc74b270d975d1443dcae37868436f1bd50bf984dbd24697dc96d80fe848
 key_B_same=1
 key_B_matches_independent_compute=1
 keys_differ=1

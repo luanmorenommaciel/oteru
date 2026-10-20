@@ -1,13 +1,14 @@
 tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
-image_digest: sha256:985551b117c7efd94c023fcb2667bcc8565722e9f78a3ea262fb74a11407c10b
-image_id: 68b35262bf611603c0fd5edc4870d45f75cfe1906d18258898681d5560dbf975
-image_tag: localhost/oteru-collector:0.155.0
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+image_id: d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+image_tag: oteru-collector:0.155.0
 clickhouse_version: 26.11.1.323
-captured_at_utc: 2026-10-20T22:54:18Z
+buildah_version: 1.33.7
+captured_at_utc: 2026-10-20T22:59:01Z
 loader: /workspace/clickhouse client --host 127.0.0.1 --user otel --password otel --query ... </dev/null
 
 == stg_api_request: '@' in any column (toJSONString(tuple(*))) ==
-SELECT count() FROM otel.stg_api_request WHERE cost_usd_micros IS NOT NULL AND positionCaseInsensitive(toJSONString(tuple(*)), '@') > 0
 rows_with_at=0
 
 == stg_api_request per-column '@' ==
@@ -15,12 +16,12 @@ rows_with_at=0
 1. │           0 │             0 │             0 │            0 │               0 │            0 │                 0 │
    └─────────────┴───────────────┴───────────────┴──────────────┴─────────────────┴──────────────┴───────────────────┘
 
-== otel_logs attributes: '@' in LogAttributes / ResourceAttributes / ScopeAttributes / Body ==
+== otel_logs attributes ==
    ┌─logs─┬─log_attrs_at─┬─resource_attrs_at─┬─scope_attrs_at─┬─body_at─┐
-1. │   66 │            0 │                 0 │              0 │       0 │
+1. │   88 │            0 │                 0 │              0 │       0 │
    └──────┴──────────────┴───────────────────┴────────────────┴─────────┘
 
-== otel_logs LogAttributes values matching email-like cleartext ==
+== otel_logs email-like LogAttributes ==
    ┌─email_like─┐
 1. │          0 │
    └────────────┘

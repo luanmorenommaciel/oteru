@@ -1,36 +1,33 @@
 tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
-image_digest: sha256:985551b117c7efd94c023fcb2667bcc8565722e9f78a3ea262fb74a11407c10b
-image_id: 68b35262bf611603c0fd5edc4870d45f75cfe1906d18258898681d5560dbf975
-image_tag: localhost/oteru-collector:0.155.0
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+image_id: d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+image_tag: oteru-collector:0.155.0
 clickhouse_version: 26.11.1.323
-captured_at_utc: 2026-10-20T22:54:18Z
+buildah_version: 1.33.7
+captured_at_utc: 2026-10-20T22:59:01Z
 loader: /workspace/clickhouse client --host 127.0.0.1 --user otel --password otel --query ... </dev/null
 runtime: podman + ClickHouse 26.11.1.323 (Modelo local binary bind-mounted into debian:bookworm-slim)
-build: buildah bud --no-cache --layers=false --isolation chroot (no manual layer assembly)
-e2e: scripts/check_signals_e2e.sh SETTLE_SECONDS=4 OTERU_COLLECTOR_IMAGE=localhost/oteru-collector:0.155.0 -> OK (no SKIP)
+build: exact team command (buildah build --no-cache --layers=false --timestamp 1792536054 --build-arg SOURCE_DATE_EPOCH=1792536054)
+e2e: scripts/check_signals_e2e.sh SETTLE_SECONDS=4 OTERU_COLLECTOR_IMAGE=oteru-collector:0.155.0 -> OK (no SKIP)
 
 == 100% actor_id ^hmac:v1:[0-9a-f]{64}$ ==
-SELECT count() AS rows,
-       countIf(match(actor_id, '^hmac:v1:[0-9a-f]{64}$')) AS hmac_ok,
-       countIf(NOT match(actor_id, '^hmac:v1:[0-9a-f]{64}$')) AS hmac_bad,
-       if(count()=0, 0, round(100 * countIf(match(actor_id, '^hmac:v1:[0-9a-f]{64}$')) / count(), 2)) AS hmac_pct
-FROM otel.stg_api_request
-WHERE cost_usd_micros IS NOT NULL
-
    ┌─rows─┬─hmac_ok─┬─hmac_bad─┬─hmac_pct─┐
-1. │   27 │      27 │        0 │      100 │
+1. │   36 │      36 │        0 │      100 │
    └──────┴─────────┴──────────┴──────────┘
 
 == sample actor_id (distinct, up to 16) ==
    ┌─actor_id─────────────────────────────────────────────────────────────────┬─n─┐
 1. │ hmac:v1:1ac4c222976695d7ef8738938ba9fe496d22d0b2f3901b5b838df82a712b5955 │ 7 │
-2. │ hmac:v1:88449b5ba3442db9a7fb99ec2e91de47333e52dbc37b50fc068c939c2b49b99f │ 7 │
-3. │ hmac:v1:c849a01b87f014a29abc5204a5058b2036e6d84f9da511ee077fcdb94cd17a8b │ 7 │
-4. │ hmac:v1:61b48fc1302ee77e43dc4869a89e24233ef710303070c85f7980958bacc51d56 │ 2 │
-5. │ hmac:v1:9df0bddbc8eb30269c8f5ee12c4ccf08ff79728d82e7229141ae7cc65eb201f9 │ 2 │
-6. │ hmac:v1:ad22460d3a8b9df525710c934bc60141b520899dba56f1f4c2bc59435e0deeba │ 2 │
+2. │ hmac:v1:7008e9d0d22e9b6d8801ca4e038278414bf2939ba259cee9c21249384ac015d2 │ 7 │
+3. │ hmac:v1:88449b5ba3442db9a7fb99ec2e91de47333e52dbc37b50fc068c939c2b49b99f │ 7 │
+4. │ hmac:v1:c849a01b87f014a29abc5204a5058b2036e6d84f9da511ee077fcdb94cd17a8b │ 7 │
+5. │ hmac:v1:03240b0899fef1b4cf09778cefc8452dddb4166ed6406f80c61365834c3c4596 │ 2 │
+6. │ hmac:v1:61b48fc1302ee77e43dc4869a89e24233ef710303070c85f7980958bacc51d56 │ 2 │
+7. │ hmac:v1:9df0bddbc8eb30269c8f5ee12c4ccf08ff79728d82e7229141ae7cc65eb201f9 │ 2 │
+8. │ hmac:v1:ad22460d3a8b9df525710c934bc60141b520899dba56f1f4c2bc59435e0deeba │ 2 │
    └──────────────────────────────────────────────────────────────────────────┴───┘
 
 == verdict ==
-rows=27 hmac_bad=0
+rows=36 hmac_bad=0
 PASS: 100% of actor_id values match ^hmac:v1:[0-9a-f]{64}$
