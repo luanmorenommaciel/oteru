@@ -143,17 +143,44 @@ ttl_snippet_from_ddl() {
   echo "$ddl" | sed -n 's/.*\(TTL .*\)/\1/p' | sed -E 's/ (SETTINGS|COMMENT).*//' | head -1
 }
 
-ttl_hours_from_snippet() {
+# ClickHouse rewrites `INTERVAL N DAY` as `toIntervalDay(N)` (and Hour/Week/…).
+# Convert every recognized form to whole days so the bound is always "<= 90 DAY".
+ttl_days_from_snippet() {
   local snippet="$1"
   local n
+  n="$(echo "$snippet" | grep -oiE 'toIntervalYear\([0-9]+\)|INTERVAL[[:space:]]+[0-9]+[[:space:]]+YEAR' | grep -oE '[0-9]+' | head -1 || true)"
+  if [ -n "$n" ]; then
+    echo $((n * 365))
+    return
+  fi
+  n="$(echo "$snippet" | grep -oiE 'toIntervalMonth\([0-9]+\)|INTERVAL[[:space:]]+[0-9]+[[:space:]]+MONTH' | grep -oE '[0-9]+' | head -1 || true)"
+  if [ -n "$n" ]; then
+    echo $((n * 30))
+    return
+  fi
+  n="$(echo "$snippet" | grep -oiE 'toIntervalWeek\([0-9]+\)|INTERVAL[[:space:]]+[0-9]+[[:space:]]+WEEK' | grep -oE '[0-9]+' | head -1 || true)"
+  if [ -n "$n" ]; then
+    echo $((n * 7))
+    return
+  fi
   n="$(echo "$snippet" | grep -oiE 'toIntervalDay\([0-9]+\)|INTERVAL[[:space:]]+[0-9]+[[:space:]]+DAY' | grep -oE '[0-9]+' | head -1 || true)"
   if [ -n "$n" ]; then
-    echo $((n * 24))
+    echo "$n"
     return
   fi
   n="$(echo "$snippet" | grep -oiE 'toIntervalHour\([0-9]+\)|INTERVAL[[:space:]]+[0-9]+[[:space:]]+HOUR' | grep -oE '[0-9]+' | head -1 || true)"
   if [ -n "$n" ]; then
-    echo "$n"
+    echo $((n / 24))
+    return
+  fi
+  n="$(echo "$snippet" | grep -oiE 'toIntervalMinute\([0-9]+\)|INTERVAL[[:space:]]+[0-9]+[[:space:]]+MINUTE' | grep -oE '[0-9]+' | head -1 || true)"
+  if [ -n "$n" ]; then
+    echo $((n / 1440))
+    return
+  fi
+  n="$(echo "$snippet" | grep -oiE 'toIntervalSecond\([0-9]+\)|INTERVAL[[:space:]]+[0-9]+[[:space:]]+SECOND' | grep -oE '[0-9]+' | head -1 || true)"
+  if [ -n "$n" ]; then
+    echo $((n / 86400))
     return
   fi
   echo ""
@@ -178,13 +205,13 @@ else
       fail "$table has actor_id but NO TTL in create_table_query (actor data must be time-limited in the physical DDL)"
     else
       echo "    TTL snippet for $table: $snippet"
-      hours="$(ttl_hours_from_snippet "$snippet")"
-      if [ -z "$hours" ]; then
-        fail "$table TTL in DDL is not a DAY/HOUR interval we can bound to 90 DAY: $snippet"
-      elif [ "$hours" -le $((90 * 24)) ]; then
-        ok "$table has actor_id and physical TTL <= 90 DAY ($hours h, compliant)"
+      days="$(ttl_days_from_snippet "$snippet")"
+      if [ -z "$days" ]; then
+        fail "$table TTL in DDL is not a convertible interval (INTERVAL N DAY / toIntervalDay(N) / toIntervalHour / …): $snippet"
+      elif [ "$days" -le 90 ]; then
+        ok "$table has actor_id and physical TTL <= 90 DAY ($days DAY, compliant)"
       else
-        fail "$table has actor_id but physical TTL > 90 DAY ($hours h, must be <= 2160 h)"
+        fail "$table has actor_id but physical TTL > 90 DAY ($days DAY, must be <= 90)"
       fi
     fi
   done

@@ -4,25 +4,26 @@
 # change that day's fct_cost_daily total (sum of cost_usd_micros).
 #
 # First dbt run uses --full-refresh so the initial total cannot be zero just
-# because the models already existed empty (incremental lookback on an empty
-# table is a model bug, not this check). A zero initial total is always FAIL.
+# because the models already existed empty. A zero initial total, or an empty
+# fct_cost_actor_daily, is always FAIL — never PASS comparing empty with empty.
 
 set -euo pipefail
 
 # shellcheck source=check_cost_retention_lib.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check_cost_retention_lib.sh"
 
-TEST_DAY="$(yesterday_utc)"
+TEST_DAY="$(test_day)"
 TEST_ACTOR="sha256:v1:test-actor-expiry-$(date +%s)"
 TEST_PREFIX="expiry-test-req-$(date +%s)"
 
 echo "  Running expiry safety test with real dbt models..."
+echo "    test day (today() - 1): $TEST_DAY"
 
 ch_q "DELETE FROM otel.otel_logs WHERE Body = 'claude_code.api_request' AND (LogAttributes['request_id'] LIKE 'expiry-test-req%' OR LogAttributes['user.email'] LIKE '%test-actor-expiry%')" >/dev/null 2>&1 || true
 sleep 1
 
-echo "    1. Inserting test raw data for $TEST_DAY..."
-if ! insert_test_raw "$TEST_DAY" "$TEST_ACTOR" "$TEST_PREFIX"; then
+echo "    1. Inserting test raw data for $TEST_DAY (INSERT … SELECT, columns from DESCRIBE)..."
+if ! insert_test_raw "$TEST_ACTOR" "$TEST_PREFIX"; then
   echo "  FAIL: could not insert test raw rows into otel.otel_logs"
   exit 1
 fi
@@ -53,15 +54,13 @@ if ! table_exists fct_cost_daily; then
 fi
 
 initial_daily="$(sum_cost fct_cost_daily "$TEST_DAY")"
-echo "    Initial fct_cost_daily total for $TEST_DAY: ${initial_daily:-N/A} micros"
-
+initial_actor="0"
+actor_rows="0"
 if table_exists fct_cost_actor_daily; then
   initial_actor="$(sum_cost fct_cost_actor_daily "$TEST_DAY")"
-  echo "    Initial fct_cost_actor_daily total for $TEST_DAY: ${initial_actor:-N/A} micros"
+  actor_rows="$(actor_row_count "$TEST_DAY")"
 fi
-
-if [ -z "${initial_daily:-}" ] || [ "$initial_daily" = "0" ]; then
-  echo "  FAIL: fct_cost_daily sum(cost_usd_micros) for $TEST_DAY is ${initial_daily:-empty} after --full-refresh (must be > 0; a zero total is never a pass)"
+if ! require_nonzero_reference "$initial_daily" "$initial_actor" "$actor_rows" "check 4 initial $TEST_DAY"; then
   exit 1
 fi
 
@@ -80,12 +79,9 @@ fi
 echo "    dbt run completed (second run, raw data gone)"
 
 final_daily="$(sum_cost fct_cost_daily "$TEST_DAY")"
-echo "    Final fct_cost_daily total for $TEST_DAY: ${final_daily:-N/A} micros"
-
-if table_exists fct_cost_actor_daily; then
-  final_actor="$(sum_cost fct_cost_actor_daily "$TEST_DAY")"
-  echo "    Final fct_cost_actor_daily total for $TEST_DAY: ${final_actor:-N/A} micros"
-fi
+final_actor="$(sum_cost fct_cost_actor_daily "$TEST_DAY")"
+final_actor_rows="$(actor_row_count "$TEST_DAY")"
+echo "    totals (check 4 final $TEST_DAY): fct_cost_daily=${final_daily:-empty} micros  fct_cost_actor_daily=${final_actor:-empty} micros  actor_rows=${final_actor_rows:-empty}"
 
 if [ "$final_daily" = "$initial_daily" ]; then
   echo "  ok   fct_cost_daily: day_utc total unchanged after raw data expired ($initial_daily micros)"
