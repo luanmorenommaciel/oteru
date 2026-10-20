@@ -13,6 +13,7 @@ import copy
 import io
 import json
 import os
+import secrets
 import shutil
 import subprocess
 import tarfile
@@ -33,7 +34,14 @@ from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportM
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2_grpc import MetricsServiceStub
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2_grpc import TraceServiceStub
-from support import HMAC_TEST_KEY, ROOT, default, hmac_v1, policy
+from support import ROOT, default, hmac_v1 as _hmac_v1, policy
+
+# Bound by the session fixture. Never written to disk or printed.
+_HMAC_RUNTIME_KEY = ""
+
+
+def hmac_v1(field: str, value: str, key: str | None = None) -> str:
+    return _hmac_v1(field, value, key if key is not None else _HMAC_RUNTIME_KEY)
 
 # Local OCB distro. Built from oteru-collector/Dockerfile. Override with
 # OTERU_COLLECTOR_IMAGE only for a already-built local tag — never contrib.
@@ -70,6 +78,24 @@ CONTENT = (
 )
 CANARY = "privacy-canary@example.com"
 OUTPUT_CONTAINERS = {}
+
+
+@pytest.fixture(scope="session", autouse=True)
+def hmac_test_key():
+    """32+ byte HMAC key for this pytest process. Not a committed secret."""
+    global _HMAC_RUNTIME_KEY
+    key = secrets.token_hex(32)
+    previous = os.environ.get("OTERU_PII_HMAC_KEY")
+    _HMAC_RUNTIME_KEY = key
+    os.environ["OTERU_PII_HMAC_KEY"] = key
+    try:
+        yield key
+    finally:
+        _HMAC_RUNTIME_KEY = ""
+        if previous is None:
+            os.environ.pop("OTERU_PII_HMAC_KEY", None)
+        else:
+            os.environ["OTERU_PII_HMAC_KEY"] = previous
 
 
 @pytest.fixture(autouse=True)
@@ -142,6 +168,8 @@ def docker(*args, check=True, timeout=120, text=True):
     )
     if check and result.returncode:
         err = result.stderr if text else (result.stderr or b"").decode("utf-8", "replace")
+        if _HMAC_RUNTIME_KEY:
+            err = err.replace(_HMAC_RUNTIME_KEY, "<redacted>")
         raise AssertionError(f"{exe} {verb} failed: {err}")
     return result
 
@@ -182,7 +210,7 @@ def collector(tmp_path, config, network=None):
             "--mount",
             f"type=bind,src={tmp_path},dst=/out",
             "-e",
-            f"OTERU_PII_HMAC_KEY={HMAC_TEST_KEY}",
+            f"OTERU_PII_HMAC_KEY={_HMAC_RUNTIME_KEY}",
             IMAGE,
             "--config=/out/config.json",
         )
@@ -1024,7 +1052,7 @@ def test_production_config_validates_in_pinned_collector(tmp_path, profile):
         "-e",
         "CLICKSTACK_API_KEY=test-only",
         "-e",
-        f"OTERU_PII_HMAC_KEY={HMAC_TEST_KEY}",
+        f"OTERU_PII_HMAC_KEY={_HMAC_RUNTIME_KEY}",
         "--mount",
         f"type=bind,src={tmp_path},dst=/etc/oteru-privacy,readonly",
         "--mount",

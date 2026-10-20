@@ -6,11 +6,8 @@ import importlib.util
 import json
 from pathlib import Path
 
-# Public fixture key for unit/e2e expected-hash computation only. Not a secret.
-HMAC_TEST_KEY = "oteru-hmac-test-key-32-bytes-min!"
 
-
-def hmac_v1(field: str, value: str, key: str = HMAC_TEST_KEY) -> str:
+def hmac_v1(field: str, value: str, key: str) -> str:
     digest = hmac.new(
         key.encode(),
         f"oteru-pii:v1|{field}|{value}".encode(),
