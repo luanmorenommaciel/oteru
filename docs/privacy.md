@@ -35,7 +35,7 @@ The Collector is pinned to contrib **0.155.0** by digest, plus the `hmacconverte
 ## Activate or change a policy
 
 1. Review `oteru-collector/privacy/policy.json` and record the intended change. Never place real identity, credentials or arbitrary OTTL inside it.
-2. Run `make privacy-config-check` and `scripts/check_signals_e2e.sh` after `make setup`. These tests use fabricated data. The e2e script needs a running Collector+ClickHouse (`make up-clickhouse`) and, for fail-closed HMAC checks, the local `oteru-collector:0.155.0` image. An unavailable runtime is a failed check, not a skip.
+2. Run `python -m pytest oteru-collector/tests/test_policy.py oteru-collector/tests/test_configs.py` and `scripts/check_signals_e2e.sh` (`make e2e-signals`) after `make setup`. These tests use fabricated data. The e2e script needs a running Collector+ClickHouse (`make up-clickhouse`) and, for fail-closed HMAC checks, the local `oteru-collector:0.155.0` image. An unavailable runtime is a failed check, not a skip.
 3. For a first start, use `make up`, `make up-clickhouse`, `make up-clickstack`, `make up-clickstack-local` or `make up-hyperdx` as usual. For an existing installation, use `make apply-privacy PROFILE=base|clickhouse|clickstack|clickstack-local|hyperdx`. The command **stops the Collector first**, compiles the policy in an isolated container, then recreates only the Collector. Its failure leaves ingestion stopped. The backends must already be running.
 4. Confirm the compiler's contract version and SHA-256 of the canonical policy in its logs, check Collector startup and the expected fields in new, synthetic telemetry. Retain the reviewed policy and checksum in the deployment record. There is no hot reload: changing JSON on disk while a Collector runs does not update its active policy.
 
@@ -43,7 +43,7 @@ For rollback, restore the last reviewed **sanitizing** policy and run the same `
 
 ## Verification and pending decisions
 
-`make privacy-config-check` checks the compiler contract and topology. `scripts/check_signals_e2e.sh` (`make e2e-signals`) replays tagged captures into the running Collector and asserts signal selection, `otel.stg_api_request` totals, `actor_id` matching `^hmac:v1:[0-9a-f]{64}$`, no `@` in any staging column, same HMAC key producing the same id, different keys producing different ids, and that an unset, empty, or 31-byte `OTERU_PII_HMAC_KEY` fails Collector start (non-zero, logged) without the key string appearing in logs. `make test`, `make lint` and `make pii-guard` remain regression gates.
+`python -m pytest oteru-collector/tests/test_policy.py oteru-collector/tests/test_configs.py` checks the compiler contract and topology. `scripts/check_signals_e2e.sh` (`make e2e-signals`) replays tagged captures into the running Collector and asserts signal selection, `otel.stg_api_request` totals, `actor_id` matching `^hmac:v1:[0-9a-f]{64}$`, no `@` in any staging column, same HMAC key producing the same id, different keys producing different ids, and that an unset, empty, or 31-byte `OTERU_PII_HMAC_KEY` fails Collector start (non-zero, logged) without the key string appearing in logs. `make test`, `make lint` and `make pii-guard` remain regression gates. There is no `make e2e-privacy` or `make privacy-config-check` target.
 
 ### Reproducible privacy demo
 

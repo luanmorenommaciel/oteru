@@ -109,7 +109,7 @@ CI (GitHub Actions) runs lint + tests on Ubuntu and Windows × Python 3.10 and
 
 ### PII guard
 
-The Collector also has a runtime privacy policy for known identity and content fields. By default it replaces six cataloged identity fields with stable SHA-256 pseudonyms before export, retaining safe metric series by pseudonym; known prompt/completion fields are removed. See [Collector privacy policy](docs/privacy.md) for the exact catalog, data-loss decisions, activation procedure and limitations. `make privacy-config-check` validates the policy and every pipeline; `make e2e-privacy` checks actual Collector outputs in isolated Docker containers. The PII guard below protects committed fixtures and is a separate check.
+The Collector also has a runtime privacy policy for known identity and content fields. By default it replaces six cataloged identity fields with stable HMAC-SHA256 pseudonyms (`hmac:v1:`) before export, retaining safe metric series by pseudonym; known prompt/completion fields are removed. See [Collector privacy policy](docs/privacy.md) for the exact catalog, data-loss decisions, activation procedure and limitations. `python -m pytest oteru-collector/tests/test_policy.py oteru-collector/tests/test_configs.py` validates the policy and every pipeline; `scripts/check_signals_e2e.sh` (`make e2e-signals`) checks HMAC `actor_id` shape, fail-closed startup, and cost-fixture staging against a running Collector+ClickHouse. The PII guard below protects committed fixtures and is a separate check.
 Run `make demo-privacy` for a reproducible proof with synthetic identity and the 934-datapoint metric reference across the Collector's output paths.
 
 The #1 documented risk here is committing an un-redacted capture.

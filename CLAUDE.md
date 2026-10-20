@@ -40,9 +40,8 @@ make lint       # ruff check + ruff format --check
 make format     # ruff format + autofixes
 make dry-run    # validates the sample without network (523 batches)
 make pii-guard  # python scripts/check_pii.py (system python — works before setup)
-make privacy-config-check # verify Collector policy and pipeline topology
-make e2e-privacy # isolated Docker E2E for privacy and all exporters
-make e2e-signals # asserts every --emit combination reaches ClickHouse (needs up-clickhouse)
+python -m pytest oteru-collector/tests/test_policy.py oteru-collector/tests/test_configs.py  # policy contract + topology
+make e2e-signals # HMAC actor_id + every --emit combination in ClickHouse (needs collector+CH)
 make views      # (re)applies oteru-collector/clickhouse/views/*.sql, e.g. otel.mcp_calls (needs up-clickhouse)
 make up/down    # collector via docker compose
 make up-clickstack  # collector + forward to ClickStack (needs CLICKSTACK_ENDPOINT/API_KEY env)
