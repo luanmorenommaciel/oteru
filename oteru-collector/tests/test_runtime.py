@@ -1,7 +1,10 @@
-"""Black-box contracts against the pinned Collector, never a Python scrubber.
+"""Black-box contracts against the local OCB Collector, never a Python scrubber.
 
-Requires Docker; unavailable runtime is a failure, not a successful skip.
-All published ports are random, loopback-only. Only synthetic data is sent.
+Requires a container runtime: docker, otherwise podman, otherwise buildah.
+An unavailable runtime is a failure, not a successful skip. The image is
+built locally from this directory's Dockerfile (`oteru-collector:0.155.0`);
+never the upstream contrib digest. All published ports are random,
+loopback-only. Only synthetic data is sent.
 """
 
 from __future__ import annotations
@@ -9,6 +12,8 @@ from __future__ import annotations
 import copy
 import io
 import json
+import os
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -30,12 +35,11 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTrace
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2_grpc import TraceServiceStub
 from support import HMAC_TEST_KEY, ROOT, default, hmac_v1, policy
 
-# Behavioral oracle for privacy tests: upstream contrib 0.155.0 (same component
-# versions as builder-config.yaml). Compose itself builds the local OCB image
-# `oteru-collector:0.155.0` — do not confuse the two.
-IMAGE = (
-    "otel/opentelemetry-collector-contrib@"
-    "sha256:4935caa35e9a4cb387e35732e8fb22b2b5759af8d12e7043357f03837f6e8df5"
+# Local OCB distro. Built from oteru-collector/Dockerfile. Override with
+# OTERU_COLLECTOR_IMAGE only for a already-built local tag — never contrib.
+IMAGE = os.environ.get("OTERU_COLLECTOR_IMAGE", "oteru-collector:0.155.0")
+_RUN_VERBS = frozenset(
+    {"run", "network", "compose", "exec", "cp", "logs", "inspect", "rm"}
 )
 SIGNALS = {
     "logs": ("resourceLogs", "scopeLogs", "logRecords", ExportLogsServiceRequest, LogsServiceStub),
@@ -78,13 +82,80 @@ def docker_mount_access(tmp_path):
         directory.chmod(directory.stat().st_mode | 0o111)
 
 
-def docker(*args, check=True):
+def _engine_ready(name: str) -> bool:
+    if not shutil.which(name):
+        return False
+    probe = subprocess.run(
+        [name, "info"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return probe.returncode == 0
+
+
+def resolve_engine() -> str:
+    for name in ("docker", "podman"):
+        if _engine_ready(name):
+            return name
+    if shutil.which("buildah"):
+        return "buildah"
+    raise AssertionError(
+        "no container runtime: need docker, podman, or buildah to run collector tests"
+    )
+
+
+def engine() -> str:
+    return resolve_engine()
+
+
+def _engine_argv(exe: str, args: tuple[str, ...]) -> list[str]:
+    verb = args[0] if args else ""
+    if exe != "buildah":
+        return [exe, *args]
+    if verb == "build":
+        return [exe, "bud", *args[1:]]
+    if verb == "image" and len(args) >= 2 and args[1] == "inspect":
+        return [exe, "inspect", *args[2:]]
+    return [exe, *args]
+
+
+def docker(*args, check=True, timeout=120, text=True):
+    """Container-engine CLI. Name kept so existing call sites stay stable.
+
+    Prefers docker, then podman. buildah can build the local image; run /
+    network / compose / exec / cp / logs require docker or podman.
+    """
+    exe = engine()
+    verb = args[0] if args else ""
+    if exe == "buildah" and verb in _RUN_VERBS:
+        raise AssertionError(
+            "buildah can build oteru-collector but docker or podman is required to run it"
+        )
     result = subprocess.run(
-        ["docker", *args], check=False, text=True, capture_output=True, timeout=120
+        _engine_argv(exe, args),
+        check=False,
+        text=text,
+        capture_output=True,
+        timeout=timeout,
     )
     if check and result.returncode:
-        raise AssertionError(f"docker {args[0]} failed: {result.stderr}")
+        err = result.stderr if text else (result.stderr or b"").decode("utf-8", "replace")
+        raise AssertionError(f"{exe} {verb} failed: {err}")
     return result
+
+
+@pytest.fixture(scope="session", autouse=True)
+def local_ocb_image():
+    """Build oteru-collector:0.155.0 from the local Dockerfile if missing."""
+    probed = docker("image", "inspect", IMAGE, check=False)
+    if probed.returncode == 0:
+        return IMAGE
+    dockerfile = ROOT / "Dockerfile"
+    assert dockerfile.is_file(), f"missing {dockerfile}"
+    docker("build", "-t", IMAGE, "-f", str(dockerfile), str(ROOT), timeout=900)
+    return IMAGE
 
 
 @contextmanager
@@ -170,6 +241,7 @@ def isolated_clickhouse(network):
             "-e",
             "CLICKHOUSE_PASSWORD=otel",
             "clickhouse/clickhouse-server:latest",
+            timeout=300,
         )
         for _ in range(120):
             result = docker(
@@ -286,12 +358,7 @@ def read_batches(path):
         # On Linux the Collector owns its 0600 file. Inspect the same output
         # through Docker without changing the Collector's production UID.
         name, container_path = OUTPUT_CONTAINERS[path]
-        archive = subprocess.run(
-            ["docker", "cp", f"{name}:{container_path}", "-"],
-            check=True,
-            capture_output=True,
-            timeout=120,
-        ).stdout
+        archive = docker("cp", f"{name}:{container_path}", "-", text=False).stdout
         with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as stream:
             member = stream.next()
             assert member is not None
@@ -775,6 +842,7 @@ def test_clickhouse_tables_receive_only_scrubbed_records(tmp_path, action):
                 "-e",
                 "CLICKHOUSE_PASSWORD=otel",
                 "clickhouse/clickhouse-server:latest",
+                timeout=300,
             )
             for _ in range(120):
                 response = docker(
@@ -971,7 +1039,7 @@ def test_production_config_validates_in_pinned_collector(tmp_path, profile):
 def test_effective_compose_mounts_policy_before_every_profile(profile):
     import os
 
-    command = ["docker", "compose", "-f", str(ROOT / "docker-compose.yml")]
+    command = [engine(), "compose", "-f", str(ROOT / "docker-compose.yml")]
     if profile in ("clickhouse", "hyperdx"):
         command += ["-f", str(ROOT / "docker-compose.clickhouse.yml")]
     if profile == "clickstack":
@@ -1028,7 +1096,7 @@ def test_policy_activation_replaces_valid_policy_and_stops_on_invalid(tmp_path, 
     # apply_privacy explicitly sets -f; use the test override as the base in this isolated copy.
     resolved = subprocess.run(
         [
-            "docker",
+            engine(),
             "compose",
             "-f",
             str(stack / "docker-compose.yml"),
