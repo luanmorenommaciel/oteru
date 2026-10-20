@@ -116,22 +116,17 @@ fi
 # needs a throwaway backend and a long sleep (> TTL). Run it explicitly for
 # regression testing when touching the dbt lookback or TTL configuration.
 if [ -z "${OTERU_HOT_TTL_TEST:-}" ]; then
-  skip "expiry safety test: set OTERU_HOT_TTL_TEST=1h (test env only) to run"
+  skip "expiry safety test: set OTERU_HOT_TTL_TEST=1 (test env only) to run"
 elif [ ! -f "$DBT_PROJECT" ]; then
   skip "expiry safety test: dbt project not on branch yet (will validate once merged)"
 else
-  # This is a placeholder for the full test. A real implementation would:
-  # 1. Bring up a throwaway ClickHouse (compose override with TTL=1h)
-  # 2. Replay a multi-day capture (or emit synthetic rows timestamped ±2 days)
-  # 3. Run `dbt run` to populate the aggregates
-  # 4. Record aggregate row for the oldest day
-  # 5. Sleep > TTL so raw rows expire
-  # 6. Run `dbt run` again (incremental; should pull from aggregate, not raw)
-  # 7. Assert the aggregate row for that day is unchanged
-  #
-  # Because this involves Docker orchestration and a real sleep (>1h in practice),
-  # it's better suited to a separate script or CI job. For now, skip with a note.
-  skip "expiry safety test: stub (needs throwaway ClickHouse + multi-day capture + sleep > TTL)"
+  # Run the real expiry safety test from the separate script
+  if bash "$ROOT/scripts/check_cost_retention_expiry_test.sh"; then
+    # Success message already printed by the test script
+    :
+  else
+    fail "expiry safety test failed (see output above)"
+  fi
 fi
 
 if [ "$failures" -ne 0 ]; then

@@ -1,0 +1,3 @@
+name: oteru-dbt
+vars:
+  cost_lookback_hours: 48
