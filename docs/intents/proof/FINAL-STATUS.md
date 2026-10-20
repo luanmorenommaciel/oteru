@@ -30,7 +30,7 @@ Generated with binary ClickHouse on raw email fixture:
 
 **Root Cause:** View line 27: `LogAttributes['user.email'] AS actor_id` (no pseudonymization).
 
-**Teammate's Fix:** Replaced fixture emails with `sha256:v1:<hex>` pseudonyms matching PR #94 format. All totals unchanged (9 rows, 8 keys, 806400 pre-dedup, 682950 post-dedup). Tests now pass.
+**Teammate's Fix:** Replaced fixture emails with `hmac:v1:<hex>` pseudonyms matching PR #94 format. All totals unchanged (9 rows, 8 keys, 806400 pre-dedup, 682950 post-dedup). Tests now pass.
 
 **Status:** ✅ **PII TEST NOW PASSES** with pseudonymized fixture.
 

@@ -14,7 +14,7 @@ set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check_cost_retention_lib.sh"
 
 TEST_DAY="$(test_day)"
-TEST_ACTOR="sha256:v1:test-actor-emptyinc-$(date +%s)"
+TEST_ACTOR="$(fake_hmac_actor emptyinc)"
 TEST_PREFIX="emptyinc-req-$(date +%s)"
 
 echo "  Running incremental empty-table regression..."

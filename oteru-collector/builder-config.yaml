@@ -19,13 +19,12 @@
 # generics fail to link on the Go 1.25 linker).
 #
 # HMACSHA256 OTTL converter (Duto):
-#   Local Go module at oteru-collector/hmacconverter/ (this directory).
-#   OCB `replaces` maps the module path onto ./hmacconverter so the
-#   transform processor can import the converter once Duto wires it.
-#   The converter exposes only HMACSHA256(value); the key is read in
-#   the factory. This change does not create or edit hmacconverter/ —
-#   that tree is Duto's. A compile-only stub, if you need one locally,
-#   must stay uncommitted.
+#   Local module oteru-collector/hmacconverter/. Its NewFactory wraps
+#   contrib transformprocessor and registers HMACSHA256(value); the key
+#   is read from OTERU_PII_HMAC_KEY in the factory. OCB lists that
+#   module as the transform processor (name stays `transform`). The
+#   `replaces` entry maps the module path onto ./hmacconverter. This
+#   change does not edit hmacconverter/ source — that tree is Duto's.
 
 dist:
   module: github.com/luanmorenommaciel/oteru/oteru-collector
@@ -40,7 +39,9 @@ receivers:
 
 processors:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.155.0
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.155.0
+  - gomod: github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter v0.155.0
+    import: github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter
+    name: transformprocessor
 
 exporters:
   - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.155.0

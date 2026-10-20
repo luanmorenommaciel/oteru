@@ -92,6 +92,15 @@ test_day() {
   ch_q "SELECT toString(today() - 1) FORMAT TSV"
 }
 
+# Synthetic actor_id: hmac:v1: + 64 lowercase hex. Not a real HMAC (no key).
+# $1 is a short tag mixed into the last 16 hex chars so runs do not collide.
+fake_hmac_actor() {
+  local tag="${1:-test}"
+  local mix
+  mix="$(printf '%s-%s' "$tag" "$(date +%s%N)" | sha256sum | awk '{print $1}')"
+  printf 'hmac:v1:%s\n' "$mix"
+}
+
 # Populate a known otel_logs column if DESCRIBE reports it. Dates are now()-relative.
 _expr_for_otel_logs_col() {
   local col="$1"

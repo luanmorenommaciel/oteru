@@ -21,11 +21,11 @@ WHERE positionCaseInsensitive(value, '@') > 0
 **Status:** Test logic **NOT modified** (as required)
 
 ## The Fix (Teammate Commit 5e9f55c)
-**Action:** Replace raw emails in fixture with `sha256:v1:<hex>` pseudonyms matching PR #94 format
+**Action:** Replace raw emails in fixture with `hmac:v1:<hex>` pseudonyms matching PR #94 format
 
 **Fixed fixture values:**
-- Actor 1: `sha256:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14`
-- Actor 2: `sha256:v1:c71cc8fe3782f8d0510586af964334b6930f817fc79bfb460c764f6be9f5d598`
+- Actor 1: `hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14`
+- Actor 2: `hmac:v1:c71cc8fe3782f8d0510586af964334b6930f817fc79bfb460c764f6be9f5d598`
 
 **Verification:**
 ```bash
@@ -35,9 +35,9 @@ $ grep -c '@' oteru-emitter/tests/fixtures/api_request_cost_fixture.json
 ✅ **ZERO '@' symbols in entire fixture**
 
 ## Data Flow
-1. Fixture loads `LogAttributes['user.email'] = "sha256:v1:<hex>"`
+1. Fixture loads `LogAttributes['user.email'] = "hmac:v1:<hex>"`
 2. View reads: `LogAttributes['user.email'] AS actor_id`
-3. dbt dedup: `actor_id` column contains `"sha256:v1:<hex>"`
+3. dbt dedup: `actor_id` column contains `"hmac:v1:<hex>"`
 4. PII test scans all string columns for '@'
 5. **Result: PASS** (no '@' found anywhere)
 
@@ -61,7 +61,7 @@ All 8 records now have pseudonymized `actor_id` values. No '@' symbols exist in:
 
 ## Alignment with PR #94
 The fixture now correctly simulates PR #94's pseudonymization format:
-- Format: `sha256:v1:<lowercase_hex>`
+- Format: `hmac:v1:<lowercase_hex>`
 - The view reads this value directly (no transformation needed)
 - Production OTLP exporter will provide pseudonymized emails in this format
 

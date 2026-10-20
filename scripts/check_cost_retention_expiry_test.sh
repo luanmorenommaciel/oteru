@@ -13,13 +13,13 @@ set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check_cost_retention_lib.sh"
 
 TEST_DAY="$(test_day)"
-TEST_ACTOR="sha256:v1:test-actor-expiry-$(date +%s)"
+TEST_ACTOR="$(fake_hmac_actor expiry)"
 TEST_PREFIX="expiry-test-req-$(date +%s)"
 
 echo "  Running expiry safety test with real dbt models..."
 echo "    test day (today() - 1): $TEST_DAY"
 
-ch_q "DELETE FROM otel.otel_logs WHERE Body = 'claude_code.api_request' AND (LogAttributes['request_id'] LIKE 'expiry-test-req%' OR LogAttributes['user.email'] LIKE '%test-actor-expiry%')" >/dev/null 2>&1 || true
+ch_q "DELETE FROM otel.otel_logs WHERE Body = 'claude_code.api_request' AND (LogAttributes['request_id'] LIKE 'expiry-test-req%' OR LogAttributes['user.email'] LIKE 'hmac:v1:%')" >/dev/null 2>&1 || true
 sleep 1
 
 echo "    1. Inserting test raw data for $TEST_DAY (INSERT … SELECT, columns from DESCRIBE)..."

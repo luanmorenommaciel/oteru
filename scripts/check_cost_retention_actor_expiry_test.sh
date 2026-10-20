@@ -11,7 +11,7 @@ set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check_cost_retention_lib.sh"
 
 TEST_DAY="$(test_day)"
-TEST_ACTOR="sha256:v1:test-actor-ttl-$(date +%s)"
+TEST_ACTOR="$(fake_hmac_actor ttl)"
 TEST_PREFIX="actor-ttl-req-$(date +%s)"
 
 echo "  Running actor TTL expiry test (permanent totals must survive)..."

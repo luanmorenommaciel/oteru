@@ -220,27 +220,24 @@ def test_fixture_cost_sum_pre_dedup():
 
 
 def test_view_pseudonymizes_emails():
-    """View transforms raw emails into sha256:v1:hex pseudonyms without '@'."""
+    """Collector writes hmac:v1:<64 hex>; staging view does not re-hash."""
     import hashlib
 
-    # Test the pseudonymization logic that the view uses
     test_email = "user@example.com"
     expected_input = f"oteru-pii:v1|user.email|{test_email}"
     expected_hash = hashlib.sha256(expected_input.encode("utf-8")).hexdigest()
-    expected_pseudonym = f"sha256:v1:{expected_hash}"
+    expected_pseudonym = f"hmac:v1:{expected_hash}"
 
-    # Verify format
-    assert expected_pseudonym.startswith("sha256:v1:")
+    assert expected_pseudonym.startswith("hmac:v1:")
     assert "@" not in expected_pseudonym
-    assert len(expected_pseudonym) == len("sha256:v1:") + 64
+    assert len(expected_pseudonym) == len("hmac:v1:") + 64
 
-    # Verify both test emails produce valid pseudonyms
     for email in ["user@example.com", "test@example.org"]:
         digest_input = f"oteru-pii:v1|user.email|{email}"
         hash_hex = hashlib.sha256(digest_input.encode("utf-8")).hexdigest()
-        pseudonym = f"sha256:v1:{hash_hex}"
+        pseudonym = f"hmac:v1:{hash_hex}"
         assert "@" not in pseudonym, f"Pseudonym contains @: {pseudonym}"
-        assert pseudonym.startswith("sha256:v1:")
+        assert pseudonym.startswith("hmac:v1:")
 
 
 def test_fixture_cost_sum_post_dedup():

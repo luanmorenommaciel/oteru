@@ -3,7 +3,7 @@
 
 Does NOT edit the teammate fixture file and does NOT use restamp (request_id
 values stay as written). cost_usd is unchanged. user.email is hashed to
-sha256:v1:<hex> as the #94 collector would. Distinct fixture calendar days
+hmac:v1:<hex> as the collector HMACSHA256 converter would. Distinct fixture calendar days
 map to yesterday/today UTC so the load still crosses midnight.
 
 Usage (repo root, ClickHouse running, otel.otel_logs exists):
@@ -26,7 +26,7 @@ CH = [str(ROOT / "clickhouse"), "client"] if (ROOT / "clickhouse").exists() else
 
 def pseudonymize(email: str) -> str:
     digest = hashlib.sha256(f"oteru-pii:v1|user.email|{email}".encode()).hexdigest()
-    return f"sha256:v1:{digest}"
+    return f"hmac:v1:{digest}"
 
 
 def attr_value(val: dict) -> str:
