@@ -8,6 +8,20 @@
 # still run when the aggregate tables are absent — see check 1 below.
 #
 # Run from the repo root: `make check-cost-retention`.
+#
+# Example manual queries (for testing/debugging):
+#   # List all tables in the otel database:
+#   curl -sf 'http://localhost:8123/?user=otel&password=otel' \
+#     --data-binary "SELECT name, engine_full FROM system.tables WHERE database = 'otel' FORMAT TSV"
+#
+#   # Check for TTL in a specific table:
+#   curl -sf 'http://localhost:8123/?user=otel&password=otel' \
+#     --data-binary "SELECT engine_full FROM system.tables WHERE database = 'otel' AND name = 'otel_logs' FORMAT TSV"
+#
+#   # Expected output for raw tables (with TTL):
+#   #   MergeTree() ... TTL toDateTime(Timestamp) + INTERVAL 72 HOUR ...
+#   # Expected output for aggregate tables (no TTL):
+#   #   MergeTree() PARTITION BY ... ORDER BY ... (no TTL clause)
 
 set -uo pipefail
 
