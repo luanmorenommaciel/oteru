@@ -12,7 +12,8 @@ WITH daily_columns AS (
 actor_table_ttl AS (
   SELECT
     name,
-    engine_full
+    engine_full,
+    create_table_query
   FROM system.tables
   WHERE database = 'otel'
     AND name = 'fct_cost_actor_daily'
@@ -30,3 +31,4 @@ SELECT
   a.name AS table_name
 FROM actor_table_ttl a
 WHERE engine_full NOT LIKE '%TTL%'
+   AND create_table_query NOT ILIKE '%TTL%'

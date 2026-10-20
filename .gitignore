@@ -12,10 +12,9 @@ output/
 # Claude Code: `settings.json` is shareable and stays tracked; `settings.local.json`
 # is per-machine (absolute paths, personal permission grants) and is not.
 .claude/settings.local.json
-<<<<<<< HEAD
 clickhouse.log
 
-# Local test infrastructure
+# Local test infrastructure (binary ClickHouse + collector scratch)
 clickhouse
 clickhouse-data/
 clickhouse-logs/
@@ -24,8 +23,15 @@ otelcol-contrib*
 otelcol-config-local.yml
 otelcol.log
 telemetry/*.json
-=======
+data/
+metadata/
+store/
+access/
+uuid
+status
+preprocessed_configs/
+cores/
+ch.log
 
 # Local Python execution artifacts.
->>>>>>> origin/privacy-pii-21-67
 __pycache__/

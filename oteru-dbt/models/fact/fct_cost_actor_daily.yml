@@ -9,6 +9,7 @@ models:
       order_by: (day_utc, actor_id)
       unique_key: [day_utc, actor_id]
       incremental_strategy: delete+insert
+      ttl: "day_utc + INTERVAL 90 DAY"
     columns:
       - name: day_utc
         description: "Date in UTC (from event_ts)"

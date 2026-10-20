@@ -5,7 +5,7 @@
     order_by='(day_utc, actor_id)',
     unique_key=['day_utc', 'actor_id'],
     incremental_strategy='delete+insert',
-    clickhouse__engine_clause='ENGINE = ReplacingMergeTree() ORDER BY (day_utc, actor_id) TTL day_utc + INTERVAL {{ var("actor_cost_ttl_days") }} DAY'
+    ttl='day_utc + INTERVAL {{ var("actor_cost_ttl_days", 90) }} DAY'
   )
 }}
 
@@ -21,10 +21,13 @@ WITH daily_aggregates AS (
     SUM(cache_creation_tokens) AS cache_creation_tokens
   FROM {{ ref('int_api_request_dedup') }}
   {% if is_incremental() %}
-  WHERE toDate(event_ts, 'UTC') >= (
-    SELECT max(day_utc) - INTERVAL {{ var('cost_lookback_hours') / 24 }} DAY
-    FROM {{ this }}
-  )
+  -- Empty target (count=0) must load every source row. An unguarded
+  -- max(day_utc) - INTERVAL N on an empty table is NULL and drops all rows.
+  WHERE (SELECT count() FROM {{ this }}) = 0
+     OR toDate(event_ts, 'UTC') >= (
+          SELECT max(day_utc) - INTERVAL {{ var('cost_lookback_hours') }} HOUR
+          FROM {{ this }}
+        )
   {% endif %}
   GROUP BY day_utc, actor_id
 )

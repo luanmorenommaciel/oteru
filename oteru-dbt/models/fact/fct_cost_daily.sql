@@ -23,10 +23,13 @@ WITH model_mapped AS (
   LEFT JOIN {{ ref('model_aliases') }} m
     ON d.model_raw = m.model_raw
   {% if is_incremental() %}
-  WHERE toDate(d.event_ts, 'UTC') >= (
-    SELECT max(day_utc) - INTERVAL 2 DAY
-    FROM {{ this }}
-  )
+  -- Empty target (count=0) must load every source row. An unguarded
+  -- max(day_utc) - INTERVAL N on an empty table is NULL and drops all rows.
+  WHERE (SELECT count() FROM {{ this }}) = 0
+     OR toDate(d.event_ts, 'UTC') >= (
+          SELECT max(day_utc) - INTERVAL {{ var('cost_lookback_hours') }} HOUR
+          FROM {{ this }}
+        )
   {% endif %}
 ),
 
