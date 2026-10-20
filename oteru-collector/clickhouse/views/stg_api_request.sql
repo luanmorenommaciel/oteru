@@ -23,7 +23,7 @@ SELECT
     toInt64OrNull(LogAttributes['output_tokens'])                            AS output_tokens,
     toInt64OrNull(LogAttributes['cache_read_tokens'])                        AS cache_read_tokens,
     toInt64OrNull(LogAttributes['cache_creation_tokens'])                    AS cache_creation_tokens,
-    LogAttributes['user.email']                                              AS actor_id,
+    concat('sha256:v1:', lower(hex(SHA256(concat('oteru-pii:v1|user.email|', LogAttributes['user.email']))))) AS actor_id,
     ServiceName                                                              AS service_name,
     ResourceAttributes                                                       AS ResourceAttributes,
     if(
