@@ -1,0 +1,327 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+utc: 2026-10-20T22:58:45Z
+command: ocb --config=oteru-collector/builder-config.yaml && cd oteru-collector/_build && govulncheck ./...
+
+=== Symbol Results ===
+
+Vulnerability #1: GO-2026-6615
+    OpenTelemetry-Go: BatchProcessor can busy-spin when export buffer is full in
+    go.opentelemetry.io/otel/sdk/log
+  More info: https://pkg.go.dev/vuln/GO-2026-6615
+  Module: go.opentelemetry.io/otel/sdk/log
+    Found in: go.opentelemetry.io/otel/sdk/log@v0.20.0
+    Fixed in: go.opentelemetry.io/otel/sdk/log@v0.21.0
+    Example traces found:
+      #1: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.LoggerProvider.Logger
+      #2: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.LoggerProvider.Shutdown
+      #3: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.NewBatchProcessor
+      #4: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.NewLoggerProvider
+      #5: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.NewSimpleProcessor
+      #6: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.WithExportInterval
+      #7: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.WithExportMaxBatchSize
+      #8: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.WithExportTimeout
+      #9: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.WithMaxQueueSize
+      #10: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.WithProcessor
+      #11: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.WithResource
+      #12: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls log.init
+      #13: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls log.init
+      #14: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls log.init
+      #15: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls log.init
+      #16: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls log.init
+      #17: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls log.init
+      #18: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls log.init
+      #19: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.logger.Emit
+      #20: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls log.logger.Enabled
+      #21: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls observ.NewSLP
+      #22: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls observ.NextSimpleProcessorID
+      #23: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls observ.SLP.LogProcessed
+      #24: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #25: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #26: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls x.Feature[string].Enabled[string]
+      #27: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls x.init
+
+Vulnerability #2: GO-2026-6508
+    OpenTelemetry-Go: Log gRPC exporter ignores env TLS certs, bypassing
+    mTLS/pinning in go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc
+  More info: https://pkg.go.dev/vuln/GO-2026-6508
+  Module: go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc
+    Found in: go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc@v0.20.0
+    Fixed in: go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc@v0.21.0
+    Example traces found:
+      #1: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls internal.LogPartialSuccessError
+      #2: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls internal.PartialSuccess.Error
+      #3: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls internal.PartialSuccess.Is
+      #4: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls internal.init
+      #5: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls observ.ExportOp.End
+      #6: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls observ.Instrumentation.ExportLogs
+      #7: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls observ.NewInstrumentation
+      #8: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #9: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #10: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #11: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #12: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #13: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlploggrpc.Exporter.Export
+      #14: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlploggrpc.Exporter.Shutdown
+      #15: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlploggrpc.New
+      #16: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlploggrpc.WithCompressor
+      #17: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlploggrpc.WithEndpoint
+      #18: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlploggrpc.WithHeaders
+      #19: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlploggrpc.WithInsecure
+      #20: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlploggrpc.WithTLSCredentials
+      #21: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlploggrpc.WithTimeout
+      #22: components.go:21:2: oteru.init calls otlpreceiver.init, which eventually calls otlploggrpc.convHeaders
+      #23: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls otlploggrpc.init
+      #24: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls retry.Config.RequestFunc
+      #25: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls retry.RequestFunc
+      #26: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls retry.RequestFunc
+      #27: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls retry.init
+      #28: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls transform.LogRecord
+      #29: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls transform.ResourceLogs
+      #30: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls transform.init
+      #31: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls x.Feature[string].Enabled[string]
+      #32: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls x.init
+
+Vulnerability #3: GO-2026-6505
+    OpenTelemetry-Go: Exporter config logging may leak endpoint URLs in info
+    logs in go.opentelemetry.io/otel/exporters/otlp/otlptrace
+  More info: https://pkg.go.dev/vuln/GO-2026-6505
+  Module: go.opentelemetry.io/otel/exporters/otlp/otlptrace
+    Found in: go.opentelemetry.io/otel/exporters/otlp/otlptrace@v1.44.0
+    Fixed in: go.opentelemetry.io/otel/exporters/otlp/otlptrace@v1.45.0
+    Example traces found:
+      #1: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls otlptrace.Exporter.ExportSpans
+      #2: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls otlptrace.Exporter.Shutdown
+      #3: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptrace.New
+      #4: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls otlptrace.Shutdown
+      #5: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls otlptrace.Start
+      #6: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptrace.Version
+      #7: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls otlptrace.init
+      #8: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls tracetransform.Spans
+      #9: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls tracetransform.init
+
+  Module: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
+    Found in: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc@v1.44.0
+    Fixed in: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc@v1.45.0
+    Example traces found:
+      #1: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls counter.NextExporterID
+      #2: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls counter.init
+      #3: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.EnvOptionsReader.Apply
+      #4: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.WithBool
+      #5: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.WithCertPool
+      #6: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.WithClientCert
+      #7: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.WithDuration
+      #8: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.WithHeaders
+      #9: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.WithURL
+      #10: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls envconfig.init
+      #11: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls internal.PartialSuccess.As
+      #12: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls internal.PartialSuccess.Error
+      #13: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls internal.PartialSuccess.Is
+      #14: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls internal.TracePartialSuccessError
+      #15: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls internal.init
+      #16: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.ExportOp.End
+      #17: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.Instrumentation.ExportSpans
+      #18: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.NewInstrumentation
+      #19: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #20: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #21: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #22: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #23: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #24: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.NewGRPCConfig
+      #25: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.NewGRPCOption
+      #26: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.WithCompression
+      #27: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.WithEndpoint
+      #28: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.WithHeaders
+      #29: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.WithInsecure
+      #30: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.WithTimeout
+      #31: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls otlpconfig.init
+      #32: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracegrpc.New
+      #33: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracegrpc.WithCompressor
+      #34: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracegrpc.WithEndpoint
+      #35: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracegrpc.WithHeaders
+      #36: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracegrpc.WithInsecure
+      #37: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracegrpc.WithTLSCredentials
+      #38: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracegrpc.WithTimeout
+      #39: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls otlptracegrpc.client.Start
+      #40: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls otlptracegrpc.client.Stop
+      #41: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls otlptracegrpc.client.UploadTraces
+      #42: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls otlptracegrpc.init
+      #43: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls retry.Config.RequestFunc
+      #44: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls retry.RequestFunc
+      #45: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls retry.RequestFunc
+      #46: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls retry.init
+      #47: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls x.Feature[string].Enabled[string]
+      #48: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls x.init
+
+  Module: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
+    Found in: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.44.0
+    Fixed in: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.45.0
+    Example traces found:
+      #1: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls counter.NextExporterID
+      #2: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls counter.init
+      #3: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.EnvOptionsReader.Apply
+      #4: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.WithBool
+      #5: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.WithCertPool
+      #6: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.WithClientCert
+      #7: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.WithDuration
+      #8: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.WithHeaders
+      #9: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls envconfig.WithURL
+      #10: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls envconfig.init
+      #11: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls internal.PartialSuccess.As
+      #12: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls internal.PartialSuccess.Error
+      #13: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls internal.PartialSuccess.Is
+      #14: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls internal.TracePartialSuccessError
+      #15: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls internal.init
+      #16: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.ExportOp.End
+      #17: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.Instrumentation.ExportSpans
+      #18: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.NewInstrumentation
+      #19: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #20: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #21: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #22: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #23: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #24: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.NewHTTPConfig
+      #25: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.NewHTTPOption
+      #26: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.WithCompression
+      #27: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.WithEndpoint
+      #28: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.WithHeaders
+      #29: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.WithInsecure
+      #30: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.WithTLSClientConfig
+      #31: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.WithTimeout
+      #32: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlpconfig.WithURLPath
+      #33: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls otlpconfig.init
+      #34: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracehttp.New
+      #35: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls otlptracehttp.Stop
+      #36: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracehttp.WithCompression
+      #37: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracehttp.WithEndpoint
+      #38: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracehttp.WithHeaders
+      #39: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracehttp.WithInsecure
+      #40: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracehttp.WithTLSClientConfig
+      #41: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracehttp.WithTimeout
+      #42: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracehttp.WithURLPath
+      #43: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls otlptracehttp.bodyReaderErr
+      #44: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls otlptracehttp.client.Start
+      #45: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls otlptracehttp.client.Stop
+      #46: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls otlptracehttp.client.UploadTraces
+      #47: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls otlptracehttp.init
+      #48: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls otlptracehttp.init
+      #49: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracehttp.retryableError.As
+      #50: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracehttp.retryableError.Error
+      #51: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls otlptracehttp.retryableError.Unwrap
+      #52: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls retry.Config.RequestFunc
+      #53: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls retry.RequestFunc
+      #54: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls retry.RequestFunc
+      #55: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls retry.init
+      #56: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls x.Feature[string].Enabled[string]
+      #57: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls x.init
+
+  Module: go.opentelemetry.io/otel/sdk
+    Found in: go.opentelemetry.io/otel/sdk@v1.44.0
+    Fixed in: go.opentelemetry.io/otel/sdk@v1.45.0
+    Example traces found:
+      #1: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls env.BatchSpanProcessorExportTimeout
+      #2: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls env.BatchSpanProcessorMaxExportBatchSize
+      #3: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls env.BatchSpanProcessorMaxQueueSize
+      #4: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls env.BatchSpanProcessorScheduleDelay
+      #5: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls env.SpanAttributeCount
+      #6: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls env.SpanAttributeValueLength
+      #7: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls env.SpanEventAttributeCount
+      #8: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls env.SpanEventCount
+      #9: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls env.SpanLinkAttributeCount
+      #10: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls env.SpanLinkCount
+      #11: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls env.init
+      #12: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls instrumentation.init
+      #13: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls observ.BSP.Processed
+      #14: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.BSP.ProcessedQueueFull
+      #15: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.BSP.Shutdown
+      #16: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.NewBSP
+      #17: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls observ.NewBSP
+      #18: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls observ.NewSSP
+      #19: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.NewTracer
+      #20: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.SSP.SpanProcessed
+      #21: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.Tracer.Enabled
+      #22: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.Tracer.SpanEnded
+      #23: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.Tracer.SpanLive
+      #24: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls observ.Tracer.SpanStarted
+      #25: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #26: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls observ.init
+      #27: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls resource.Default
+      #28: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls resource.DefaultWithContext
+      #29: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls resource.Empty
+      #30: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls resource.Environment
+      #31: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls resource.Merge
+      #32: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls resource.NewSchemaless
+      #33: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls resource.NewSchemaless
+      #34: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls resource.NewWithAttributes
+      #35: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls resource.Resource.Equivalent
+      #36: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls resource.Resource.Iter
+      #37: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls resource.Resource.Len
+      #38: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls resource.Resource.MarshalLog
+      #39: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls resource.Resource.SchemaURL
+      #40: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls resource.Resource.Set
+      #41: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls resource.Resource.String
+      #42: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls resource.init
+      #43: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls sdk.Version
+      #44: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls sdk.init
+      #45: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.AlwaysSample
+      #46: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.NeverSample
+      #47: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.NewBatchSpanProcessor
+      #48: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.NewBatchSpanProcessor
+      #49: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.NewBatchSpanProcessor
+      #50: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.NewSimpleSpanProcessor
+      #51: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.NewTracerProvider
+      #52: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.ParentBased
+      #53: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.Shutdown
+      #54: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.Shutdown
+      #55: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.Shutdown
+      #56: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.TraceIDRatioBased
+      #57: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.TracerProvider.Shutdown
+      #58: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.TracerProvider.Tracer
+      #59: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.WithBatchTimeout
+      #60: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.WithExportTimeout
+      #61: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.WithLocalParentNotSampled
+      #62: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.WithLocalParentSampled
+      #63: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.WithMaxExportBatchSize
+      #64: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.WithMaxQueueSize
+      #65: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.WithRemoteParentNotSampled
+      #66: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.WithRemoteParentSampled
+      #67: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.WithResource
+      #68: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.WithSampler
+      #69: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.WithSpanProcessor
+      #70: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.errUnsupportedSampler.Error
+      #71: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls trace.init
+      #72: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.init
+      #73: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.logDropped[go.opentelemetry.io/otel/sdk/trace.Event]
+      #74: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.logDropped[go.opentelemetry.io/otel/sdk/trace.Link]
+      #75: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.nonRecordingSpan.AddEvent
+      #76: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.nonRecordingSpan.End
+      #77: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.nonRecordingSpan.IsRecording
+      #78: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.nonRecordingSpan.SetAttributes
+      #79: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.nonRecordingSpan.SetName
+      #80: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.nonRecordingSpan.SetStatus
+      #81: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.nonRecordingSpan.SpanContext
+      #82: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.nonRecordingSpan.TracerProvider
+      #83: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.recordingSpan.AddEvent
+      #84: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.recordingSpan.End
+      #85: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.recordingSpan.IsRecording
+      #86: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.recordingSpan.SetAttributes
+      #87: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.recordingSpan.SetName
+      #88: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.recordingSpan.SetStatus
+      #89: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.recordingSpan.SpanContext
+      #90: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.recordingSpan.TracerProvider
+      #91: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.samplerArgParseError.Error
+      #92: main.go:54:23: oteru.runInteractive calls cobra.Command.Execute, which eventually calls trace.samplerArgParseError.Unwrap
+      #93: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls trace.tracer.Start
+      #94: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls trace.tracerProviderConfig.MarshalLog
+      #95: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls tracetest.SpanStubsFromReadOnlySpans
+      #96: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls tracetest.init
+      #97: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls x.Feature[bool].Enabled[bool]
+      #98: components.go:16:2: oteru.init calls fileexporter.init, which eventually calls x.Feature[string].Enabled[string]
+      #99: components.go:13:2: oteru.init calls otelconftelemetry.init, which eventually calls x.init
+
+Your code is affected by 3 vulnerabilities from 3 modules.
+This scan also found 0 vulnerabilities in packages you import and 1
+vulnerability in modules you require, but your code doesn't appear to call these
+vulnerabilities.
+Use '-show verbose' for more details.
