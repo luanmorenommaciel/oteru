@@ -1,9 +1,19 @@
--- Test that sum of actor_daily cost equals permanent daily total per day (EXACT equality in micros)
+-- Compare actor vs permanent daily totals only for days still inside the
+-- actor TTL window. Fixture events are July 2025; with the default 90-day
+-- TTL those actor rows expire, so a full-history join would fail even when
+-- the in-window grains match. day_utc >= today() - ttl_days.
+--
+-- Proof run: --vars '{"actor_cost_ttl_days": 1000}' so July 2025 is in-window
+-- and the equality numbers are visible. Default 90 is shown separately via
+-- SHOW CREATE TABLE (TTL day_utc + toIntervalDay(90)).
+{% set ttl_days = var('actor_cost_ttl_days', 90) %}
+
 WITH actor_totals AS (
   SELECT
     day_utc,
     SUM(cost_usd_micros) AS total_cost_micros
   FROM {{ ref('fct_cost_actor_daily') }}
+  WHERE day_utc >= today() - toIntervalDay({{ ttl_days }})
   GROUP BY day_utc
 ),
 
@@ -12,6 +22,7 @@ daily_totals AS (
     day_utc,
     SUM(cost_usd_micros) AS total_cost_micros
   FROM {{ ref('fct_cost_daily') }}
+  WHERE day_utc >= today() - toIntervalDay({{ ttl_days }})
   GROUP BY day_utc
 ),
 

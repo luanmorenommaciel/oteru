@@ -21,17 +21,21 @@
     {% endset %}
     
     {% do run_query(create_audit_table) %}
+
+    {# Both clocks in UTC — mixing naive local run_started_at with ClickHouse now() yields negative duration_seconds. #}
+    {% set started_utc = run_started_at.strftime('%Y-%m-%d %H:%M:%S') %}
+    {% set dbt_cmd = invocation_args_dict.get('which') or invocation_args_dict.get('rpc_method') or flags.which or '' %}
     
     {% set audit_query %}
       INSERT INTO otel.audit_cost_runs
       WITH run_stats AS (
         SELECT
           '{{ invocation_id }}' AS run_id,
-          '{{ run_started_at.strftime('%Y-%m-%d %H:%M:%S') }}' AS run_started_at,
-          now() AS run_completed_at,
+          '{{ started_utc }}' AS run_started_at,
+          now64(9, 'UTC') AS run_completed_at,
           '{{ target.name }}' AS target_name,
-          '{{ flags.which }}' AS dbt_command,
-          dateDiff('second', toDateTime('{{ run_started_at.strftime('%Y-%m-%d %H:%M:%S') }}'), now()) AS duration_seconds
+          '{{ dbt_cmd }}' AS dbt_command,
+          dateDiff('second', toDateTime('{{ started_utc }}', 'UTC'), now('UTC')) AS duration_seconds
       ),
       
       dedup_stats AS (
