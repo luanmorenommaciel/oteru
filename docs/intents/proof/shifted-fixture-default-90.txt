@@ -1,0 +1,22 @@
+Proof helper: oteru-dbt/tests/load_shifted_cost_fixture.py
+- teammate fixture file not edited
+- no restamp (request_id / costs unchanged)
+- timestamps shifted to yesterday/today UTC (crosses midnight)
+- default actor TTL 90d
+
+SHOW CREATE TABLE otel.fct_cost_actor_daily:
+  TTL day_utc + toIntervalDay(90)
+
+dbt build --full-refresh (default vars): exit 0, PASS=35
+  int_api_request_dedup: 8 keys / 682950 micros
+  fct_cost_daily:        682950 micros
+  fct_cost_actor_daily:  682950 micros
+  day 2026-10-19: 531950 == 531950
+  day 2026-10-20: 151000 == 151000
+
+test_actor_daily_equals_daily: PASS when actor has rows
+  FAIL when actor truncated (0 rows) — does not compare empty with empty
+
+empty-table incremental (default 90d TTL): PASS 682950==682950==682950
+test_no_pii / test_table_structure: PASS
+audit: dbt_command populated, duration_seconds >= 0

@@ -6,13 +6,8 @@
 # an empty table and the WHERE drops every source row).
 #
 # Local disposable ClickHouse only. Assumes models already exist and
-# int_api_request_dedup is populated.
-#
-# The fixture days are July 2025. dbt-clickhouse applies the model `ttl`
-# to the incremental __dbt_new_data_ temp table, so the default 90-day
-# actor TTL expires those rows on insert. Pass actor_cost_ttl_days=1000
-# so the empty-table guard is what we measure. Default 90 stays in
-# SHOW CREATE TABLE from a normal (un-overridden) build.
+# int_api_request_dedup is populated (proof helper shifts fixture
+# timestamps near now() so the default 90-day actor TTL keeps the rows).
 #
 # Usage (from repo root, ClickHouse already running):
 #   bash oteru-dbt/tests/test_empty_table_incremental.sh
@@ -45,9 +40,8 @@ empty_daily="$(q "SELECT coalesce(sum(cost_usd_micros), 0) FROM otel.fct_cost_da
 empty_actor="$(q "SELECT coalesce(sum(cost_usd_micros), 0) FROM otel.fct_cost_actor_daily FORMAT TSV")"
 echo "  after truncate: daily=$empty_daily actor=$empty_actor"
 
-echo "  dbt run --select fct_cost_daily fct_cost_actor_daily (no --full-refresh, actor_cost_ttl_days=1000)..."
-if ! (cd "$DBT_DIR" && "$DBT_BIN" run --profiles-dir . --select fct_cost_daily fct_cost_actor_daily \
-      --vars '{"actor_cost_ttl_days": 1000}' >/tmp/dbt-empty-incr-regression.log 2>&1); then
+echo "  dbt run --select fct_cost_daily fct_cost_actor_daily (no --full-refresh, default 90d TTL)..."
+if ! (cd "$DBT_DIR" && "$DBT_BIN" run --profiles-dir . --select fct_cost_daily fct_cost_actor_daily >/tmp/dbt-empty-incr-regression.log 2>&1); then
   echo "  FAIL: dbt run failed (see /tmp/dbt-empty-incr-regression.log)"
   tail -30 /tmp/dbt-empty-incr-regression.log
   exit 1
