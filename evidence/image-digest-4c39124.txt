@@ -1,0 +1,17 @@
+SHA: 4c391243eecf042f6eb73fd06e5354f8d9304aac
+short: 4c39124
+captured_at_utc: 2026-10-20T21:54:39Z
+built_with: rootless buildah --isolation chroot from oteru-collector/Dockerfile
+runtime: podman (no registry, no docker)
+
+== podman image inspect localhost/oteru-collector:0.155.0 ==
+Id=b37f45591687692c5686af4079f9b77f08f0787568748470bcbb1793707277be
+Digest=sha256:5dcb8d2eff7dbbc1f65ce21425dd4a54e1c4a1fa57a82cead63b42666a1ff6ee
+RepoTags=["localhost/oteru-collector:0.155.0"]
+Size=58502843
+Created=2026-10-20 21:43:03.098890784 +0000 UTC
+Architecture=amd64
+Os=linux
+
+== podman images --digests ==
+localhost/oteru-collector:0.155.0 b37f45591687 sha256:5dcb8d2eff7dbbc1f65ce21425dd4a54e1c4a1fa57a82cead63b42666a1ff6ee

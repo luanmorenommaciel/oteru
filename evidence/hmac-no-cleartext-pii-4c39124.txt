@@ -1,0 +1,28 @@
+SHA: 4c391243eecf042f6eb73fd06e5354f8d9304aac
+short: 4c39124
+captured_at_utc: 2026-10-20T21:53:46Z
+loader: podman exec -i clickhouse clickhouse-client --user otel --password otel --query ... </dev/null
+
+== query: 0 '@' in any stg_api_request column ==
+SELECT count() AS rows_with_at
+FROM otel.stg_api_request
+WHERE cost_usd_micros IS NOT NULL
+  AND positionCaseInsensitive(toJSONString(tuple(*)), '@') > 0
+
+   ┏━━━━━━━━━━━━━━┓
+   ┃ rows_with_at ┃
+   ┡━━━━━━━━━━━━━━┩
+1. │            0 │
+   └──────────────┘
+
+== query: raw emails absent from otel.otel_logs maps (user.email / user.id) ==
+SELECT count() AS logs_with_at_in_maps
+FROM otel.otel_logs
+WHERE positionCaseInsensitive(toJSONString(LogAttributes), '@') > 0
+   OR positionCaseInsensitive(toJSONString(ResourceAttributes), '@') > 0
+
+   ┏━━━━━━━━━━━━━━━━━━━━━━┓
+   ┃ logs_with_at_in_maps ┃
+   ┡━━━━━━━━━━━━━━━━━━━━━━┩
+1. │                    0 │
+   └──────────────────────┘

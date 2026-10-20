@@ -1,0 +1,34 @@
+SHA: 4c391243eecf042f6eb73fd06e5354f8d9304aac
+short: 4c39124
+captured_at_utc: 2026-10-20T21:53:46Z
+loader: podman exec -i clickhouse clickhouse-client --user otel --password otel --query ... </dev/null
+
+== query: 100% actor_id hmac:v1: ==
+SELECT
+  count() AS rows,
+  countIf(match(actor_id, '^hmac:v1:[0-9a-f]{64}$')) AS hmac_ok,
+  countIf(NOT match(actor_id, '^hmac:v1:[0-9a-f]{64}$')) AS hmac_bad,
+  if(count() = 0, 0, round(100 * hmac_ok / count(), 2)) AS hmac_pct
+FROM otel.stg_api_request
+WHERE cost_usd_micros IS NOT NULL
+
+   ┏━━━━━━┳━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━┓
+   ┃ rows ┃ hmac_ok ┃ hmac_bad ┃ hmac_pct ┃
+   ┡━━━━━━╇━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━┩
+1. │   18 │      18 │        0 │      100 │
+   └──────┴─────────┴──────────┴──────────┘
+
+== sample: distinct actor_id values ==
+SELECT actor_id, count() AS n
+FROM otel.stg_api_request
+WHERE cost_usd_micros IS NOT NULL
+GROUP BY actor_id
+ORDER BY n DESC
+
+   ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━┓
+   ┃ actor_id                                                                 ┃  n ┃
+   ┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━┩
+1. │ hmac:v1:c849a01b87f014a29abc5204a5058b2036e6d84f9da511ee077fcdb94cd17a8b │ 14 │
+   ├──────────────────────────────────────────────────────────────────────────┼────┤
+2. │ hmac:v1:61b48fc1302ee77e43dc4869a89e24233ef710303070c85f7980958bacc51d56 │  4 │
+   └──────────────────────────────────────────────────────────────────────────┴────┘
