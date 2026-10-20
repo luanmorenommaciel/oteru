@@ -54,30 +54,50 @@ if [ "$raw_count" != "2" ]; then
   exit 1
 fi
 
-# Step 2: Run dbt to build the models (stg -> int -> fct)
-# Note: fct_cost_by_model_daily depends on model_aliases seed which has dbt-clickhouse issues
-# Test only fct_cost_daily for now
-echo "    2. Running dbt build (int_api_request_dedup -> fct_cost_daily)..."
+# Step 2: Load seeds and run dbt to build the models (stg -> int -> fct)
+# Note: Final design has fct_cost_daily (permanent) and fct_cost_actor_daily (90d TTL).
+# fct_cost_by_model_daily may or may not exist depending on the SHA.
+echo "    2. Loading dbt seeds and running models..."
 export CLICKHOUSE_HOST=localhost
 export CLICKHOUSE_PORT=8123
 export CLICKHOUSE_USER=otel
 export CLICKHOUSE_PASSWORD=otel
 
 cd "$DBT_DIR"
-"$VENV_PYTHON" -m dbt.cli.main run --select int_api_request_dedup fct_cost_daily --profiles-dir . >/tmp/dbt-run-1.log 2>&1 || {
-  # dbt may fail with on-run-end hook error, but models are created successfully
-  # Verify the models exist
-  if ! curl -sf "$CH" --data-binary "SELECT 1 FROM otel.fct_cost_daily LIMIT 1 FORMAT TSV" >/dev/null 2>&1; then
-    echo "  FAIL: fct_cost_daily not created (see /tmp/dbt-run-1.log)"
-    tail -30 /tmp/dbt-run-1.log
-    exit 1
-  fi
-}
-echo "    dbt run completed (initial run, models created despite hook error)"
+if ! "$VENV_PYTHON" -m dbt.cli.main seed --profiles-dir . >/tmp/dbt-seed-1.log 2>&1; then
+  echo "  FAIL: dbt seed failed (see /tmp/dbt-seed-1.log)"
+  tail -30 /tmp/dbt-seed-1.log
+  exit 1
+fi
 
-# Step 3: Capture the aggregate total (only fct_cost_daily - by_model has dbt issues)
-initial_daily=$(q "SELECT cost_usd_micros FROM otel.fct_cost_daily WHERE day_utc = '$TEST_DAY' AND actor_id = '$TEST_ACTOR' ORDER BY cost_usd_micros DESC LIMIT 1 FORMAT TSV")
-echo "    Initial fct_cost_daily total: $initial_daily micros"
+# Build models - include both old and new design tables, let dbt skip what doesn't exist
+if ! "$VENV_PYTHON" -m dbt.cli.main run --select int_api_request_dedup fct_cost_daily+ --profiles-dir . >/tmp/dbt-run-1.log 2>&1; then
+  echo "  FAIL: dbt run failed (see /tmp/dbt-run-1.log)"
+  tail -30 /tmp/dbt-run-1.log
+  exit 1
+fi
+echo "    dbt seed + run completed (initial run)"
+
+# Step 3: Capture the aggregate totals
+# Check which tables exist (new design vs old design)
+fct_daily_exists=$(curl -sf "$CH" --data-binary "SELECT count() FROM system.tables WHERE database = 'otel' AND name = 'fct_cost_daily' FORMAT TSV" 2>/dev/null || echo "0")
+fct_by_model_exists=$(curl -sf "$CH" --data-binary "SELECT count() FROM system.tables WHERE database = 'otel' AND name = 'fct_cost_by_model_daily' FORMAT TSV" 2>/dev/null || echo "0")
+
+if [ "$fct_daily_exists" = "0" ]; then
+  echo "  FAIL: fct_cost_daily not created"
+  exit 1
+fi
+
+initial_daily=$(q "SELECT cost_usd_micros FROM otel.fct_cost_daily WHERE day_utc = '$TEST_DAY' AND actor_id = '$TEST_ACTOR' ORDER BY cost_usd_micros DESC LIMIT 1 FORMAT TSV" 2>/dev/null || echo "")
+echo "    Initial fct_cost_daily total: ${initial_daily:-N/A} micros"
+
+if [ "$fct_by_model_exists" = "1" ]; then
+  initial_by_model=$(q "SELECT cost_usd_micros FROM otel.fct_cost_by_model_daily WHERE day_utc = '$TEST_DAY' AND actor_id = '$TEST_ACTOR' ORDER BY cost_usd_micros DESC LIMIT 1 FORMAT TSV" 2>/dev/null || echo "")
+  echo "    Initial fct_cost_by_model_daily total: ${initial_by_model:-N/A} micros"
+else
+  echo "    fct_cost_by_model_daily: N/A (old design, deprecated)"
+  initial_by_model=""
+fi
 
 if [ -z "$initial_daily" ]; then
   echo "  FAIL: No row in fct_cost_daily for test actor/day"
@@ -92,15 +112,23 @@ sleep 2
 raw_after=$(q "SELECT count() FROM otel.otel_logs WHERE Body = 'claude_code.api_request' AND LogAttributes['user.email'] = '$TEST_ACTOR' FORMAT TSV")
 echo "    Raw logs after deletion: $raw_after rows"
 
-# Step 5: Run dbt build again (incremental should preserve existing aggregates)
-echo "    4. Re-running dbt build after raw data expired..."
-"$VENV_PYTHON" -m dbt.cli.main run --select int_api_request_dedup fct_cost_daily --profiles-dir . >/tmp/dbt-run-2.log 2>&1 || true
-# dbt may fail with on-run-end hook error, but incremental run works
+# Step 5: Run dbt again (incremental should preserve existing aggregates)
+echo "    4. Re-running dbt after raw data expired..."
+if ! "$VENV_PYTHON" -m dbt.cli.main run --select int_api_request_dedup fct_cost_daily+ --profiles-dir . >/tmp/dbt-run-2.log 2>&1; then
+  echo "  FAIL: dbt run failed on second run (see /tmp/dbt-run-2.log)"
+  tail -30 /tmp/dbt-run-2.log
+  exit 1
+fi
 echo "    dbt run completed (second run, raw data gone)"
 
-# Step 6: Verify the aggregate is unchanged
-final_daily=$(q "SELECT cost_usd_micros FROM otel.fct_cost_daily WHERE day_utc = '$TEST_DAY' AND actor_id = '$TEST_ACTOR' ORDER BY cost_usd_micros DESC LIMIT 1 FORMAT TSV")
-echo "    Final fct_cost_daily total: $final_daily micros"
+# Step 6: Verify the aggregates are unchanged
+final_daily=$(q "SELECT cost_usd_micros FROM otel.fct_cost_daily WHERE day_utc = '$TEST_DAY' AND actor_id = '$TEST_ACTOR' ORDER BY cost_usd_micros DESC LIMIT 1 FORMAT TSV" 2>/dev/null || echo "")
+echo "    Final fct_cost_daily total: ${final_daily:-N/A} micros"
+
+if [ "$fct_by_model_exists" = "1" ] && [ -n "$initial_by_model" ]; then
+  final_by_model=$(q "SELECT cost_usd_micros FROM otel.fct_cost_by_model_daily WHERE day_utc = '$TEST_DAY' AND actor_id = '$TEST_ACTOR' ORDER BY cost_usd_micros DESC LIMIT 1 FORMAT TSV" 2>/dev/null || echo "")
+  echo "    Final fct_cost_by_model_daily total: ${final_by_model:-N/A} micros"
+fi
 
 failures=0
 if [ "$final_daily" = "$initial_daily" ]; then
@@ -110,10 +138,20 @@ else
   failures=$((failures + 1))
 fi
 
-# Note: fct_cost_by_model_daily skipped due to dbt-clickhouse compatibility issue with seed loading
+if [ "$fct_by_model_exists" = "1" ] && [ -n "$initial_by_model" ]; then
+  if [ "$final_by_model" = "$initial_by_model" ]; then
+    echo "  ok   fct_cost_by_model_daily: aggregate unchanged after raw data expired ($initial_by_model micros)"
+  else
+    echo "  FAIL: fct_cost_by_model_daily changed from $initial_by_model to $final_by_model"
+    failures=$((failures + 1))
+  fi
+fi
 
 # Cleanup
 q "DELETE FROM otel.fct_cost_daily WHERE day_utc = '$TEST_DAY' AND actor_id = '$TEST_ACTOR'" >/dev/null 2>&1 || true
+if [ "$fct_by_model_exists" = "1" ]; then
+  q "DELETE FROM otel.fct_cost_by_model_daily WHERE day_utc = '$TEST_DAY' AND actor_id = '$TEST_ACTOR'" >/dev/null 2>&1 || true
+fi
 q "DELETE FROM otel.int_api_request_dedup WHERE actor_id = '$TEST_ACTOR'" >/dev/null 2>&1 || true
 
 if [ "$failures" -ne 0 ]; then
