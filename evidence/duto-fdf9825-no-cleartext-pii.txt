@@ -1,23 +1,23 @@
 tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
-image_digest: sha256:ce75fbab897ffeb8a1562037d3800fd2e4831b8c446a519a1bfd221cd0c44fe1
-image_id: d09c8f9383184aa9ffc57846adb703432d8ff44fcdcd8b84e7b0e1835cfa356c
+image_digest: sha256:985551b117c7efd94c023fcb2667bcc8565722e9f78a3ea262fb74a11407c10b
+image_id: 68b35262bf611603c0fd5edc4870d45f75cfe1906d18258898681d5560dbf975
 image_tag: localhost/oteru-collector:0.155.0
 clickhouse_version: 26.11.1.323
-captured_at_utc: 2026-10-20T22:46:31Z
+captured_at_utc: 2026-10-20T22:54:18Z
 loader: /workspace/clickhouse client --host 127.0.0.1 --user otel --password otel --query ... </dev/null
 
 == stg_api_request: '@' in any column (toJSONString(tuple(*))) ==
 SELECT count() FROM otel.stg_api_request WHERE cost_usd_micros IS NOT NULL AND positionCaseInsensitive(toJSONString(tuple(*)), '@') > 0
 rows_with_at=0
 
-== stg_api_request per-column '@' / example.com / user.email plaintext ==
-   ┌─actor_id_at─┬─request_id_at─┬─session_id_at─┬─model_raw_at─┬─service_name_at─┬─dedup_key_at─┬─resource_attrs_at─┬─example_com_with_at─┐
-1. │           0 │             0 │             0 │            0 │               0 │            0 │                 0 │                   0 │
-   └─────────────┴───────────────┴───────────────┴──────────────┴─────────────────┴──────────────┴───────────────────┴─────────────────────┘
+== stg_api_request per-column '@' ==
+   ┌─actor_id_at─┬─request_id_at─┬─session_id_at─┬─model_raw_at─┬─service_name_at─┬─dedup_key_at─┬─resource_attrs_at─┐
+1. │           0 │             0 │             0 │            0 │               0 │            0 │                 0 │
+   └─────────────┴───────────────┴───────────────┴──────────────┴─────────────────┴──────────────┴───────────────────┘
 
 == otel_logs attributes: '@' in LogAttributes / ResourceAttributes / ScopeAttributes / Body ==
    ┌─logs─┬─log_attrs_at─┬─resource_attrs_at─┬─scope_attrs_at─┬─body_at─┐
-1. │   44 │            0 │                 0 │              0 │       0 │
+1. │   66 │            0 │                 0 │              0 │       0 │
    └──────┴──────────────┴───────────────────┴────────────────┴─────────┘
 
 == otel_logs LogAttributes values matching email-like cleartext ==

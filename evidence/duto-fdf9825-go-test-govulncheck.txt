@@ -1,16 +1,16 @@
 tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
-image_digest: sha256:ce75fbab897ffeb8a1562037d3800fd2e4831b8c446a519a1bfd221cd0c44fe1
-image_id: d09c8f9383184aa9ffc57846adb703432d8ff44fcdcd8b84e7b0e1835cfa356c
+image_digest: sha256:985551b117c7efd94c023fcb2667bcc8565722e9f78a3ea262fb74a11407c10b
+image_id: 68b35262bf611603c0fd5edc4870d45f75cfe1906d18258898681d5560dbf975
 image_tag: localhost/oteru-collector:0.155.0
 clickhouse_version: 26.11.1.323
-captured_at_utc: 2026-10-20T22:47:09Z
+captured_at_utc: 2026-10-20T22:55:03Z
 cwd: oteru-collector/hmacconverter
 GOTOOLCHAIN=go1.26.10
 go: go version go1.26.10 linux/amd64
 govulncheck: /tmp/gopath/bin/govulncheck (Go: go1.26.10)
 
 == go test ./... -count=1 ==
-ok  	github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter	0.010s
+ok  	github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter	0.009s
 
 == govulncheck ./... ==
 No vulnerabilities found.

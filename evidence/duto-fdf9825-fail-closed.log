@@ -1,15 +1,15 @@
 tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
-image_digest: sha256:ce75fbab897ffeb8a1562037d3800fd2e4831b8c446a519a1bfd221cd0c44fe1
-image_id: d09c8f9383184aa9ffc57846adb703432d8ff44fcdcd8b84e7b0e1835cfa356c
+image_digest: sha256:985551b117c7efd94c023fcb2667bcc8565722e9f78a3ea262fb74a11407c10b
+image_id: 68b35262bf611603c0fd5edc4870d45f75cfe1906d18258898681d5560dbf975
 image_tag: localhost/oteru-collector:0.155.0
 clickhouse_version: 26.11.1.323
-captured_at_utc: 2026-10-20T22:46:57Z
+captured_at_utc: 2026-10-20T22:54:45Z
 image: localhost/oteru-collector:0.155.0 via rootless podman --network none
 keys: generated at runtime via openssl rand (A/B 32+ bytes hex, SHORT 31 bytes); not written
 
 ===== OTERU_PII_HMAC_KEY unset (exit 1) =====
-2026-10-20T22:46:57.309Z	info	otelconftelemetry/tracer.go:47	Internal trace telemetry disabled	{"resource": {"service.instance.id": "92f3e661-35c6-47f0-846c-a0a95b673eaf", "service.name": "otelcol-oteru", "service.version": "0.155.0"}}
-2026-10-20T22:46:57.313Z	error	service@v0.155.0/service.go:180	error found during service initialization	{"resource": {"service.instance.id": "92f3e661-35c6-47f0-846c-a0a95b673eaf", "service.name": "otelcol-oteru", "service.version": "0.155.0"}, "error": "failed to build pipelines: failed to create \"transform/privacy\" processor, in pipeline \"traces\": environment variable OTERU_PII_HMAC_KEY is unset"}
+2026-10-20T22:54:45.213Z	info	otelconftelemetry/tracer.go:47	Internal trace telemetry disabled	{"resource": {"service.instance.id": "3b16dd0b-cbf3-484f-a8ee-d398a1245bbd", "service.name": "otelcol-oteru", "service.version": "0.155.0"}}
+2026-10-20T22:54:45.214Z	error	service@v0.155.0/service.go:180	error found during service initialization	{"resource": {"service.instance.id": "3b16dd0b-cbf3-484f-a8ee-d398a1245bbd", "service.name": "otelcol-oteru", "service.version": "0.155.0"}, "error": "failed to build pipelines: failed to create \"transform/privacy\" processor, in pipeline \"logs\": environment variable OTERU_PII_HMAC_KEY is unset"}
 go.opentelemetry.io/collector/service.New.func2
 	go.opentelemetry.io/collector/service@v0.155.0/service.go:180
 go.opentelemetry.io/collector/service.New
@@ -34,14 +34,14 @@ main.main
 	github.com/luanmorenommaciel/oteru/oteru-collector/main.go:45
 runtime.main
 	runtime/proc.go:290
-Error: failed to build pipelines: failed to create "transform/privacy" processor, in pipeline "traces": environment variable OTERU_PII_HMAC_KEY is unset
+Error: failed to build pipelines: failed to create "transform/privacy" processor, in pipeline "logs": environment variable OTERU_PII_HMAC_KEY is unset
 
 key_absent_from_this_log=YES
 PASS: exit 1, failure logged, runtime key absent
 
 ===== OTERU_PII_HMAC_KEY empty (exit 1) =====
-2026-10-20T22:46:57.558Z	info	otelconftelemetry/tracer.go:47	Internal trace telemetry disabled	{"resource": {"service.instance.id": "6d43f60e-e8a4-4284-92c9-14098651ddf8", "service.name": "otelcol-oteru", "service.version": "0.155.0"}}
-2026-10-20T22:46:57.559Z	error	service@v0.155.0/service.go:180	error found during service initialization	{"resource": {"service.instance.id": "6d43f60e-e8a4-4284-92c9-14098651ddf8", "service.name": "otelcol-oteru", "service.version": "0.155.0"}, "error": "failed to build pipelines: failed to create \"transform/privacy\" processor, in pipeline \"logs\": environment variable OTERU_PII_HMAC_KEY: hmac key is empty"}
+2026-10-20T22:54:45.438Z	info	otelconftelemetry/tracer.go:47	Internal trace telemetry disabled	{"resource": {"service.instance.id": "0d7fc231-cb26-45c1-a94b-17abdf542b70", "service.name": "otelcol-oteru", "service.version": "0.155.0"}}
+2026-10-20T22:54:45.438Z	error	service@v0.155.0/service.go:180	error found during service initialization	{"resource": {"service.instance.id": "0d7fc231-cb26-45c1-a94b-17abdf542b70", "service.name": "otelcol-oteru", "service.version": "0.155.0"}, "error": "failed to build pipelines: failed to create \"transform/privacy\" processor, in pipeline \"traces\": environment variable OTERU_PII_HMAC_KEY: hmac key is empty"}
 go.opentelemetry.io/collector/service.New.func2
 	go.opentelemetry.io/collector/service@v0.155.0/service.go:180
 go.opentelemetry.io/collector/service.New
@@ -66,14 +66,14 @@ main.main
 	github.com/luanmorenommaciel/oteru/oteru-collector/main.go:45
 runtime.main
 	runtime/proc.go:290
-Error: failed to build pipelines: failed to create "transform/privacy" processor, in pipeline "logs": environment variable OTERU_PII_HMAC_KEY: hmac key is empty
+Error: failed to build pipelines: failed to create "transform/privacy" processor, in pipeline "traces": environment variable OTERU_PII_HMAC_KEY: hmac key is empty
 
 key_absent_from_this_log=YES
 PASS: exit 1, failure logged, runtime key absent
 
 ===== OTERU_PII_HMAC_KEY 31 bytes (exit 1) =====
-2026-10-20T22:46:57.800Z	info	otelconftelemetry/tracer.go:47	Internal trace telemetry disabled	{"resource": {"service.instance.id": "e521ef9b-a35b-4f73-ae4c-bf07e439cf2d", "service.name": "otelcol-oteru", "service.version": "0.155.0"}}
-2026-10-20T22:46:57.801Z	error	service@v0.155.0/service.go:180	error found during service initialization	{"resource": {"service.instance.id": "e521ef9b-a35b-4f73-ae4c-bf07e439cf2d", "service.name": "otelcol-oteru", "service.version": "0.155.0"}, "error": "failed to build pipelines: failed to create \"transform/privacy\" processor, in pipeline \"traces\": environment variable OTERU_PII_HMAC_KEY: hmac key is shorter than 32 bytes (got 31)"}
+2026-10-20T22:54:45.685Z	info	otelconftelemetry/tracer.go:47	Internal trace telemetry disabled	{"resource": {"service.instance.id": "805fd8b1-669e-49f8-8b31-f2adcac21430", "service.name": "otelcol-oteru", "service.version": "0.155.0"}}
+2026-10-20T22:54:45.689Z	error	service@v0.155.0/service.go:180	error found during service initialization	{"resource": {"service.instance.id": "805fd8b1-669e-49f8-8b31-f2adcac21430", "service.name": "otelcol-oteru", "service.version": "0.155.0"}, "error": "failed to build pipelines: failed to create \"transform/privacy\" processor, in pipeline \"metrics\": environment variable OTERU_PII_HMAC_KEY: hmac key is shorter than 32 bytes (got 31)"}
 go.opentelemetry.io/collector/service.New.func2
 	go.opentelemetry.io/collector/service@v0.155.0/service.go:180
 go.opentelemetry.io/collector/service.New
@@ -98,12 +98,12 @@ main.main
 	github.com/luanmorenommaciel/oteru/oteru-collector/main.go:45
 runtime.main
 	runtime/proc.go:290
-Error: failed to build pipelines: failed to create "transform/privacy" processor, in pipeline "traces": environment variable OTERU_PII_HMAC_KEY: hmac key is shorter than 32 bytes (got 31)
+Error: failed to build pipelines: failed to create "transform/privacy" processor, in pipeline "metrics": environment variable OTERU_PII_HMAC_KEY: hmac key is shorter than 32 bytes (got 31)
 
 key_absent_from_this_log=YES
 PASS: exit 1, failure logged, runtime key absent
 
 == grep proving runtime keys absent from all three logs ==
-needles: HMAC_KEY_A (64 hex), HMAC_KEY_B (64 hex), HMAC_SHORT (31 bytes), plus long-lived collector key from /tmp/oteru-runtime-hmac-key
+needles: HMAC_KEY_A (64 hex), HMAC_KEY_B (64 hex), HMAC_SHORT (31 bytes), plus long-lived collector key
 grep -F of each needle against the three fail-closed log bodies: 0 matches
 PASS: runtime key strings are absent from collector logs
