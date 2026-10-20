@@ -27,6 +27,14 @@ oci_archive_bytes: 19127808
 oci_archive_source: podman save --format oci-archive oteru-collector:0.155.0
 oci_archive_is_e2e_image: YES (running oteru-collector ImageID == archive config digest == d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9)
 
+== independent clean-build comparison (teammate fdf9825, same command; this build was not altered) ==
+teammate_image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+this_image_digest:     sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+image_digest_compare: MATCH
+teammate_binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+this_binary_sha256:     1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+binary_sha256_compare: MATCH
+
 == distroless base (Dockerfile FROM + inspect) ==
 dockerfile_from: gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 local_image_id: 12aa113e298cbae388b298c0dc163fa1547beba948153b23eb9094e16a07a770
