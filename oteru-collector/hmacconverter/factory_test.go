@@ -27,6 +27,7 @@ func TestCreateFailsWithoutKey(t *testing.T) {
 
 	t.Run("unset", func(t *testing.T) {
 		unsetHMACKey(t)
+		probe := randomKey(t)
 		_, err := f.CreateLogs(ctx, set, cfg, consumertest.NewNop())
 		if err == nil {
 			t.Fatal("expected error")
@@ -34,7 +35,7 @@ func TestCreateFailsWithoutKey(t *testing.T) {
 		if !strings.Contains(err.Error(), "unset") {
 			t.Fatalf("got %v", err)
 		}
-		if strings.Contains(err.Error(), publicTestKey) {
+		if strings.Contains(err.Error(), probe) {
 			t.Fatalf("error leaked key: %v", err)
 		}
 	})
@@ -46,7 +47,7 @@ func TestCreateFailsWithoutKey(t *testing.T) {
 		}
 	})
 	t.Run("short", func(t *testing.T) {
-		secret := "short-key-value"
+		secret := randomShortKey(t, 31)
 		t.Setenv(HMACKeyEnv, secret)
 		_, err := f.CreateLogs(ctx, set, cfg, consumertest.NewNop())
 		if err == nil || !errors.Is(err, ErrKeyTooShort) {
@@ -68,7 +69,7 @@ func TestCreateFailsWithoutKey(t *testing.T) {
 }
 
 func TestCreateSucceedsWithValidKey(t *testing.T) {
-	t.Setenv(HMACKeyEnv, publicTestKey)
+	t.Setenv(HMACKeyEnv, randomKey(t))
 	f := NewFactory()
 	set := processortest.NewNopSettings(f.Type())
 	cfg := f.CreateDefaultConfig()
@@ -79,14 +80,16 @@ func TestCreateSucceedsWithValidKey(t *testing.T) {
 }
 
 func TestKeyNeverAppearsInErrorOrConfigString(t *testing.T) {
-	t.Setenv(HMACKeyEnv, publicTestKey)
+	key := randomKey(t)
+	t.Setenv(HMACKeyEnv, key)
 	f := NewFactory()
 	cfg := f.CreateDefaultConfig()
 	form := ConfigString(cfg)
-	if strings.Contains(form, publicTestKey) {
+	if strings.Contains(form, key) {
 		t.Fatalf("config string leaked key: %s", form)
 	}
-	t.Setenv(HMACKeyEnv, "too-short")
+	short := randomShortKey(t, 31)
+	t.Setenv(HMACKeyEnv, short)
 	_, err := f.CreateLogs(
 		context.Background(),
 		processortest.NewNopSettings(f.Type()),
@@ -96,10 +99,10 @@ func TestKeyNeverAppearsInErrorOrConfigString(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if strings.Contains(err.Error(), "too-short") {
+	if strings.Contains(err.Error(), short) {
 		t.Fatalf("error leaked key: %v", err)
 	}
-	if strings.Contains(err.Error(), publicTestKey) {
+	if strings.Contains(err.Error(), key) {
 		t.Fatalf("error leaked prior key: %v", err)
 	}
 }

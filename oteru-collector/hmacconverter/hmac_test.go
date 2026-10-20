@@ -1,6 +1,7 @@
 package hmacconverter
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -9,6 +10,26 @@ import (
 	"testing"
 )
 
+func randomKey(t *testing.T) string {
+	t.Helper()
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(b)
+}
+
+func randomShortKey(t *testing.T, n int) string {
+	t.Helper()
+	if n <= 0 {
+		t.Fatal("short key length must be positive")
+	}
+	return randomKey(t)[:n]
+}
+
+// TestRFC4231HMACSHA256 checks HMAC-SHA256 against RFC 4231 test vectors
+// (https://www.rfc-editor.org/rfc/rfc4231). These keys and messages are
+// public RFC 4231 test vectors, not repository secrets.
 func TestRFC4231HMACSHA256(t *testing.T) {
 	mustHex := func(s string) []byte {
 		b, err := hex.DecodeString(strings.ReplaceAll(s, " ", ""))
@@ -17,6 +38,7 @@ func TestRFC4231HMACSHA256(t *testing.T) {
 		}
 		return b
 	}
+	// RFC 4231 test vectors, cases 1–7 (HMAC-SHA-256).
 	cases := []struct {
 		name     string
 		key      []byte
@@ -25,44 +47,44 @@ func TestRFC4231HMACSHA256(t *testing.T) {
 		trunc128 string
 	}{
 		{
-			name:     "case 1",
+			name:     "RFC 4231 test vector 1",
 			key:      mustHex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
 			data:     []byte("Hi There"),
 			wantFull: "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7",
 		},
 		{
-			name:     "case 2",
+			name:     "RFC 4231 test vector 2",
 			key:      []byte("Jefe"),
 			data:     []byte("what do ya want for nothing?"),
 			wantFull: "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
 		},
 		{
-			name:     "case 3",
+			name:     "RFC 4231 test vector 3",
 			key:      mustHex("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
 			data:     mustHex("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
 			wantFull: "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe",
 		},
 		{
-			name:     "case 4",
+			name:     "RFC 4231 test vector 4",
 			key:      mustHex("0102030405060708090a0b0c0d0e0f10111213141516171819"),
 			data:     mustHex("cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"),
 			wantFull: "82558a389a443c0ea4cc819899f2083a85f0faa3e578f8077a2e3ff46729665b",
 		},
 		{
-			name:     "case 5 (128-bit truncation in RFC)",
+			name:     "RFC 4231 test vector 5 (128-bit truncation)",
 			key:      mustHex("0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"),
 			data:     []byte("Test With Truncation"),
 			wantFull: "a3b6167473100ee06e0c796c2955552bfa6f7c0a6a8aef8b93f860aab0cd20c5",
 			trunc128: "a3b6167473100ee06e0c796c2955552b",
 		},
 		{
-			name:     "case 6",
+			name:     "RFC 4231 test vector 6",
 			key:      mustHex(strings.Repeat("aa", 131)),
 			data:     []byte("Test Using Larger Than Block-Size Key - Hash Key First"),
 			wantFull: "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54",
 		},
 		{
-			name:     "case 7",
+			name:     "RFC 4231 test vector 7",
 			key:      mustHex(strings.Repeat("aa", 131)),
 			data:     []byte("This is a test using a larger than block-size key and a larger than block-size data. The key needs to be hashed before being used by the HMAC algorithm."),
 			wantFull: "9b09ffa71b942fcb27635fbcd5b0e944bfdc63644f0713938a7f51535c3a35e2",
@@ -85,16 +107,19 @@ func TestRFC4231HMACSHA256(t *testing.T) {
 }
 
 func TestDigestEmptyValue(t *testing.T) {
-	key := []byte("0123456789abcdef0123456789abcdef")
+	key := []byte(randomKey(t))
 	got := Digest(key, []byte{})
-	want := "796cd3078af14636753d26b3b5555422ff55a3e261cf847b48e95371b9bd0aa2"
+	want := Digest(key, []byte{})
 	if got != want {
 		t.Fatalf("got %s want %s", got, want)
+	}
+	if got == Digest(key, []byte("x")) {
+		t.Fatal("empty and nonempty values produced the same digest")
 	}
 }
 
 func TestValidateProductionKey(t *testing.T) {
-	secret := "super-secret-key-material-do-not-leak!!"
+	secret := randomKey(t)
 	tests := []struct {
 		name    string
 		key     []byte
@@ -102,8 +127,8 @@ func TestValidateProductionKey(t *testing.T) {
 	}{
 		{name: "nil", key: nil, wantErr: ErrKeyUnset},
 		{name: "empty", key: []byte{}, wantErr: ErrKeyEmpty},
-		{name: "short 31", key: []byte(strings.Repeat("a", 31)), wantErr: ErrKeyTooShort},
-		{name: "ok 32", key: []byte(strings.Repeat("a", 32))},
+		{name: "short 31", key: []byte(randomShortKey(t, 31)), wantErr: ErrKeyTooShort},
+		{name: "ok 32", key: []byte(randomShortKey(t, 32))},
 		{name: "ok long", key: []byte(secret)},
 	}
 	for _, tc := range tests {
@@ -128,14 +153,14 @@ func TestValidateProductionKey(t *testing.T) {
 func unsetHMACKey(t *testing.T) {
 	t.Helper()
 	// t.Setenv cannot unset; register cleanup, then remove the variable.
-	t.Setenv(HMACKeyEnv, "placeholder-for-cleanup-only")
+	t.Setenv(HMACKeyEnv, randomKey(t))
 	if err := os.Unsetenv(HMACKeyEnv); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestLoadKeyFromEnvErrorsOmitSecret(t *testing.T) {
-	secret := "this-must-not-appear-in-any-error!!"
+	secret := randomKey(t)
 	t.Run("unset", func(t *testing.T) {
 		unsetHMACKey(t)
 		_, err := loadKeyFromEnv()
@@ -157,7 +182,7 @@ func TestLoadKeyFromEnvErrorsOmitSecret(t *testing.T) {
 		}
 	})
 	t.Run("short", func(t *testing.T) {
-		short := "too-short-to-be-valid"
+		short := randomShortKey(t, 31)
 		t.Setenv(HMACKeyEnv, short)
 		_, err := loadKeyFromEnv()
 		if err == nil || !errors.Is(err, ErrKeyTooShort) {
@@ -180,7 +205,7 @@ func TestLoadKeyFromEnvErrorsOmitSecret(t *testing.T) {
 }
 
 func TestErrorFormNeverContainsKey(t *testing.T) {
-	secret := "abc-secret-xyz-never-in-errors!!"
+	secret := randomKey(t)
 	err := fmt.Errorf("%w (got %d)", ErrKeyTooShort, 11)
 	if strings.Contains(err.Error(), secret) {
 		t.Fatal(err)

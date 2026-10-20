@@ -41,10 +41,24 @@ elif command -v docker >/dev/null 2>&1; then
 else
   CTR=""
 fi
-# Public fixture keys (32+ bytes). Not production secrets.
-HMAC_KEY_A="oteru-hmac-test-key-32-bytes-min!"
-HMAC_KEY_B="oteru-hmac-alt-key-32-bytes-min!!"
-HMAC_SHORT="e2e-short-key-must-not-appear31" # 31 bytes; must never appear in logs.
+# Per-run HMAC keys (32+ bytes) and a 31-byte reject key. In-memory only:
+# never written to a file, never echoed.
+if command -v openssl >/dev/null 2>&1; then
+  HMAC_KEY_A="$(openssl rand -hex 32)"
+  HMAC_KEY_B="$(openssl rand -hex 32)"
+  HMAC_SHORT="$(openssl rand -hex 16 | cut -c1-31)"
+else
+  HMAC_KEY_A="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+  HMAC_KEY_B="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+  HMAC_SHORT="$(python3 -c 'import secrets; print(secrets.token_hex(16)[:31])')"
+fi
+while [ "$HMAC_KEY_B" = "$HMAC_KEY_A" ]; do
+  if command -v openssl >/dev/null 2>&1; then
+    HMAC_KEY_B="$(openssl rand -hex 32)"
+  else
+    HMAC_KEY_B="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+  fi
+done
 # Unique per execution; tags every replayed batch so ClickHouse assertions can
 # filter to rows this run produced. date+pid keeps it portable (Git Bash/macOS/Linux).
 RUN_ID="e2e-$(date +%s)-$$"

@@ -4,10 +4,14 @@ import hashlib
 import hmac
 import importlib.util
 import json
+import secrets
 from pathlib import Path
 
+# Session-local HMAC key. Generated at import; never a committed secret.
+HMAC_TEST_KEY = secrets.token_hex(32)
 
-def hmac_v1(field: str, value: str, key: str) -> str:
+
+def hmac_v1(field: str, value: str, key: str = HMAC_TEST_KEY) -> str:
     digest = hmac.new(
         key.encode(),
         f"oteru-pii:v1|{field}|{value}".encode(),

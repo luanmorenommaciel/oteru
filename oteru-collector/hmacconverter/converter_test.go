@@ -8,8 +8,6 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 )
 
-const publicTestKey = "oteru-hmac-test-key-32-bytes-min!"
-
 func bindTestKey(t *testing.T, key string) {
 	t.Helper()
 	previous := boundKey.Load()
@@ -21,7 +19,8 @@ func bindTestKey(t *testing.T, key string) {
 }
 
 func TestHMACSHA256OTTLEmptyValue(t *testing.T) {
-	bindTestKey(t, publicTestKey)
+	key := randomKey(t)
+	bindTestKey(t, key)
 	expr := hmacSHA256[any](
 		&ottl.StandardStringGetter[any]{Getter: func(context.Context, any) (any, error) { return "", nil }},
 	)
@@ -29,14 +28,15 @@ func TestHMACSHA256OTTLEmptyValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Digest([]byte(publicTestKey), []byte(""))
+	want := Digest([]byte(key), []byte(""))
 	if got != want {
 		t.Fatalf("got %v want %s", got, want)
 	}
 }
 
 func TestHMACSHA256OTTLNilValue(t *testing.T) {
-	bindTestKey(t, publicTestKey)
+	key := randomKey(t)
+	bindTestKey(t, key)
 	expr := hmacSHA256[any](
 		&ottl.StandardStringGetter[any]{Getter: func(context.Context, any) (any, error) { return nil, nil }},
 	)
@@ -44,13 +44,14 @@ func TestHMACSHA256OTTLNilValue(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nil value")
 	}
-	if strings.Contains(err.Error(), publicTestKey) {
+	if strings.Contains(err.Error(), key) {
 		t.Fatalf("error leaked key: %v", err)
 	}
 }
 
 func TestHMACSHA256OTTLRejectsUnboundKey(t *testing.T) {
 	boundKey.Store(nil)
+	probe := randomKey(t)
 	expr := hmacSHA256[any](
 		&ottl.StandardStringGetter[any]{Getter: func(context.Context, any) (any, error) {
 			return "user@example.com", nil
@@ -60,7 +61,7 @@ func TestHMACSHA256OTTLRejectsUnboundKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if strings.Contains(err.Error(), publicTestKey) {
+	if strings.Contains(err.Error(), probe) {
 		t.Fatalf("error leaked key: %v", err)
 	}
 }
