@@ -83,19 +83,24 @@ def _present(attributes: str, key: str) -> str:
 
 
 def _hash_statement(attributes: str, key: str) -> str:
+    # contrib v0.155 resource/scope parsers cannot register HMACSHA256, so
+    # hash statements run in log/span/datapoint contexts. The IsMatch guard
+    # keeps per-record re-entry from hashing resource attributes twice.
     return (
         f'set({attributes}["{key}"], '
         f'Concat(["hmac:v1:", HMACSHA256(Concat(['
         f'"oteru-pii:v1|{key}|", {attributes}["{key}"]], ""))], "")) '
-        f"where {_present(attributes, key)}"
+        f"where {_present(attributes, key)} and "
+        f'not IsMatch({attributes}["{key}"], "^hmac:v1:[0-9a-f]{{64}}$")'
     )
 
 
-def _statements(attributes: str, source: dict) -> list[str]:
+def _statements(attributes: str, source: dict, *, include_hash: bool = True) -> list[str]:
     result = []
     for key, action in source["identity"].items():
         if action == "hash":
-            result.append(_hash_statement(attributes, key))
+            if include_hash:
+                result.append(_hash_statement(attributes, key))
         elif action == "mask":
             result.append(
                 f'set({attributes}["{key}"], "REDACTED") where {_present(attributes, key)}'
@@ -105,6 +110,24 @@ def _statements(attributes: str, source: dict) -> list[str]:
     if source["content"]["known_fields"] == "drop":
         result.extend(f'delete_key({attributes}, "{key}")' for key in CONTENT_KEYS)
     return result
+
+
+def _hash_identity(attributes: str, source: dict) -> list[str]:
+    return [
+        _hash_statement(attributes, key)
+        for key, action in source["identity"].items()
+        if action == "hash"
+    ]
+
+
+def _group(context: str, statements: list[str]) -> dict | None:
+    if not statements:
+        return None
+    return {"context": context, "statements": statements}
+
+
+def _groups(*entries: dict | None) -> list[dict]:
+    return [entry for entry in entries if entry is not None]
 
 
 def _invalid_hash_conditions(contexts: tuple[str, ...], source: dict) -> list[str]:
@@ -126,27 +149,54 @@ def compile_policy(source: dict) -> dict:
     # Fix ordering regardless of JSON key order. No user-supplied OTTL or paths.
     source = {**source, "identity": {k: source["identity"][k] for k in IDENTITY_KEYS}}
     transform = {"error_mode": "propagate"}
-    for signal, contexts in (
-        ("log", ("resource", "scope", "log")),
-        ("trace", ("resource", "scope", "span", "spanevent")),
-    ):
-        transform[f"{signal}_statements"] = [
-            {"context": context, "statements": _statements(f"{context}.attributes", source)}
-            for context in contexts
-        ]
-    if source["content"]["log_body"] == "drop":
-        transform["log_statements"][-1]["statements"].append('set(log.body, "REDACTED")')
-    transform["metric_statements"] = [
-        {
-            "context": context,
-            "statements": [
-                _hash_statement(f"{context}.attributes", key)
-                for key, action in source["identity"].items()
-                if action == "hash"
-            ],
-        }
-        for context in ("resource", "scope", "datapoint")
+    # HMACSHA256 is registered on log/span/spanevent/datapoint factories only.
+    # resource/scope contexts keep mask/drop (StandardFuncs); hashes of
+    # resource and instrumentation_scope attributes run in the leaf context.
+    log_statements = [
+        _group("resource", _statements("resource.attributes", source, include_hash=False)),
+        _group("scope", _statements("scope.attributes", source, include_hash=False)),
+        _group(
+            "log",
+            (
+                _hash_identity("resource.attributes", source)
+                + _hash_identity("instrumentation_scope.attributes", source)
+                + _statements("log.attributes", source)
+            ),
+        ),
     ]
+    if source["content"]["log_body"] == "drop":
+        log_group = next(
+            (entry for entry in log_statements if entry and entry["context"] == "log"),
+            None,
+        )
+        if log_group is None:
+            log_group = {"context": "log", "statements": []}
+            log_statements.append(log_group)
+        log_group["statements"].append('set(log.body, "REDACTED")')
+    transform["log_statements"] = _groups(*log_statements)
+    transform["trace_statements"] = _groups(
+        _group("resource", _statements("resource.attributes", source, include_hash=False)),
+        _group("scope", _statements("scope.attributes", source, include_hash=False)),
+        _group(
+            "span",
+            (
+                _hash_identity("resource.attributes", source)
+                + _hash_identity("instrumentation_scope.attributes", source)
+                + _statements("span.attributes", source)
+            ),
+        ),
+        _group("spanevent", _statements("spanevent.attributes", source)),
+    )
+    transform["metric_statements"] = _groups(
+        _group(
+            "datapoint",
+            (
+                _hash_identity("resource.attributes", source)
+                + _hash_identity("instrumentation_scope.attributes", source)
+                + _hash_identity("datapoint.attributes", source)
+            ),
+        )
+    )
     sensitive = [key for key, action in source["identity"].items() if action != "hash"]
     if source["content"]["known_fields"] == "drop":
         sensitive.extend(CONTENT_KEYS)

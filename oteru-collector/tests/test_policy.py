@@ -25,8 +25,6 @@ def test_default_preserves_identity_dimensioned_metrics_with_hash():
     assert set(source["identity"].values()) == {"hash"}
     result = policy.compile_policy(source)
     assert {entry["context"] for entry in result["transform/privacy"]["metric_statements"]} == {
-        "resource",
-        "scope",
         "datapoint",
     }
     assert "user.email" not in json.dumps(result["filter/privacy_metrics"])
@@ -81,6 +79,21 @@ def test_hash_emits_factory_bound_hmac_without_key():
     assert "sha256:" + "v1:" not in blob
     assert "OTERU_PII_HMAC_KEY" not in blob
     assert "SHA256(" not in blob.replace("HMACSHA256(", "")
+
+
+def test_hash_runs_in_leaf_contexts_not_resource_scope():
+    transform = policy.compile_policy(default())["transform/privacy"]
+    groups = (
+        transform["log_statements"] + transform["trace_statements"] + transform["metric_statements"]
+    )
+    leaf = {"log", "span", "spanevent", "datapoint"}
+    for group in groups:
+        blob = json.dumps(group["statements"])
+        if group["context"] in ("resource", "scope"):
+            assert "HMACSHA256(" not in blob
+        else:
+            assert group["context"] in leaf
+            assert "HMACSHA256(" in blob
 
 
 def test_compile_publishes_valid_json(tmp_path):

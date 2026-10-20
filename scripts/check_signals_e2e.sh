@@ -34,6 +34,13 @@ SCOPED_API_REQUEST="$(mktemp -t oteru-api-request-XXXXXX).json"
 HMAC_DIR="$(mktemp -d -t oteru-hmac-XXXXXX)"
 trap 'rm -f "$TRACES" "$SCOPED_TINY" "$SCOPED_BENIGN" "$SCOPED_TRACES" "$MCP" "$SCOPED_MCP" "$MCP_EXPECTED" "$SCOPED_API_REQUEST"; rm -rf "$HMAC_DIR"' EXIT
 HMAC_IMAGE="${OTERU_COLLECTOR_IMAGE:-oteru-collector:0.155.0}"
+if command -v podman >/dev/null 2>&1; then
+  CTR=podman
+elif command -v docker >/dev/null 2>&1; then
+  CTR=docker
+else
+  CTR=""
+fi
 # Public fixture keys (32+ bytes). Not production secrets.
 HMAC_KEY_A="oteru-hmac-test-key-32-bytes-min!"
 HMAC_KEY_B="oteru-hmac-alt-key-32-bytes-min!!"
@@ -351,7 +358,7 @@ else
 fi
 
 # HMAC fail-closed + different-key identity against the local OCB image.
-# An unavailable docker/buildah or missing image is a failure, not a skip.
+# An unavailable podman/docker or missing image is a failure, not a skip.
 hmac_extract_email() {
   "$PY" - "$1" <<'PY'
 import json, pathlib, sys
@@ -378,7 +385,7 @@ hmac_fail_closed() {
   local label="$1"
   shift
   local log status=0
-  log="$(timeout 25 docker run --rm --network none \
+  log="$(timeout 25 "$CTR" run --rm --network none \
     -v "$HMAC_DIR/config.yml:/etc/oteru-collector-config.yml:ro" \
     -v "$HMAC_DIR/privacy:/etc/oteru-privacy:ro" \
     -v "$HMAC_DIR/empty:/telemetry" \
@@ -408,16 +415,12 @@ hmac_fail_closed() {
 }
 
 hmac_isolated_checks() {
-  echo "HMAC isolated checks ($HMAC_IMAGE)"
-  if ! command -v docker >/dev/null 2>&1; then
-    if command -v buildah >/dev/null 2>&1; then
-      fail "HMAC isolated checks: buildah is present but these checks require docker run of $HMAC_IMAGE"
-    else
-      fail "HMAC isolated checks: docker/buildah unavailable (need image $HMAC_IMAGE)"
-    fi
+  echo "HMAC isolated checks ($HMAC_IMAGE via ${CTR:-none})"
+  if [ -z "$CTR" ]; then
+    fail "HMAC isolated checks: podman/docker unavailable (need image $HMAC_IMAGE)"
     return
   fi
-  if ! docker image inspect "$HMAC_IMAGE" >/dev/null 2>&1; then
+  if ! "$CTR" image inspect "$HMAC_IMAGE" >/dev/null 2>&1; then
     fail "HMAC isolated checks: image $HMAC_IMAGE is not present"
     return
   fi
@@ -439,17 +442,17 @@ hmac_isolated_checks() {
   hmac_run_keyed() {
     local key="$1" outdir="$2" name="$3"
     local cid http i code
-    cid="$(docker run -d --name "$name" \
+    cid="$("$CTR" run -d --name "$name" \
       -e "OTERU_PII_HMAC_KEY=$key" \
       -p 127.0.0.1::4318 \
       -v "$HMAC_DIR/config.yml:/etc/oteru-collector-config.yml:ro" \
       -v "$HMAC_DIR/privacy:/etc/oteru-privacy:ro" \
       -v "$outdir:/telemetry" \
       "$HMAC_IMAGE" --config=/etc/oteru-collector-config.yml)" || {
-      fail "HMAC keyed run: docker run $name failed"
+      fail "HMAC keyed run: $CTR run $name failed"
       return 1
     }
-    http="http://127.0.0.1:$(docker port "$name" 4318/tcp | head -1 | awk -F: '{print $NF}')"
+    http="http://127.0.0.1:$("$CTR" port "$name" 4318/tcp | head -1 | awk -F: '{print $NF}')"
     code=""
     for i in $(seq 1 50); do
       code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$http/v1/logs" \
@@ -461,8 +464,8 @@ hmac_isolated_checks() {
     done
     if [ "$code" != "200" ]; then
       fail "HMAC keyed run $name: collector did not become ready"
-      docker logs "$name" || true
-      docker rm -f "$name" >/dev/null 2>&1 || true
+      "$CTR" logs "$name" || true
+      "$CTR" rm -f "$name" >/dev/null 2>&1 || true
       return 1
     fi
     local payload='{"resourceLogs":[{"resource":{"attributes":[]},"scopeLogs":[{"scope":{},"logRecords":[{"body":{"stringValue":"hmac-e2e"},"attributes":[{"key":"user.email","value":{"stringValue":"user@example.com"}}]}]}]}]}'
@@ -470,8 +473,8 @@ hmac_isolated_checks() {
     curl -sf -X POST "$http/v1/logs" -H 'content-type: application/json' --data "$payload" >/dev/null
     sleep 2
     local logs
-    logs="$(docker logs "$name" 2>&1 || true)"
-    docker rm -f "$name" >/dev/null 2>&1 || true
+    logs="$("$CTR" logs "$name" 2>&1 || true)"
+    "$CTR" rm -f "$name" >/dev/null 2>&1 || true
     if printf '%s\n' "$logs" | grep -F -- "$key" >/dev/null; then
       fail "HMAC keyed run $name: key string appeared in collector logs"
       return 1
