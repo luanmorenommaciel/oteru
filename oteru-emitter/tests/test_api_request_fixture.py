@@ -3,12 +3,24 @@
 import json
 from pathlib import Path
 
+# Import expected values
+from api_request_cost_expectations import (
+    COST_POST_DEDUP_MICROS,
+    COST_PRE_DEDUP_MICROS,
+    DISTINCT_DEDUP_KEYS,
+    DUPLICATE_REQUEST_IDS,
+    HAS_EMPTY_REQUEST_ID,
+    HAS_LATE_ARRIVAL,
+    SYNTHETIC_EVENTS,
+    TOTAL_EVENTS,
+)
+
 
 def test_fixture_has_10_events():
     """Fixture contains exactly 10 api_request events."""
     fixture = Path(__file__).parent / "fixtures" / "api_request_cost_fixture.json"
     lines = fixture.read_text().strip().split("\n")
-    assert len(lines) == 10, f"Expected 10 events, got {len(lines)}"
+    assert len(lines) == TOTAL_EVENTS, f"Expected {TOTAL_EVENTS} events, got {len(lines)}"
 
 
 def test_fixture_has_2_duplicates_by_request_id():
@@ -25,10 +37,19 @@ def test_fixture_has_2_duplicates_by_request_id():
     from collections import Counter
 
     counts = Counter(request_ids)
-    assert counts["req_001"] == 2, f"Expected 2 occurrences of req_001, got {counts['req_001']}"
-    # Verify exactly one duplicate
-    duplicates = [rid for rid, count in counts.items() if count > 1]
-    assert len(duplicates) == 1, f"Expected exactly 1 duplicated request_id, got {len(duplicates)}"
+    for request_id, expected_count in DUPLICATE_REQUEST_IDS.items():
+        assert counts[request_id] == expected_count, (
+            f"Expected {expected_count} occurrences of {request_id}, got {counts[request_id]}"
+        )
+    # Verify number of distinct dedup keys (total non-empty - duplicates + 1 empty)
+    non_empty = [rid for rid in request_ids if rid]
+    unique_non_empty = len(set(non_empty))
+    empty_count = sum(1 for rid in request_ids if not rid)
+    total_dedup_keys = unique_non_empty + empty_count
+    expected_total = DISTINCT_DEDUP_KEYS + SYNTHETIC_EVENTS
+    assert total_dedup_keys == expected_total, (
+        f"Expected {expected_total} total dedup keys, got {total_dedup_keys}"
+    )
 
 
 def test_fixture_has_1_synthetic():
@@ -43,7 +64,9 @@ def test_fixture_has_1_synthetic():
         if resource_attrs.get("oteru.traffic", {}).get("stringValue") == "synthetic":
             synthetic_count += 1
 
-    assert synthetic_count == 1, f"Expected 1 synthetic event, got {synthetic_count}"
+    assert synthetic_count == SYNTHETIC_EVENTS, (
+        f"Expected {SYNTHETIC_EVENTS} synthetic event, got {synthetic_count}"
+    )
 
 
 def test_fixture_has_1_empty_request_id():
@@ -58,7 +81,9 @@ def test_fixture_has_1_empty_request_id():
             if request_id == "":
                 empty_count += 1
 
-    assert empty_count == 1, f"Expected 1 empty request_id, got {empty_count}"
+    assert empty_count == HAS_EMPTY_REQUEST_ID, (
+        f"Expected {HAS_EMPTY_REQUEST_ID} empty request_id, got {empty_count}"
+    )
 
 
 def test_fixture_has_day_boundary_events():
@@ -98,7 +123,9 @@ def test_fixture_has_late_arrival():
             if delay_hours > 25:  # At least 25 hours late
                 late_arrivals.append(delay_hours)
 
-    assert len(late_arrivals) >= 1, "Expected at least 1 late arrival"
+    assert len(late_arrivals) >= HAS_LATE_ARRIVAL, (
+        f"Expected at least {HAS_LATE_ARRIVAL} late arrival"
+    )
     assert any(delay >= 30 for delay in late_arrivals), "Expected at least one event 30h+ late"
 
 
@@ -162,3 +189,60 @@ def test_fixture_cost_fields_present():
             assert "output_tokens" in attrs, "Missing output_tokens"
             assert "cache_read_tokens" in attrs, "Missing cache_read_tokens"
             assert "cache_creation_tokens" in attrs, "Missing cache_creation_tokens"
+
+
+def test_fixture_cost_sum_pre_dedup():
+    """Pre-dedup cost sum matches expected (all non-synthetic events)."""
+    fixture = Path(__file__).parent / "fixtures" / "api_request_cost_fixture.json"
+    total_cost = 0
+    for line in fixture.read_text().strip().split("\n"):
+        batch = json.loads(line)
+        resource_attrs = {
+            a["key"]: a["value"] for a in batch["resourceLogs"][0]["resource"]["attributes"]
+        }
+        is_synthetic = resource_attrs.get("oteru.traffic", {}).get("stringValue") == "synthetic"
+
+        if not is_synthetic:
+            for log_record in batch["resourceLogs"][0]["scopeLogs"][0]["logRecords"]:
+                attrs = {a["key"]: a["value"] for a in log_record["attributes"]}
+                cost = int(attrs.get("cost_usd_micros", {}).get("intValue", "0"))
+                total_cost += cost
+
+    assert total_cost == COST_PRE_DEDUP_MICROS, (
+        f"Pre-dedup cost: expected {COST_PRE_DEDUP_MICROS}, got {total_cost}"
+    )
+
+
+def test_fixture_cost_sum_post_dedup():
+    """Post-dedup cost sum matches expected (one row per dedup_key, earliest observed_ts)."""
+    fixture = Path(__file__).parent / "fixtures" / "api_request_cost_fixture.json"
+    events = []
+    for line in fixture.read_text().strip().split("\n"):
+        batch = json.loads(line)
+        resource_attrs = {
+            a["key"]: a["value"] for a in batch["resourceLogs"][0]["resource"]["attributes"]
+        }
+        is_synthetic = resource_attrs.get("oteru.traffic", {}).get("stringValue") == "synthetic"
+
+        if not is_synthetic:
+            for log_record in batch["resourceLogs"][0]["scopeLogs"][0]["logRecords"]:
+                attrs = {a["key"]: a["value"] for a in log_record["attributes"]}
+                request_id = attrs.get("request_id", {}).get("stringValue", "")
+                cost = int(attrs.get("cost_usd_micros", {}).get("intValue", "0"))
+                observed_ts = int(log_record["observedTimeUnixNano"])
+                events.append({"request_id": request_id, "cost": cost, "observed_ts": observed_ts})
+
+    # Dedup: keep earliest observed_ts per request_id
+    deduped = {}
+    for e in events:
+        key = e["request_id"] if e["request_id"] else f"empty_{e['observed_ts']}"
+        if key not in deduped or e["observed_ts"] < deduped[key]["observed_ts"]:
+            deduped[key] = e
+
+    total_cost_deduped = sum(e["cost"] for e in deduped.values())
+    assert total_cost_deduped == COST_POST_DEDUP_MICROS, (
+        f"Post-dedup cost: expected {COST_POST_DEDUP_MICROS}, got {total_cost_deduped}"
+    )
+    assert len(deduped) == DISTINCT_DEDUP_KEYS, (
+        f"Dedup keys: expected {DISTINCT_DEDUP_KEYS}, got {len(deduped)}"
+    )

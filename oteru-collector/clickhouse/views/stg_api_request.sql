@@ -13,7 +13,7 @@
 -- with otel.otel_logs, and safe to re-apply (`make views`).
 CREATE OR REPLACE VIEW otel.stg_api_request AS
 SELECT
-    fromUnixTimestamp64Nano(toUInt64(LogAttributes['timeUnixNano']))        AS event_ts,
+    Timestamp                                                                AS event_ts,
     Timestamp                                                                AS observed_ts,
     LogAttributes['request_id']                                              AS request_id,
     LogAttributes['session.id']                                              AS session_id,
@@ -25,12 +25,13 @@ SELECT
     toInt64OrNull(LogAttributes['cache_creation_tokens'])                    AS cache_creation_tokens,
     LogAttributes['user.email']                                              AS actor_id,
     ServiceName                                                              AS service_name,
+    ResourceAttributes                                                       AS ResourceAttributes,
     if(
         LogAttributes['request_id'] != '',
         LogAttributes['request_id'],
         hex(MD5(concat(
             LogAttributes['session.id'],
-            toString(fromUnixTimestamp64Nano(toUInt64(LogAttributes['timeUnixNano']))),
+            toString(Timestamp),
             LogAttributes['model'],
             toString(toInt64OrNull(LogAttributes['input_tokens'])),
             toString(toInt64OrNull(LogAttributes['output_tokens']))
