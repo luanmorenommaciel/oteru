@@ -31,7 +31,13 @@ SCOPED_MCP="$(mktemp -t oteru-scoped-mcp-XXXXXX).json"
 MCP_EXPECTED="$(mktemp -t oteru-mcp-expected-XXXXXX).tsv"
 API_REQUEST="$EMITTER/tests/fixtures/api_request_cost_fixture.json"
 SCOPED_API_REQUEST="$(mktemp -t oteru-api-request-XXXXXX).json"
-trap 'rm -f "$TRACES" "$SCOPED_TINY" "$SCOPED_BENIGN" "$SCOPED_TRACES" "$MCP" "$SCOPED_MCP" "$MCP_EXPECTED" "$SCOPED_API_REQUEST"' EXIT
+HMAC_DIR="$(mktemp -d -t oteru-hmac-XXXXXX)"
+trap 'rm -f "$TRACES" "$SCOPED_TINY" "$SCOPED_BENIGN" "$SCOPED_TRACES" "$MCP" "$SCOPED_MCP" "$MCP_EXPECTED" "$SCOPED_API_REQUEST"; rm -rf "$HMAC_DIR"' EXIT
+HMAC_IMAGE="${OTERU_COLLECTOR_IMAGE:-oteru-collector:0.155.0}"
+# Public fixture keys (32+ bytes). Not production secrets.
+HMAC_KEY_A="oteru-hmac-test-key-32-bytes-min!"
+HMAC_KEY_B="oteru-hmac-alt-key-32-bytes-min!!"
+HMAC_SHORT="e2e-short-key-must-not-appear31" # 31 bytes; must never appear in logs.
 # Unique per execution; tags every replayed batch so ClickHouse assertions can
 # filter to rows this run produced. date+pid keeps it portable (Git Bash/macOS/Linux).
 RUN_ID="e2e-$(date +%s)-$$"
@@ -314,22 +320,193 @@ else
     fail "otel.stg_api_request cost sum: got $cost_sum, expected 806400"
   fi
   
-  # No column contains '@' (PII check - pseudonymized values should have no '@')
-  # Filter to only our fixture's events (which have non-NULL cost)
+  # No column contains '@' (every field of the staging row, as JSON).
   pii_check="$(curl -sf "$CH" --data-binary \
-    "SELECT count() FROM otel.stg_api_request WHERE $scope AND cost_usd_micros IS NOT NULL AND (
-      positionCaseInsensitive(toString(request_id), '@') > 0 OR
-      positionCaseInsensitive(toString(session_id), '@') > 0 OR
-      positionCaseInsensitive(toString(model_raw), '@') > 0 OR
-      positionCaseInsensitive(toString(actor_id), '@') > 0 OR
-      positionCaseInsensitive(toString(service_name), '@') > 0
-    ) FORMAT TSV")"
+    "SELECT count() FROM otel.stg_api_request WHERE $scope AND cost_usd_micros IS NOT NULL
+     AND positionCaseInsensitive(toJSONString(tuple(*)), '@') > 0 FORMAT TSV")"
   if [ "$pii_check" = "0" ]; then
     echo "  ok   otel.stg_api_request -> no @ found in any column (PII clean)"
   else
     fail "otel.stg_api_request PII check: found $pii_check rows with @"
   fi
+
+  hmac_bad="$(curl -sf "$CH" --data-binary \
+    "SELECT count() FROM otel.stg_api_request WHERE $scope AND cost_usd_micros IS NOT NULL
+     AND NOT match(actor_id, '^hmac:v1:[0-9a-f]{64}\$') FORMAT TSV")"
+  if [ "$hmac_bad" = "0" ]; then
+    echo "  ok   otel.stg_api_request -> actor_id matches ^hmac:v1:[0-9a-f]{64}$"
+  else
+    fail "otel.stg_api_request actor_id format: $hmac_bad row(s) not hmac:v1:<64 hex>"
+  fi
+
+  # Same HMAC key + same email => one actor_id; the fixture has two emails.
+  hmac_n="$(curl -sf "$CH" --data-binary \
+    "SELECT uniqExact(actor_id) FROM otel.stg_api_request
+     WHERE $scope AND cost_usd_micros IS NOT NULL FORMAT TSV")"
+  if [ "$hmac_n" = "2" ]; then
+    echo "  ok   otel.stg_api_request -> same key yields two stable actor_ids (two emails)"
+  else
+    fail "otel.stg_api_request same-key stability: uniqExact(actor_id)=$hmac_n (expected 2)"
+  fi
 fi
+
+# HMAC fail-closed + different-key identity against the local OCB image.
+# An unavailable docker/buildah or missing image is a failure, not a skip.
+hmac_extract_email() {
+  "$PY" - "$1" <<'PY'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+if not path.exists():
+    sys.exit(0)
+text = path.read_text(encoding="utf-8")
+found = []
+for line in text.splitlines():
+    if not line.strip():
+        continue
+    batch = json.loads(line)
+    for resource in batch.get("resourceLogs", []):
+        for scope in resource.get("scopeLogs", []):
+            for rec in scope.get("logRecords", []):
+                for attr in rec.get("attributes", []):
+                    if attr.get("key") == "user.email":
+                        found.append(attr["value"]["stringValue"])
+print("\n".join(found))
+PY
+}
+
+hmac_fail_closed() {
+  local label="$1"
+  shift
+  local log status=0
+  log="$(timeout 25 docker run --rm --network none \
+    -v "$HMAC_DIR/config.yml:/etc/oteru-collector-config.yml:ro" \
+    -v "$HMAC_DIR/privacy:/etc/oteru-privacy:ro" \
+    -v "$HMAC_DIR/empty:/telemetry" \
+    "$@" \
+    "$HMAC_IMAGE" --config=/etc/oteru-collector-config.yml 2>&1)" || status=$?
+  if [ "$status" -eq 0 ] || [ "$status" -eq 124 ]; then
+    fail "HMAC $label: collector started (exit $status); expected non-zero fail-closed"
+    printf '%s\n' "$log"
+    return
+  fi
+  if ! printf '%s\n' "$log" | grep -Eqi 'unset|empty|shorter than 32'; then
+    fail "HMAC $label: collector exited $status but did not log the key failure"
+    printf '%s\n' "$log"
+    return
+  fi
+  local leaked=0
+  for needle in "$HMAC_KEY_A" "$HMAC_KEY_B" "$HMAC_SHORT"; do
+    if printf '%s\n' "$log" | grep -F -- "$needle" >/dev/null; then
+      leaked=1
+    fi
+  done
+  if [ "$leaked" -eq 1 ]; then
+    fail "HMAC $label: key string appeared in collector logs"
+    return
+  fi
+  echo "  ok   HMAC $label -> exit $status, failure logged, key absent from logs"
+}
+
+hmac_isolated_checks() {
+  echo "HMAC isolated checks ($HMAC_IMAGE)"
+  if ! command -v docker >/dev/null 2>&1; then
+    if command -v buildah >/dev/null 2>&1; then
+      fail "HMAC isolated checks: buildah is present but these checks require docker run of $HMAC_IMAGE"
+    else
+      fail "HMAC isolated checks: docker/buildah unavailable (need image $HMAC_IMAGE)"
+    fi
+    return
+  fi
+  if ! docker image inspect "$HMAC_IMAGE" >/dev/null 2>&1; then
+    fail "HMAC isolated checks: image $HMAC_IMAGE is not present"
+    return
+  fi
+
+  mkdir -p "$HMAC_DIR/privacy" "$HMAC_DIR/empty" "$HMAC_DIR/out-a" "$HMAC_DIR/out-b"
+  chmod 0777 "$HMAC_DIR/empty" "$HMAC_DIR/out-a" "$HMAC_DIR/out-b"
+  cp "$ROOT/oteru-collector/oteru-collector-config.yml" "$HMAC_DIR/config.yml"
+  if ! "$PY" "$ROOT/oteru-collector/privacy/compile.py" \
+      --policy "$ROOT/oteru-collector/privacy/policy.json" \
+      --output "$HMAC_DIR/privacy/processors.json"; then
+    fail "HMAC isolated checks: privacy compile.py failed"
+    return
+  fi
+
+  hmac_fail_closed "key unset" 
+  hmac_fail_closed "key empty" -e OTERU_PII_HMAC_KEY=
+  hmac_fail_closed "key 31 bytes" -e "OTERU_PII_HMAC_KEY=$HMAC_SHORT"
+
+  hmac_run_keyed() {
+    local key="$1" outdir="$2" name="$3"
+    local cid http i code
+    cid="$(docker run -d --name "$name" \
+      -e "OTERU_PII_HMAC_KEY=$key" \
+      -p 127.0.0.1::4318 \
+      -v "$HMAC_DIR/config.yml:/etc/oteru-collector-config.yml:ro" \
+      -v "$HMAC_DIR/privacy:/etc/oteru-privacy:ro" \
+      -v "$outdir:/telemetry" \
+      "$HMAC_IMAGE" --config=/etc/oteru-collector-config.yml)" || {
+      fail "HMAC keyed run: docker run $name failed"
+      return 1
+    }
+    http="http://127.0.0.1:$(docker port "$name" 4318/tcp | head -1 | awk -F: '{print $NF}')"
+    code=""
+    for i in $(seq 1 50); do
+      code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$http/v1/logs" \
+        -H 'content-type: application/json' --data '{}' || true)"
+      if [ "$code" = "200" ]; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [ "$code" != "200" ]; then
+      fail "HMAC keyed run $name: collector did not become ready"
+      docker logs "$name" || true
+      docker rm -f "$name" >/dev/null 2>&1 || true
+      return 1
+    fi
+    local payload='{"resourceLogs":[{"resource":{"attributes":[]},"scopeLogs":[{"scope":{},"logRecords":[{"body":{"stringValue":"hmac-e2e"},"attributes":[{"key":"user.email","value":{"stringValue":"user@example.com"}}]}]}]}]}'
+    curl -sf -X POST "$http/v1/logs" -H 'content-type: application/json' --data "$payload" >/dev/null
+    curl -sf -X POST "$http/v1/logs" -H 'content-type: application/json' --data "$payload" >/dev/null
+    sleep 2
+    local logs
+    logs="$(docker logs "$name" 2>&1 || true)"
+    docker rm -f "$name" >/dev/null 2>&1 || true
+    if printf '%s\n' "$logs" | grep -F -- "$key" >/dev/null; then
+      fail "HMAC keyed run $name: key string appeared in collector logs"
+      return 1
+    fi
+    return 0
+  }
+
+  hmac_run_keyed "$HMAC_KEY_A" "$HMAC_DIR/out-a" "oteru-hmac-a-$$" || true
+  hmac_run_keyed "$HMAC_KEY_B" "$HMAC_DIR/out-b" "oteru-hmac-b-$$" || true
+
+  local ids_a ids_b first_a second_a first_b
+  ids_a="$(hmac_extract_email "$HMAC_DIR/out-a/telemetry.json")"
+  ids_b="$(hmac_extract_email "$HMAC_DIR/out-b/telemetry.json")"
+  first_a="$(printf '%s\n' "$ids_a" | awk 'NF{print; exit}')"
+  second_a="$(printf '%s\n' "$ids_a" | awk 'NF{n++; if(n==2){print; exit}}')"
+  first_b="$(printf '%s\n' "$ids_b" | awk 'NF{print; exit}')"
+
+  if [[ "$first_a" =~ ^hmac:v1:[0-9a-f]{64}$ ]]; then
+    echo "  ok   HMAC key A actor_id matches ^hmac:v1:[0-9a-f]{64}$"
+  else
+    fail "HMAC key A actor_id format: [$first_a]"
+  fi
+  if [ -n "$first_a" ] && [ "$first_a" = "$second_a" ]; then
+    echo "  ok   HMAC same key -> same actor_id"
+  else
+    fail "HMAC same key -> same id: got [$first_a] then [$second_a]"
+  fi
+  if [[ "$first_b" =~ ^hmac:v1:[0-9a-f]{64}$ ]] && [ -n "$first_a" ] && [ "$first_a" != "$first_b" ]; then
+    echo "  ok   HMAC different key -> different actor_id"
+  else
+    fail "HMAC different key -> different id: A=[$first_a] B=[$first_b]"
+  fi
+}
+
+hmac_isolated_checks
 
 # A payload with no records at all must be accepted, not rejected.
 for path in v1/logs v1/metrics v1/traces; do

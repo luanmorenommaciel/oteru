@@ -1,6 +1,6 @@
 module github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.155.0
@@ -76,9 +76,18 @@ require (
 	go.uber.org/zap v1.28.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
-	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
-	google.golang.org/grpc v1.81.1 // indirect
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
+	google.golang.org/grpc v1.83.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
+
+// HIGH floors matching oteru-collector/builder-config.yaml. klauspost/compress
+// is listed so a transitive add cannot land below v1.18.7.
+replace (
+	github.com/klauspost/compress => github.com/klauspost/compress v1.18.7
+	golang.org/x/net => golang.org/x/net v0.60.0
+	golang.org/x/text => golang.org/x/text v0.41.0
+	google.golang.org/grpc => google.golang.org/grpc v1.83.2
 )
