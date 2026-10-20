@@ -1,0 +1,51 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+clickhouse_version: 26.11.1.333
+dbt --version:
+Core:
+  - installed: 1.12.6
+  - latest:    1.12.6 - Up to date!
+
+Plugins:
+  - clickhouse: 1.10.3 - Up to date!
+
+
+22:51:01  dbt v2 is available, and is the default for new installations. This is dbt Core v1.
+          New project - install v2: https://docs.getdbt.com/docs/local/install-dbt?utm_source=dbt-cli
+          Existing v1 project - upgrade guide: https://docs.getdbt.com/docs/dbt-versions/dbt-upgrade/upgrading-to-v2?utm_source=dbt-cli
+utc_timestamp: 2026-10-20T22:51:02Z
+-----
+### SHOW CREATE TABLE otel.fct_cost_actor_daily
+CREATE TABLE otel.fct_cost_actor_daily
+(
+    `day_utc` Date,
+    `actor_id` String,
+    `cost_usd_micros` Nullable(Int64),
+    `cost_usd` Nullable(Float64),
+    `requests` UInt64,
+    `input_tokens` Nullable(Int64),
+    `output_tokens` Nullable(Int64),
+    `cache_read_tokens` Nullable(Int64),
+    `cache_creation_tokens` Nullable(Int64)
+)
+ENGINE = ReplacingMergeTree
+ORDER BY ((day_utc, actor_id))
+TTL day_utc + toIntervalDay(90)
+SETTINGS replicated_deduplication_window = '0', index_granularity = 8192
+
+### SHOW CREATE TABLE otel.fct_cost_daily
+CREATE TABLE otel.fct_cost_daily
+(
+    `day_utc` Date,
+    `model_family` String,
+    `cost_usd_micros` Nullable(Int64),
+    `cost_usd` Nullable(Float64),
+    `requests` UInt64,
+    `input_tokens` Nullable(Int64),
+    `output_tokens` Nullable(Int64),
+    `cache_read_tokens` Nullable(Int64),
+    `cache_creation_tokens` Nullable(Int64)
+)
+ENGINE = ReplacingMergeTree
+ORDER BY ((day_utc, model_family))
+SETTINGS replicated_deduplication_window = '0', index_granularity = 8192
+

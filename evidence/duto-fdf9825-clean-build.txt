@@ -1,0 +1,146 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+binary_path: /otelcol-oteru
+image_id: d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+image_tag: oteru-collector:0.155.0
+clickhouse_version: 26.11.1.323
+buildah_version: 1.33.7
+captured_at_utc: 2026-10-20T22:59:38Z
+
+== exact build command (agreed for digest parity) ==
+buildah build --no-cache --layers=false --timestamp "$(git log -1 --format=%ct fdf9825)" --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct fdf9825)" -f oteru-collector/Dockerfile -t oteru-collector:0.155.0 oteru-collector
+resolved_timestamp: 1792536054 (Tue Oct 20 10:40:54 PM UTC 2026)
+buildah: 1.33.7
+manual_layer_assembly: none
+collector_tree_vs_fdf9825: empty diff
+hmacconverter_tree_sha: 162f3347ee8bec217dbf5c80b018941057d1d903
+unused_build_arg_warning: SOURCE_DATE_EPOCH (Dockerfile has no ARG SOURCE_DATE_EPOCH; --timestamp set image Created)
+
+== digest + binary ==
+image_id: d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+oci_archive: /tmp/oteru-collector-fdf9825.oci /opt/cursor/artifacts/oteru-collector-fdf9825.oci
+oci_archive_sha256: 5781ae48149f384c85e3e04ce7181dc901b6716e7009b0fba3a56a5f1cec3c70
+oci_archive_bytes: 19127808
+oci_archive_source: podman save --format oci-archive oteru-collector:0.155.0
+oci_archive_is_e2e_image: YES (running oteru-collector ImageID == archive config digest == d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9)
+
+== independent clean-build comparison (teammate fdf9825, same command; this build was not altered) ==
+teammate_image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+this_image_digest:     sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+image_digest_compare: MATCH
+teammate_binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+this_binary_sha256:     1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+binary_sha256_compare: MATCH
+
+== distroless base (Dockerfile FROM + inspect) ==
+dockerfile_from: gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+local_image_id: 12aa113e298cbae388b298c0dc163fa1547beba948153b23eb9094e16a07a770
+podman_digest: sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+skopeo_inspect_digest: sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+repo_digests: gcr.io/distroless/static-debian12@sha256:52dcfbabb7457ea47c82f6e13af8c8a4a1d9f7b0145142b3ecab20f2b888411d (index), gcr.io/distroless/static-debian12@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab (manifest)
+
+== final image layer digests (buildah inspect --type image oteru-collector:0.155.0) ==
+FromImageDigest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+manifest.mediaType: application/vnd.oci.image.manifest.v1+json
+manifest.config: sha256:d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+OCIv1.rootfs.diff_ids / Manifest.layers (uncompressed tar; 13 layers):
+  1  sha256:7223ea1323e8c1159ec17f07d35acc27bdd1cc2bc3ed425b44ef21dac9915db0  327680
+  2  sha256:8fa10c0194df9b7c054c90dbe482585f768a54428fc90a5b78a0066a123b1bba  40960
+  3  sha256:35b5ba6e08cdd034b8d1920f9c7203e5d66f258e1915f164a01de0af14f34710  2416640
+  4  sha256:114dde0fefebbca13165d0da9c500a66190e497a82a53dcaabc3172d630be1e9  102400
+  5  sha256:4d049f83d9cf21d1f5cc0e11deaf36df02790d0e60c1a3829538fb4b61685368  1536
+  6  sha256:af5aa97ebe6ce1604747ec1e21af7136ded391bcabe4acef882e718a87c86bcc  2560
+  7  sha256:6f1cdceb6a3146f0ccb986521156bef8a422cdbb0863396f7f751f575ba308f4  2560
+  8  sha256:bd3cdfae1d3fdd83a2231d608969b38b82349777c2fff9a7c12d54f8ac5c9b38  2560
+  9  sha256:4cde6b0bb6f50a5f255eef7b2a42162c661cf776b803225dcac9a659e396bb6b  1536
+ 10  sha256:ad51d0769d16ba578106a177987dfe3d2e02c1668c852b795b2f6b024068242a  2048
+ 11  sha256:6e7fbcf090d09b73a4aa85f9dce690d0ace73877c150b7c56955487b6e7a822a  3072
+ 12  sha256:5904c32f457c96a16c8c68f5ccdf518c8138cd9e5971de9ce6d564fc481af222  276480
+ 13  sha256:4500e77ddfcde84bc75cd0389a56b8b7fe3f879f6d70cbedc9e56c5b8625f070  55314432  (/otelcol-oteru)
+
+== final image layer digests (skopeo inspect containers-storage:localhost/oteru-collector:0.155.0) ==
+skopeo_version: 1.13.3
+Digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+Layers: same 13 uncompressed tar digests as buildah Manifest.layers (listed above)
+
+== OCI archive inspect (skopeo inspect oci-archive:/tmp/oteru-collector-fdf9825.oci) ==
+archive_file_sha256: 5781ae48149f384c85e3e04ce7181dc901b6716e7009b0fba3a56a5f1cec3c70
+archive_manifest_digest: sha256:eae45ab25e28056b3e165fc0f01795f653d2a96d5b159da83fea4992f54e50e2
+archive_config_digest: sha256:d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+Created: 2026-10-20T22:40:54Z
+Layers (gzip blobs in the archive; differ from uncompressed store layers):
+  1  sha256:c1f4ff7724f7f15a187d5ec633a1d59cfcd376d636ba58704475c09c7d00f0dc  88276
+  2  sha256:12b98db1f9a3daa07eca266140274100405e2ba33684a9cfed19227d8214a491  12760
+  3  sha256:156feddf55001fe5c9fe753ad7ab8fea1f84e95b1d2e589ff3c8b0b55dee25b7  475570
+  4  sha256:864c4fb7c1f3a443ce0386a9cb14c81e4a029660e0e844e278b707839c73a5f2  29309
+  5  sha256:02c91f6b395a6b06d17b8985a2db90aef7b09feedff77eff1f7c269161263a9b  75
+  6  sha256:ffdf8cfdbafeabe2762d2dde33e36f1b87dfa967ae34811ff5342ebe8233eb4b  197
+  7  sha256:818beb2a6ac52d3cfb90a96d84cff5123ade753aac5adc2dd8f43347f6fa74eb  132
+  8  sha256:a0ce62815afcb344f5e245b1fe8026bef515df1fa3446ecc272057ba74be8bed  168
+  9  sha256:83717d7c33ed99f82afbd90b8a13fe29f05c433b7c55c2d7e1f2c2df18dfd5d5  91
+ 10  sha256:88d89c9f554ae39742eb60ef19cc0198899514f6c95ebf216d7fc3249973e680  361
+ 11  sha256:4eb6e32233edf636593de3be3c09079eb36e5bc5d405f77f6a943dc65834d8c5  320
+ 12  sha256:752c3ee82ca8986fc2f87501573e664789781c520de5f6b630728b7537e8ff94  144572
+ 13  sha256:9753398baa87eee45eda2085d1526d9b7b62dfea0a34778b4bbc5bd98a8319ab  18353749
+
+== binary version ==
+extracted: otelcol-oteru version 0.155.0
+inside_image: otelcol-oteru version 0.155.0
+
+== hmacconverter from go version -m ==
+	dep	github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter	v0.155.0
+	=>	../hmacconverter	(devel)	
+local replace ../hmacconverter (devel); no published h1 sum
+
+== HIGH pins ==
+github.com/klauspost/compress => v1.18.7
+golang.org/x/net => v0.60.0
+golang.org/x/text => v0.41.0
+google.golang.org/grpc => v1.83.2
+
+== full build log ==
+[1/2] STEP 1/6: FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS builder
+[1/2] STEP 2/6: WORKDIR /src
+[1/2] STEP 3/6: ENV CGO_ENABLED=0     GOPROXY=https://proxy.golang.org,direct     GOBIN=/usr/local/bin     GOTOOLCHAIN=go1.26.10
+[1/2] STEP 4/6: RUN go install go.opentelemetry.io/collector/cmd/builder@v0.155.0     && mv /usr/local/bin/builder /usr/local/bin/ocb
+go: downloading go.opentelemetry.io/collector/cmd/builder v0.155.0
+go: downloading go.opentelemetry.io/collector v0.155.0
+go: downloading github.com/spf13/cobra v1.10.2
+go: downloading github.com/knadh/koanf/parsers/yaml v1.1.0
+go: downloading github.com/knadh/koanf/providers/env/v2 v2.0.0
+go: downloading github.com/knadh/koanf/providers/file v1.2.1
+go: downloading github.com/knadh/koanf/v2 v2.3.5
+go: downloading github.com/spf13/pflag v1.0.10
+go: downloading go.uber.org/multierr v1.11.0
+go: downloading go.uber.org/zap v1.28.0
+go: downloading go.yaml.in/yaml/v3 v3.0.4
+go: downloading github.com/fsnotify/fsnotify v1.9.0
+go: downloading golang.org/x/mod v0.37.0
+go: downloading github.com/knadh/koanf/providers/fs v1.0.0
+go: downloading github.com/knadh/koanf/maps v0.1.2
+go: downloading github.com/go-viper/mapstructure/v2 v2.4.0
+go: downloading github.com/mitchellh/copystructure v1.2.0
+go: downloading golang.org/x/sys v0.41.0
+go: downloading github.com/mitchellh/reflectwalk v1.0.2
+[1/2] STEP 5/6: COPY . /tmp/context
+[1/2] STEP 6/6: RUN cp /tmp/context/builder-config.yaml /src/builder-config.yaml     && if [ -d /tmp/context/hmacconverter ]; then          cp -a /tmp/context/hmacconverter /src/hmacconverter;        fi     && rm -rf /tmp/context     && if [ ! -f /src/hmacconverter/go.mod ]; then          mkdir -p /src/hmacconverter          && printf 'module github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter\n\ngo 1.26.0\n'               > /src/hmacconverter/go.mod;        fi     && ocb --config=/src/builder-config.yaml     && test -x /src/_build/otelcol-oteru
+2026-10-20T22:56:26.755Z	INFO	internal/command.go:97	OpenTelemetry Collector Builder	{"version": "v0.155.0"}
+2026-10-20T22:56:26.755Z	INFO	internal/command.go:102	Using config file	{"path": "/src/builder-config.yaml"}
+2026-10-20T22:56:26.755Z	INFO	builder/config.go:165	Using go	{"go-executable": "/usr/local/go/bin/go"}
+2026-10-20T22:56:26.756Z	INFO	builder/main.go:110	Sources created	{"path": "./_build"}
+2026-10-20T22:56:38.408Z	INFO	builder/main.go:229	Getting go modules
+2026-10-20T22:56:43.204Z	INFO	builder/main.go:121	Compiling
+2026-10-20T22:57:28.242Z	INFO	builder/main.go:153	Compiled	{"binary": "./_build/otelcol-oteru"}
+[2/2] STEP 1/5: FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+[2/2] STEP 2/5: COPY --from=builder --chown=nonroot:nonroot /src/_build/otelcol-oteru /otelcol-oteru
+[2/2] STEP 3/5: USER nonroot
+[2/2] STEP 4/5: ENTRYPOINT ["/otelcol-oteru"]
+[2/2] STEP 5/5: CMD ["--config=/etc/oteru-collector-config.yml"]
+[2/2] COMMIT oteru-collector:0.155.0
+--> d7a637ceeed1
+[Warning] one or more build args were not consumed: [SOURCE_DATE_EPOCH]
+Successfully tagged localhost/oteru-collector:0.155.0
+d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
