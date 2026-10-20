@@ -16,6 +16,7 @@ clean-targets:
 
 vars:
   cost_lookback_hours: 48
+  actor_cost_ttl_days: 90
 
 models:
   oteru_dbt:

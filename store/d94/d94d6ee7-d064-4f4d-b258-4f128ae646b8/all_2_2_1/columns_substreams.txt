@@ -1,0 +1,8 @@
+columns substreams version: 1
+2 columns:
+2 substreams for column `model_raw`:
+	model_raw.size
+	model_raw
+2 substreams for column `model_family`:
+	model_family.size
+	model_family
