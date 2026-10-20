@@ -23,7 +23,8 @@
 #   contrib transformprocessor and registers HMACSHA256(value); the key
 #   is read from OTERU_PII_HMAC_KEY in the factory. OCB lists that
 #   module as the transform processor (name stays `transform`). The
-#   `replaces` entry maps the module path onto ./hmacconverter. This
+#   `replaces` entry maps the module path onto ../hmacconverter
+#   (relative to OCB output_path ./_build, not this file). This
 #   change does not edit hmacconverter/ source — that tree is Duto's.
 
 dist:
@@ -59,9 +60,9 @@ telemetry:
   gomod: go.opentelemetry.io/collector/service v0.155.0
   import: go.opentelemetry.io/collector/service/telemetry/otelconftelemetry
 
-# Local HMACSHA256 OTTL converter. Path is relative to this file
-# (oteru-collector/hmacconverter/). Unused until the module exists and is
-# imported; do not replace this with a published module.
+# Local HMACSHA256 OTTL converter. The replace path is relative to
+# output_path (./_build), so ../hmacconverter is oteru-collector/hmacconverter/.
+# Do not replace this with a published module.
 #
 # Transitive HIGH (source-reachable) floors. OCB has no `requires`
 # field — these `replace`s are the explicit pins. Minimum patched
@@ -75,7 +76,7 @@ telemetry:
 # go.opentelemetry.io/otel sdk/exporters — GO-2026-6615/6508 MODERATE,
 # GO-2026-6505 LOW; reachable via collector telemetry, not HIGH.
 replaces:
-  - github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter => ./hmacconverter
+  - github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter => ../hmacconverter
   - golang.org/x/net => golang.org/x/net v0.60.0
   - google.golang.org/grpc => google.golang.org/grpc v1.83.2
   - golang.org/x/text => golang.org/x/text v0.41.0

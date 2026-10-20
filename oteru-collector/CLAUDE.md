@@ -12,7 +12,7 @@ The Dockerfile builder is Go 1.26.10 (`GOTOOLCHAIN=go1.26.10`, image by
 digest). Contrib and unstable core stay on v0.155.0; stable core
 (confmap, pdata, component, …) on v1.61.0. Duto's HMACSHA256 OTTL
 converter exposes `HMACSHA256(value)` (key read in the factory); the
-OCB replace points at `./hmacconverter` and is not edited here.
+OCB replace points at `../hmacconverter` (relative to `_build/`) and is not edited here.
 It receives OTLP telemetry on **gRPC `:4317`** and **HTTP `:4318`**, prints it
 to stdout via the `debug` exporter, and persists it to
 `telemetry/telemetry.json` via the `file` exporter. No application code, no
