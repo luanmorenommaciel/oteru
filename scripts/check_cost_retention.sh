@@ -31,11 +31,18 @@ ok() { echo "  ok   $*"; }
 skip() { echo "  skip $*"; }
 
 q() {
-  curl -sf "$CH" --data-binary "$1" 2>&1 || {
-    echo "  FAIL: ClickHouse query failed (is \`make up-clickhouse\` running?)"
+  local result
+  if ! result="$(curl -sf "$CH" --data-binary "$1" 2>&1)"; then
     return 1
-  }
+  fi
+  echo "$result"
 }
+
+# Pre-flight check: ensure ClickHouse is reachable before running any checks
+if ! q "SELECT 1 FORMAT TSV" >/dev/null; then
+  echo "  FAIL: ClickHouse unreachable at $CH (is \`make up-clickhouse\` running?)"
+  exit 1
+fi
 
 echo "cost-retention guard (OTERU_HOT_TTL=${OTERU_HOT_TTL}h, lookback=${COST_LOOKBACK_HOURS}h)"
 
