@@ -4,7 +4,7 @@
 # is strictly less than the raw hot TTL (else incrementals could miss expired data).
 #
 # Requires: `make up-clickhouse` running and (for the full suite) the dbt
-# project with fct_cost_daily + fct_cost_by_model_daily created. Partial checks
+# project with fct_cost_daily + fct_cost_actor_daily created. Partial checks
 # still run when the aggregate tables are absent — see check 1 below.
 #
 # Run from the repo root: `make check-cost-retention`.
@@ -129,79 +129,117 @@ else
   fi
 fi
 
-# --- Check 5: actor_id tables must have TTL; permanent tables cannot have actor_id ---
-# Final design: fct_cost_daily (grain day_utc x model_family) is permanent, no TTL, no actor_id.
-# fct_cost_actor_daily (grain day_utc x actor_id) has 90-day TTL.
-#
-# Rule: Any fct_cost* table with actor_id column must have TTL <= 90 days.
-#       Any permanent table without TTL cannot have actor_id column.
-#
-# Dynamic detection: query system.columns to find which tables have actor_id.
-actor_tables=$(q "SELECT DISTINCT table FROM system.columns 
-                  WHERE database = 'otel' AND table LIKE 'fct_cost%' AND name = 'actor_id' 
+# --- Check 5: actor_id tables must have TTL <= 90 DAY in the physical DDL ------
+# TTL is read from system.tables.create_table_query (the real ClickHouse DDL),
+# never from dbt config / vars. Any fct_cost* physical table with actor_id
+# must carry a TTL of at most 90 DAY. Permanent tables (no TTL in DDL) cannot
+# have actor_id.
+ttl_snippet_from_ddl() {
+  local ddl="$1"
+  if ! echo "$ddl" | grep -qi 'TTL'; then
+    echo ""
+    return
+  fi
+  echo "$ddl" | sed -n 's/.*\(TTL .*\)/\1/p' | sed -E 's/ (SETTINGS|COMMENT).*//' | head -1
+}
+
+ttl_hours_from_snippet() {
+  local snippet="$1"
+  local n
+  n="$(echo "$snippet" | grep -oiE 'toIntervalDay\([0-9]+\)|INTERVAL[[:space:]]+[0-9]+[[:space:]]+DAY' | grep -oE '[0-9]+' | head -1 || true)"
+  if [ -n "$n" ]; then
+    echo $((n * 24))
+    return
+  fi
+  n="$(echo "$snippet" | grep -oiE 'toIntervalHour\([0-9]+\)|INTERVAL[[:space:]]+[0-9]+[[:space:]]+HOUR' | grep -oE '[0-9]+' | head -1 || true)"
+  if [ -n "$n" ]; then
+    echo "$n"
+    return
+  fi
+  echo ""
+}
+
+actor_tables=$(q "SELECT DISTINCT table FROM system.columns
+                  WHERE database = 'otel' AND table LIKE 'fct_cost%' AND name = 'actor_id'
+                    AND table IN (
+                      SELECT name FROM system.tables
+                      WHERE database = 'otel' AND engine LIKE '%MergeTree%'
+                    )
                   ORDER BY table FORMAT TSV" 2>/dev/null || echo "")
 if [ -z "$actor_tables" ]; then
   skip "actor_id check: no fct_cost* tables with actor_id column yet (new design pending)"
 else
   for table in $actor_tables; do
-    ttl_expr=$(q "SELECT engine_full FROM system.tables 
-                  WHERE database = 'otel' AND name = '$table' FORMAT TSV")
-    if echo "$ttl_expr" | grep -qi 'TTL'; then
-      # Extract TTL days (assumes format like "TTL ... + INTERVAL N DAY")
-      ttl_days=$(echo "$ttl_expr" | grep -oP 'INTERVAL \K[0-9]+(?= DAY)' || echo "unknown")
-      if [ "$ttl_days" = "unknown" ]; then
-        ok "$table has actor_id and TTL (actor-specific data, time-limited)"
-      elif [ "$ttl_days" -le 90 ]; then
-        ok "$table has actor_id and TTL <= 90 days ($ttl_days d, compliant)"
-      else
-        fail "$table has actor_id but TTL > 90 days ($ttl_days days, must be <= 90)"
-      fi
+    ddl=$(q "SELECT replaceRegexpAll(create_table_query, '\\n|\\r', ' ') FROM system.tables
+             WHERE database = 'otel' AND name = '$table' FORMAT TSV")
+    snippet="$(ttl_snippet_from_ddl "$ddl")"
+    if [ -z "$snippet" ]; then
+      echo "    TTL snippet for $table: (none)"
+      fail "$table has actor_id but NO TTL in create_table_query (actor data must be time-limited in the physical DDL)"
     else
-      fail "$table has actor_id but NO TTL (actor data must be time-limited)"
+      echo "    TTL snippet for $table: $snippet"
+      hours="$(ttl_hours_from_snippet "$snippet")"
+      if [ -z "$hours" ]; then
+        fail "$table TTL in DDL is not a DAY/HOUR interval we can bound to 90 DAY: $snippet"
+      elif [ "$hours" -le $((90 * 24)) ]; then
+        ok "$table has actor_id and physical TTL <= 90 DAY ($hours h, compliant)"
+      else
+        fail "$table has actor_id but physical TTL > 90 DAY ($hours h, must be <= 2160 h)"
+      fi
     fi
   done
 fi
 
-# Verify permanent tables (no TTL) don't have actor_id
-permanent_tables=$(q "SELECT name FROM system.tables 
-                      WHERE database = 'otel' AND name LIKE 'fct_cost%' 
-                        AND engine_full NOT LIKE '%TTL%' 
+permanent_tables=$(q "SELECT name FROM system.tables
+                      WHERE database = 'otel' AND name LIKE 'fct_cost%'
+                        AND engine LIKE '%MergeTree%'
+                        AND create_table_query NOT ILIKE '%TTL%'
                       ORDER BY name FORMAT TSV" 2>/dev/null || echo "")
 if [ -z "$permanent_tables" ]; then
   skip "permanent table check: no fct_cost* permanent tables yet"
 else
   for table in $permanent_tables; do
-    has_actor=$(q "SELECT count() FROM system.columns 
+    has_actor=$(q "SELECT count() FROM system.columns
                    WHERE database = 'otel' AND table = '$table' AND name = 'actor_id' FORMAT TSV")
     if [ "$has_actor" = "0" ]; then
-      ok "$table (permanent) has no actor_id column (privacy by design)"
+      ok "$table (permanent, no TTL in DDL) has no actor_id column (privacy by design)"
     else
-      fail "$table (permanent, no TTL) has actor_id column (privacy violation)"
+      fail "$table (permanent, no TTL in create_table_query) has actor_id column (privacy violation)"
     fi
   done
 fi
 
 # --- Check 6: actor TTL expiry preserves permanent totals ----------------------
-# With a test-only short TTL, expire actor-specific rows and verify that
-# permanent aggregates (without actor_id) remain unchanged.
 if [ -z "${OTERU_HOT_TTL_TEST:-}" ]; then
   skip "actor TTL test: set OTERU_HOT_TTL_TEST=1 (test env only) to run"
 else
-  # Check if fct_cost_actor_daily exists
-  actor_daily_exists=$(q "SELECT count() FROM system.tables 
+  actor_daily_exists=$(q "SELECT count() FROM system.tables
                           WHERE database = 'otel' AND name = 'fct_cost_actor_daily' FORMAT TSV")
   if [ "$actor_daily_exists" = "0" ]; then
     skip "actor TTL test: fct_cost_actor_daily not yet created (Modelo's new design pending)"
   else
-    # This test would:
-    # 1. Insert test data with specific actor_id
-    # 2. Run dbt to populate both permanent and actor-specific tables
-    # 3. Capture totals from fct_cost_daily (permanent, no actor_id)
-    # 4. Expire/delete actor-specific rows (simulating 90-day TTL)
-    # 5. Verify fct_cost_daily totals unchanged (permanent data preserved)
-    #
-    # For now, stub until the new table design is implemented
-    skip "actor TTL test: implementation pending until fct_cost_actor_daily is in use"
+    if bash "$ROOT/scripts/check_cost_retention_actor_expiry_test.sh"; then
+      :
+    else
+      fail "actor TTL expiry test failed (see output above)"
+    fi
+  fi
+fi
+
+# --- Check 7: incremental regression on empty fact tables ----------------------
+# After the physical tables exist and are emptied, one dbt run without
+# --full-refresh must reproduce int_api_request_dedup totals. Expected to
+# FAIL today if the incremental lookback treats max(day_utc) on an empty
+# table as NULL and drops every source row (model bug, not this script).
+if [ -z "${OTERU_HOT_TTL_TEST:-}" ]; then
+  skip "empty-table incremental test: set OTERU_HOT_TTL_TEST=1 (test env only) to run"
+elif [ ! -f "$DBT_PROJECT" ]; then
+  skip "empty-table incremental test: dbt project not on branch yet"
+else
+  if bash "$ROOT/scripts/check_cost_retention_incremental_empty_test.sh"; then
+    :
+  else
+    fail "empty-table incremental test failed (see output above)"
   fi
 fi
 
