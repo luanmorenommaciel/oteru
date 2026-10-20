@@ -1,0 +1,7 @@
+Row 1:
+──────
+row_count:         8
+total_cost_micros: 682950
+unique_actors:     2
+earliest:          2026-10-19 22:53:20.000000000
+latest:            2026-10-20 18:40:00.000000000

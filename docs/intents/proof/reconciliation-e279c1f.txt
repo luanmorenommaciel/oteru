@@ -1,0 +1,11 @@
+reconciliation: sum(actor) == sum(daily) per day; both == int
+   ┌────day_utc─┬─daily_micros─┬─actor_micros─┬─diff─┐
+1. │ 2026-10-19 │       535950 │       535950 │    0 │
+2. │ 2026-10-20 │       153000 │       153000 │    0 │
+   └────────────┴──────────────┴──────────────┴──────┘
+
+Row 1:
+──────
+int_micros:   688950
+daily_micros: 688950
+actor_micros: 688950
