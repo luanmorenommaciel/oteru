@@ -28,7 +28,9 @@ SCOPED_TRACES="$(mktemp -t oteru-scoped-traces-XXXXXX).json"
 MCP="$(mktemp -t oteru-mcp-XXXXXX).json"
 SCOPED_MCP="$(mktemp -t oteru-scoped-mcp-XXXXXX).json"
 MCP_EXPECTED="$(mktemp -t oteru-mcp-expected-XXXXXX).tsv"
-trap 'rm -f "$TRACES" "$SCOPED_TINY" "$SCOPED_TRACES" "$MCP" "$SCOPED_MCP" "$MCP_EXPECTED"' EXIT
+API_REQUEST="$EMITTER/tests/fixtures/api_request_cost_fixture.json"
+SCOPED_API_REQUEST="$(mktemp -t oteru-api-request-XXXXXX).json"
+trap 'rm -f "$TRACES" "$SCOPED_TINY" "$SCOPED_TRACES" "$MCP" "$SCOPED_MCP" "$MCP_EXPECTED" "$SCOPED_API_REQUEST"' EXIT
 # Unique per execution; tags every replayed batch so ClickHouse assertions can
 # filter to rows this run produced. date+pid keeps it portable (Git Bash/macOS/Linux).
 RUN_ID="e2e-$(date +%s)-$$"
@@ -233,6 +235,63 @@ else
     echo "  ok   otel.mcp_calls -> client and server sides of a call join"
   else
     fail "otel.mcp_calls client/server join: got $joined row(s), expected 1"
+  fi
+fi
+
+# API request staging view (#45, #47): replay the api_request fixture and
+# assert via otel.stg_api_request that synthetic traffic is excluded, dedup
+# keys are correct, cost totals match, and no PII leaks.
+inject_run_id "$API_REQUEST" "$SCOPED_API_REQUEST" || fail "could not tag the API request fixture"
+if ! curl -sf "$CH" --data-binary @"$ROOT/oteru-collector/clickhouse/views/stg_api_request.sql" >/dev/null; then
+  fail "could not apply the otel.stg_api_request view"
+elif ! "$PY" -m oteru_emitter.cli replay "$SCOPED_API_REQUEST" \
+    --transport http --max-gap 0.2 >/dev/null 2>&1; then
+  fail "API request replay exited non-zero"
+else
+  sleep "$SETTLE"
+  scope="ResourceAttributes['oteru.e2e.run_id'] = '$RUN_ID'"
+  
+  # 9 rows visible (1 synthetic excluded from 10-row fixture)
+  row_count="$(curl -sf "$CH" --data-binary \
+    "SELECT count() FROM otel.stg_api_request WHERE $scope FORMAT TSV")"
+  if [ "$row_count" = "9" ]; then
+    echo "  ok   otel.stg_api_request -> 9 rows (1 synthetic excluded)"
+  else
+    fail "otel.stg_api_request row count: got $row_count, expected 9"
+  fi
+  
+  # 8 distinct dedup keys (2 duplicates by request_id -> 8 unique)
+  dedup_count="$(curl -sf "$CH" --data-binary \
+    "SELECT uniqExact(dedup_key) FROM otel.stg_api_request WHERE $scope FORMAT TSV")"
+  if [ "$dedup_count" = "8" ]; then
+    echo "  ok   otel.stg_api_request -> 8 distinct dedup keys"
+  else
+    fail "otel.stg_api_request dedup keys: got $dedup_count, expected 8"
+  fi
+  
+  # Exact sum of cost_usd_micros (sum of non-synthetic events)
+  # Expected: 123450 + 123450 + 2000 + 250000 + 75000 + 1000 + 150000 + 80000 + 1500 = 806400
+  cost_sum="$(curl -sf "$CH" --data-binary \
+    "SELECT sum(cost_usd_micros) FROM otel.stg_api_request WHERE $scope FORMAT TSV")"
+  if [ "$cost_sum" = "806400" ]; then
+    echo "  ok   otel.stg_api_request -> cost sum matches expected (806400 micros)"
+  else
+    fail "otel.stg_api_request cost sum: got $cost_sum, expected 806400"
+  fi
+  
+  # No column contains '@' (PII check)
+  pii_check="$(curl -sf "$CH" --data-binary \
+    "SELECT count() FROM otel.stg_api_request WHERE $scope AND (
+      positionCaseInsensitive(toString(request_id), '@') > 0 OR
+      positionCaseInsensitive(toString(session_id), '@') > 0 OR
+      positionCaseInsensitive(toString(model_raw), '@') > 0 OR
+      positionCaseInsensitive(toString(actor_id), '@') > 0 OR
+      positionCaseInsensitive(toString(service_name), '@') > 0
+    ) FORMAT TSV")"
+  if [ "$pii_check" = "0" ]; then
+    echo "  ok   otel.stg_api_request -> no @ found in any column (PII clean)"
+  else
+    fail "otel.stg_api_request PII check: found $pii_check rows with @"
   fi
 fi
 
