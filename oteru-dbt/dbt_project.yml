@@ -1,3 +1,38 @@
-name: oteru-dbt
+name: 'oteru_dbt'
+version: '1.0.0'
+config-version: 2
+
+profile: 'oteru'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
 vars:
   cost_lookback_hours: 48
+
+models:
+  oteru_dbt:
+    intermediate:
+      +materialized: incremental
+      +engine: MergeTree()
+      +order_by: (event_ts, dedup_key)
+      +settings:
+        allow_nullable_key: 1
+    fact:
+      +materialized: incremental
+      +engine: ReplacingMergeTree()
+      +incremental_strategy: delete+insert
+    
+seeds:
+  oteru_dbt:
+    +quote_columns: false
+    
+on-run-end:
+  - "{{ log_run_audit() }}"

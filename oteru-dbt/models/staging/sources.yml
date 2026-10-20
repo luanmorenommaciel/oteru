@@ -1,0 +1,38 @@
+version: 2
+
+sources:
+  - name: otel
+    description: "OpenTelemetry data in ClickHouse"
+    schema: otel
+    tables:
+      - name: stg_api_request
+        description: "Staging view for API requests with cost and token metrics. Created by Duto. Synthetic traffic already excluded."
+        columns:
+          - name: event_ts
+            description: "Event timestamp (from timeUnixNano)"
+          - name: observed_ts
+            description: "Observation timestamp"
+          - name: request_id
+            description: "Request identifier (may be empty)"
+          - name: dedup_key
+            description: "Deduplication key - request_id if non-empty, else MD5 hash"
+          - name: has_empty_request_id
+            description: "Flag: 1 when request_id is empty, 0 otherwise"
+          - name: session_id
+            description: "Session identifier"
+          - name: model_raw
+            description: "Raw model name from the API"
+          - name: cost_usd_micros
+            description: "Cost in USD micros (divide by 1e6 for dollars)"
+          - name: input_tokens
+            description: "Number of input tokens"
+          - name: output_tokens
+            description: "Number of output tokens"
+          - name: cache_read_tokens
+            description: "Number of cache read tokens"
+          - name: cache_creation_tokens
+            description: "Number of cache creation tokens"
+          - name: actor_id
+            description: "Pseudonymized actor identifier (PR #94)"
+          - name: service_name
+            description: "Service name"
