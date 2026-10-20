@@ -1023,6 +1023,8 @@ def test_production_config_validates_in_pinned_collector(tmp_path, profile):
         "CLICKSTACK_ENDPOINT=http://127.0.0.1:4318",
         "-e",
         "CLICKSTACK_API_KEY=test-only",
+        "-e",
+        f"OTERU_PII_HMAC_KEY={HMAC_TEST_KEY}",
         "--mount",
         f"type=bind,src={tmp_path},dst=/etc/oteru-privacy,readonly",
         "--mount",
