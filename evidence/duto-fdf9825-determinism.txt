@@ -1,0 +1,32 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+image_digest: sha256:ce75fbab897ffeb8a1562037d3800fd2e4831b8c446a519a1bfd221cd0c44fe1
+image_id: d09c8f9383184aa9ffc57846adb703432d8ff44fcdcd8b84e7b0e1835cfa356c
+image_tag: localhost/oteru-collector:0.155.0
+clickhouse_version: 26.11.1.323
+captured_at_utc: 2026-10-20T22:46:57Z
+keys: generated at runtime via openssl rand -hex 32 (in-memory only; not written)
+construction: HMAC-SHA256(key, 'oteru-pii:v1|<field>|<value>') -> hmac:v1:<64 hex>
+actor: user.email=user@example.com posted twice per key
+
+== independently computed HMAC-SHA256 vs collector output ==
+key_A_id_1=hmac:v1:885ae271de5568484e18af424c956669ca7e90315b283336c72869f12c27fdd0
+key_A_id_2=hmac:v1:885ae271de5568484e18af424c956669ca7e90315b283336c72869f12c27fdd0
+key_A_same=1
+key_A_matches_independent_compute=1
+key_B_id_1=hmac:v1:69a4d875466776cee49f50e6b1024a17fd590389873da4aae09f2b9abc888f68
+key_B_id_2=hmac:v1:69a4d875466776cee49f50e6b1024a17fd590389873da4aae09f2b9abc888f68
+key_B_same=1
+key_B_matches_independent_compute=1
+keys_differ=1
+format_A=1 format_B=1
+
+== e2e isolated checks (scripts/check_signals_e2e.sh, also runtime keys) ==
+  ok   HMAC key unset -> exit 1, failure logged, key absent from logs
+  ok   HMAC key empty -> exit 1, failure logged, key absent from logs
+  ok   HMAC key 31 bytes -> exit 1, failure logged, key absent from logs
+  ok   HMAC key A actor_id matches ^hmac:v1:[0-9a-f]{64}$
+  ok   HMAC same key -> same actor_id
+  ok   HMAC different key -> different actor_id
+
+== verdict ==
+PASS: same actor+key -> same id; other key -> different id; matches independent HMAC-SHA256

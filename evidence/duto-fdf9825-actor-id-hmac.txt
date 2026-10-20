@@ -1,0 +1,33 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+image_digest: sha256:ce75fbab897ffeb8a1562037d3800fd2e4831b8c446a519a1bfd221cd0c44fe1
+image_id: d09c8f9383184aa9ffc57846adb703432d8ff44fcdcd8b84e7b0e1835cfa356c
+image_tag: localhost/oteru-collector:0.155.0
+clickhouse_version: 26.11.1.323
+captured_at_utc: 2026-10-20T22:46:30Z
+loader: /workspace/clickhouse client --host 127.0.0.1 --user otel --password otel --query ... </dev/null
+runtime: podman + ClickHouse 26.11.1.323 (Modelo local binary bind-mounted into debian:bookworm-slim)
+e2e: scripts/check_signals_e2e.sh SETTLE_SECONDS=4 OTERU_COLLECTOR_IMAGE=localhost/oteru-collector:0.155.0 -> OK (no SKIP)
+
+== 100% actor_id ^hmac:v1:[0-9a-f]{64}$ ==
+SELECT count() AS rows,
+       countIf(match(actor_id, '^hmac:v1:[0-9a-f]{64}$')) AS hmac_ok,
+       countIf(NOT match(actor_id, '^hmac:v1:[0-9a-f]{64}$')) AS hmac_bad,
+       if(count()=0, 0, round(100 * countIf(match(actor_id, '^hmac:v1:[0-9a-f]{64}$')) / count(), 2)) AS hmac_pct
+FROM otel.stg_api_request
+WHERE cost_usd_micros IS NOT NULL
+
+   ┌─rows─┬─hmac_ok─┬─hmac_bad─┬─hmac_pct─┐
+1. │   18 │      18 │        0 │      100 │
+   └──────┴─────────┴──────────┴──────────┘
+
+== sample actor_id (distinct, up to 16) ==
+   ┌─actor_id─────────────────────────────────────────────────────────────────┬─n─┐
+1. │ hmac:v1:1ac4c222976695d7ef8738938ba9fe496d22d0b2f3901b5b838df82a712b5955 │ 7 │
+2. │ hmac:v1:c849a01b87f014a29abc5204a5058b2036e6d84f9da511ee077fcdb94cd17a8b │ 7 │
+3. │ hmac:v1:61b48fc1302ee77e43dc4869a89e24233ef710303070c85f7980958bacc51d56 │ 2 │
+4. │ hmac:v1:ad22460d3a8b9df525710c934bc60141b520899dba56f1f4c2bc59435e0deeba │ 2 │
+   └──────────────────────────────────────────────────────────────────────────┴───┘
+
+== verdict ==
+rows=18 hmac_bad=0
+PASS: 100% of actor_id values match ^hmac:v1:[0-9a-f]{64}$
