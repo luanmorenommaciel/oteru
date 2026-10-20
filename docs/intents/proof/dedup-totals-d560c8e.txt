@@ -1,0 +1,7 @@
+Row 1:
+──────
+row_count:         0
+total_cost_micros: ᴺᵁᴸᴸ
+unique_actors:     0
+earliest_event:    1970-01-01 00:00:00.000000000
+latest_event:      1970-01-01 00:00:00.000000000

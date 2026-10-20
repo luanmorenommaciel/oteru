@@ -1,0 +1,27 @@
+Row 1:
+──────
+run_id:                d3aedeb7-6328-4176-8f45-c9a7c5d7ad81
+run_started_at:        2026-10-20 19:07:40
+run_completed_at:      2026-10-20 19:07:42.000000000
+target_name:           dev
+dbt_command:           
+duration_seconds:      2
+rows_processed:        0
+max_event_ts_read:     1970-01-01 00:00:00.000000000
+events_dropped_late:   0
+rows_empty_request_id: 0
+run_status:            success
+
+Row 2:
+──────
+run_id:                f7b5d663-fd87-40ee-95ac-2630251ed7b6
+run_started_at:        2026-10-20 19:07:14
+run_completed_at:      2026-10-20 19:07:16.000000000
+target_name:           dev
+dbt_command:           
+duration_seconds:      2
+rows_processed:        0
+max_event_ts_read:     1970-01-01 00:00:00.000000000
+events_dropped_late:   0
+rows_empty_request_id: 0
+run_status:            success

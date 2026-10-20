@@ -75,8 +75,9 @@
       CROSS JOIN empty_request_ids e
     {% endset %}
     
-    {% do run_query(insert_audit) %}
+    {% do run_query(audit_query) %}
     
     {{ log("Run audit recorded in otel.audit_cost_runs", info=True) }}
   {% endif %}
+  SELECT 1
 {% endmacro %}
