@@ -130,17 +130,20 @@ def test_fixture_has_late_arrival():
 
 
 def test_fixture_has_no_real_emails():
-    """All user.email values are placeholder addresses."""
+    """All user.email values are pseudonymized (sha256:v1:hex format, no '@')."""
     fixture = Path(__file__).parent / "fixtures" / "api_request_cost_fixture.json"
     for line in fixture.read_text().strip().split("\n"):
         batch = json.loads(line)
         for log_record in batch["resourceLogs"][0]["scopeLogs"][0]["logRecords"]:
             attrs = {a["key"]: a["value"] for a in log_record["attributes"]}
             email = attrs.get("user.email", {}).get("stringValue", "")
-            # Valid placeholder domains from check_pii.py
-            assert email.endswith("@example.com") or email.endswith("@example.org"), (
-                f"Non-placeholder email found: {email}"
-            )
+            # Must be pseudonymized format from PR #94: sha256:v1:<hex>
+            assert email.startswith("sha256:v1:"), f"Not pseudonymized: {email}"
+            assert "@" not in email, f"Contains @: {email}"
+            # Verify it's a valid hex hash after the prefix
+            hex_part = email[len("sha256:v1:") :]
+            assert len(hex_part) == 64, f"Invalid SHA256 length: {len(hex_part)}"
+            assert all(c in "0123456789abcdef" for c in hex_part), f"Invalid hex: {hex_part}"
 
 
 def test_fixture_structure_is_valid_otlp():

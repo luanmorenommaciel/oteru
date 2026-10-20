@@ -282,19 +282,20 @@ else
     fail "otel.stg_api_request cost sum: got $cost_sum, expected 806400"
   fi
   
-  # PII check: actor_id should contain only placeholder emails (no real addresses)
-  # Note: This test runs without privacy processors, so actor_id is the raw user.email.
-  # Fixture uses placeholder domains (example.com, example.org) which are acceptable.
+  # No column contains '@' (PII check - pseudonymized values should have no '@')
   # Filter to only our fixture's events (which have non-NULL cost)
-  real_email_check="$(curl -sf "$CH" --data-binary \
-    "SELECT count() FROM otel.stg_api_request 
-     WHERE $scope AND cost_usd_micros IS NOT NULL
-       AND actor_id NOT LIKE '%@example.com' 
-       AND actor_id NOT LIKE '%@example.org' FORMAT TSV")"
-  if [ "$real_email_check" = "0" ]; then
-    echo "  ok   otel.stg_api_request -> all actor_id values use placeholder domains"
+  pii_check="$(curl -sf "$CH" --data-binary \
+    "SELECT count() FROM otel.stg_api_request WHERE $scope AND cost_usd_micros IS NOT NULL AND (
+      positionCaseInsensitive(toString(request_id), '@') > 0 OR
+      positionCaseInsensitive(toString(session_id), '@') > 0 OR
+      positionCaseInsensitive(toString(model_raw), '@') > 0 OR
+      positionCaseInsensitive(toString(actor_id), '@') > 0 OR
+      positionCaseInsensitive(toString(service_name), '@') > 0
+    ) FORMAT TSV")"
+  if [ "$pii_check" = "0" ]; then
+    echo "  ok   otel.stg_api_request -> no @ found in any column (PII clean)"
   else
-    fail "otel.stg_api_request PII check: found $real_email_check rows with non-placeholder emails"
+    fail "otel.stg_api_request PII check: found $pii_check rows with @"
   fi
 fi
 
