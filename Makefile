@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals views up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean e2e-archive up-archive down-archive up-ingestor down-ingestor ingestor-check test-hooks
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals views up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean e2e-archive up-archive down-archive up-ingestor down-ingestor ingestor-check test-hooks check-cost-retention
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -72,6 +72,9 @@ views: ## (re)apply the ClickHouse views in oteru-collector/clickhouse/views (ne
 	@for f in $(COLLECTOR)/clickhouse/views/*.sql; do \
 		curl -sSf '$(CLICKHOUSE_URL)' --data-binary @"$$f" >/dev/null && echo "  view applied: $$f"; \
 	done
+
+check-cost-retention: ## verify aggregate tables have no TTL, raw TTL intact, lookback < TTL (needs `make up-clickhouse`)
+	bash scripts/check_cost_retention.sh
 
 e2e-archive: ## verify hot + cold retention: rows in ClickHouse, locked objects in the archive (needs `make up-archive`)
 	bash scripts/check_archive_e2e.sh
