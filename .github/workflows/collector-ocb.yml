@@ -39,8 +39,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          go-version: "1.25.3"
+          go-version: "1.26.10"
           cache: false
+      - name: Pin GOTOOLCHAIN
+        run: echo "GOTOOLCHAIN=go1.26.10" >> "$GITHUB_ENV"
 
       - name: Install OCB v0.155.0
         run: |
@@ -56,12 +58,31 @@ jobs:
           # must never be committed from this job.
           if [ ! -f hmacconverter/go.mod ]; then
             mkdir -p hmacconverter
-            printf 'module github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter\n\ngo 1.25.0\n' > hmacconverter/go.mod
+            printf 'module github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter\n\ngo 1.26.0\n' > hmacconverter/go.mod
           fi
 
       - name: OCB build
         working-directory: oteru-collector
         run: ocb --config=builder-config.yaml
+
+      - name: Collector modules stay on v0.155.0 / v1.61.0
+        working-directory: oteru-collector/_build
+        run: |
+          # Fail if any collector core/contrib module drifted off the
+          # v0.155.0 (unstable) / v1.61.0 (stable) line.
+          off="$(go list -m all | awk '
+            $1 ~ /go\.opentelemetry\.io\/collector(\/|$)/ ||
+            $1 ~ /github\.com\/open-telemetry\/opentelemetry-collector-contrib(\/|$)/ {
+              v=$2
+              if (v ~ /^v0\./ && v != "v0.155.0") print
+              else if (v ~ /^v1\./ && v != "v1.61.0") print
+            }')"
+          if [ -n "$off" ]; then
+            echo "collector modules off the v0.155.0 / v1.61.0 line:"
+            echo "$off"
+            exit 1
+          fi
+          go list -m all | grep -E 'opentelemetry-collector|go.opentelemetry.io/collector' || true
 
       - name: go test (hmacconverter)
         working-directory: oteru-collector

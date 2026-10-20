@@ -3,13 +3,17 @@
 # container runtime (compose: environment from .env; collector config:
 # ${env:OTERU_PII_HMAC_KEY}).
 
-# golang:1.25.3-bookworm (matches otelcol v0.155.0 go 1.25.0)
-FROM golang:1.25.3-bookworm@sha256:4f43b271f9673eb7bd0cb3a49cc17b08d8d6ee110277e26dbacc93c43a5a7793 AS builder
+# golang:1.26.10-bookworm — OTTL generics in contrib v0.155.0 fail to link
+# on the Go 1.25 linker (relocation target not defined). Duto's working
+# toolchain is Go 1.26.x / GOTOOLCHAIN=go1.26.10. Index digest of the
+# 1.26.10-bookworm tag (not a floating latest).
+FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS builder
 
 WORKDIR /src
 ENV CGO_ENABLED=0 \
     GOPROXY=https://proxy.golang.org,direct \
-    GOBIN=/usr/local/bin
+    GOBIN=/usr/local/bin \
+    GOTOOLCHAIN=go1.26.10
 
 # OCB (collector builder) at the same version as the distro.
 RUN go install go.opentelemetry.io/collector/cmd/builder@v0.155.0 \
@@ -23,7 +27,7 @@ RUN cp /tmp/context/builder-config.yaml /src/builder-config.yaml \
     && rm -rf /tmp/context \
     && if [ ! -f /src/hmacconverter/go.mod ]; then \
          mkdir -p /src/hmacconverter \
-         && printf 'module github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter\n\ngo 1.25.0\n' \
+         && printf 'module github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter\n\ngo 1.26.0\n' \
               > /src/hmacconverter/go.mod; \
        fi \
     && ocb --config=/src/builder-config.yaml \

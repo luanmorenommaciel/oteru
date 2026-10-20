@@ -8,17 +8,24 @@
 #   exporters : debug, file, clickhouse, otlphttp, awss3
 #   providers : env, file           (${env:…} / ${file:…} in the YAML)
 #
-# Versions are pinned to otelcol v0.155.0 (core + contrib). Provider modules
-# use the matching stable API v1.61.0 (see otelcorecol builder-config at
-# v0.155.0). Do not add components "just in case".
+# Versions are pinned to otelcol v0.155.0 (core + contrib). Provider and
+# other stable core modules (confmap, pdata, component, …) use the
+# matching stable API v1.61.0 (see otelcorecol builder-config at
+# v0.155.0). After `ocb`, `go list -m all` in `_build/` must show every
+# go.opentelemetry.io/collector* and opentelemetry-collector-contrib*
+# module on that line — nothing else. Do not add components "just in case".
+#
+# Toolchain: Go 1.26.x / GOTOOLCHAIN=go1.26.10 (contrib v0.155.0 OTTL
+# generics fail to link on the Go 1.25 linker).
 #
 # HMACSHA256 OTTL converter (Duto):
 #   Local Go module at oteru-collector/hmacconverter/ (this directory).
 #   OCB `replaces` maps the module path onto ./hmacconverter so the
 #   transform processor can import the converter once Duto wires it.
-#   This change does not create or edit hmacconverter/ — that tree is
-#   Duto's. A compile-only stub, if you need one locally, must stay
-#   uncommitted.
+#   The converter exposes only HMACSHA256(value); the key is read in
+#   the factory. This change does not create or edit hmacconverter/ —
+#   that tree is Duto's. A compile-only stub, if you need one locally,
+#   must stay uncommitted.
 
 dist:
   module: github.com/luanmorenommaciel/oteru/oteru-collector

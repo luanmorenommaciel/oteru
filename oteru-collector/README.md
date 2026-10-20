@@ -7,8 +7,11 @@ It is the **receiving** end — its pair is the
 [`oteru-emitter`](../oteru-emitter), which forges the traffic.
 
 The collector image is built locally (`oteru-collector:0.155.0`, see
-`builder-config.yaml` + `Dockerfile`). It is not pulled from a registry. After
-`docker compose build`, pin the result by digest:
+`builder-config.yaml` + `Dockerfile`). The builder stage is
+`golang:1.26.10-bookworm` pinned by digest (`GOTOOLCHAIN=go1.26.10`);
+core/contrib stay on v0.155.0 and stable core on v1.61.0. It is not
+pulled from a registry. After `docker compose build`, pin the result
+by digest:
 
 ```bash
 docker inspect --format='{{.Id}}' oteru-collector:0.155.0
