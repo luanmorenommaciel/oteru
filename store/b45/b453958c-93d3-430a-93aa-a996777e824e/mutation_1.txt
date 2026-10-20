@@ -1,3 +1,0 @@
-format version: 1
-create time: 2026-10-20 19:07:42
-commands: (UPDATE _row_exists = 0 WHERE (day_utc, actor_id) IN (SELECT day_utc, actor_id FROM otel.fct_cost_daily__dbt_new_data_d3aedeb7_6328_4176_8f45_c9a7c5d7ad81))
