@@ -1,3 +1,4 @@
+SHOW CREATE TABLE otel.fct_cost_actor_daily:
 CREATE TABLE otel.fct_cost_actor_daily
 (
     `day_utc` Date,
@@ -14,3 +15,4 @@ ENGINE = ReplacingMergeTree
 ORDER BY ((day_utc, actor_id))
 TTL day_utc + toIntervalDay(90)
 SETTINGS replicated_deduplication_window = '0', index_granularity = 8192
+
