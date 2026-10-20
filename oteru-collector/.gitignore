@@ -8,6 +8,9 @@
 # Secrets — never commit credentials
 .env
 
+# OCB generated sources / binary (local builds)
+/_build/
+
 # OS / IDE
 .DS_Store
 .vscode/

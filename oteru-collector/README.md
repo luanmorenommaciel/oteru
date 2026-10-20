@@ -1,9 +1,21 @@
 # oteru-collector
 
-**OpenTelemetry Collector** sandbox (contrib distribution) for the Oteru
-platform. Receives OTLP telemetry, applies a bounded privacy policy, prints the
-result to stdout (`debug`) and persists it to disk (`file`). It is the **receiving** end — its pair is the
+**OpenTelemetry Collector** sandbox (custom OCB distribution, otelcol v0.155.0)
+for the Oteru platform. Receives OTLP telemetry, applies a bounded privacy
+policy, prints the result to stdout (`debug`) and persists it to disk (`file`).
+It is the **receiving** end — its pair is the
 [`oteru-emitter`](../oteru-emitter), which forges the traffic.
+
+The collector image is built locally (`oteru-collector:0.155.0`, see
+`builder-config.yaml` + `Dockerfile`). It is not pulled from a registry. After
+`docker compose build`, pin the result by digest:
+
+```bash
+docker inspect --format='{{.Id}}' oteru-collector:0.155.0
+```
+
+`OTERU_PII_HMAC_KEY` is read only at runtime from `.env` (empty placeholder in
+`.env.example`). It is never an image ARG/ENV, never a Makefile default.
 
 ```
 emitter / Claude Code / POD-1   ──OTLP──► privacy policy ──►  debug (stdout)

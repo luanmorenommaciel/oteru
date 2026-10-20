@@ -5,11 +5,14 @@ Guidance for Claude Code (claude.ai/code) when working in this directory of the
 
 ## Overview
 
-`oteru-collector` runs a single OpenTelemetry Collector (contrib distribution)
-via Docker Compose. It receives OTLP telemetry on **gRPC `:4317`** and **HTTP
-`:4318`**, prints it to stdout via the `debug` exporter, and persists it to
+`oteru-collector` runs a custom OpenTelemetry Collector (OCB distro, otelcol
+v0.155.0) via Docker Compose. The image is `oteru-collector:0.155.0`, built
+locally from `Dockerfile` + `builder-config.yaml` — not pulled from a registry.
+It receives OTLP telemetry on **gRPC `:4317`** and **HTTP `:4318`**, prints it
+to stdout via the `debug` exporter, and persists it to
 `telemetry/telemetry.json` via the `file` exporter. No application code, no
 backend, no database — it is the **receiving** end of the Oteru pipeline.
+`OTERU_PII_HMAC_KEY` is runtime-only (compose env from `.env`).
 
 The companion subproject `oteru-emitter/` (sibling directory) forges OTLP traffic and
 sends it here; Claude Code CLI can also emit directly over HTTP.

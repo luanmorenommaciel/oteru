@@ -39,7 +39,12 @@ def test_all_export_paths_require_privacy(profile):
 def test_compose_blocks_collector_on_policy_failure():
     config = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
     collector = config["services"]["oteru-collector"]
-    assert "@sha256:" in collector["image"]
+    assert collector["image"] == "oteru-collector:0.155.0"
+    assert collector["build"]["dockerfile"] == "Dockerfile"
+    assert collector["environment"]["OTERU_PII_HMAC_KEY"] == "${OTERU_PII_HMAC_KEY}"
+    dumped = yaml.dump(config)
+    assert "OTERU_PII_HMAC_KEY:-" not in dumped
+    assert "otel/opentelemetry-collector-contrib" not in dumped
     assert (
         collector["depends_on"]["privacy-policy"]["condition"] == "service_completed_successfully"
     )

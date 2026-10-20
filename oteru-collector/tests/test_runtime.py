@@ -30,6 +30,9 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTrace
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2_grpc import TraceServiceStub
 from support import HMAC_TEST_KEY, ROOT, default, hmac_v1, policy
 
+# Behavioral oracle for privacy tests: upstream contrib 0.155.0 (same component
+# versions as builder-config.yaml). Compose itself builds the local OCB image
+# `oteru-collector:0.155.0` — do not confuse the two.
 IMAGE = (
     "otel/opentelemetry-collector-contrib@"
     "sha256:4935caa35e9a4cb387e35732e8fb22b2b5759af8d12e7043357f03837f6e8df5"

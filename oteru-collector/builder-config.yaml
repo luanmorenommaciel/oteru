@@ -1,0 +1,58 @@
+# Oteru Collector distribution — OpenTelemetry Collector Builder (OCB).
+#
+# Only the component types referenced by the compose/config files in this
+# directory (base + clickhouse + clickstack + clickstack-local + archive):
+#
+#   receivers : otlp
+#   processors: filter, transform   (privacy/compile.py → processors.json)
+#   exporters : debug, file, clickhouse, otlphttp, awss3
+#   providers : env, file           (${env:…} / ${file:…} in the YAML)
+#
+# Versions are pinned to otelcol v0.155.0 (core + contrib). Provider modules
+# use the matching stable API v1.61.0 (see otelcorecol builder-config at
+# v0.155.0). Do not add components "just in case".
+#
+# HMACSHA256 OTTL converter (Duto):
+#   Local Go module at oteru-collector/hmacconverter/ (this directory).
+#   OCB `replaces` maps the module path onto ./hmacconverter so the
+#   transform processor can import the converter once Duto wires it.
+#   This change does not create or edit hmacconverter/ — that tree is
+#   Duto's. A compile-only stub, if you need one locally, must stay
+#   uncommitted.
+
+dist:
+  module: github.com/luanmorenommaciel/oteru/oteru-collector
+  name: otelcol-oteru
+  description: Oteru OpenTelemetry Collector (OCB) with the components the compose stack actually uses
+  version: 0.155.0
+  output_path: ./_build
+  otelcol_version: 0.155.0
+
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.155.0
+
+processors:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.155.0
+
+exporters:
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.155.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter v0.155.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.61.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.61.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.61.0
+
+telemetry:
+  gomod: go.opentelemetry.io/collector/service v0.155.0
+  import: go.opentelemetry.io/collector/service/telemetry/otelconftelemetry
+
+# Local HMACSHA256 OTTL converter. Path is relative to this file
+# (oteru-collector/hmacconverter/). Unused until the module exists and is
+# imported; do not replace this with a published module.
+replaces:
+  - github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter => ./hmacconverter
