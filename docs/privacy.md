@@ -16,6 +16,7 @@ This is a prospective, field-based control. It does not sanitize previously save
 | `drop` | Remove the selected attribute in logs and traces. | Technical name for the removal interpretation of `ignore` in #21. Metrics containing a field configured as `drop` are rejected rather than silently merging series. |
 | `reject` | Discard the affected unsafe telemetry item instead of exporting it. | Fixed rule for empty/non-string values under `hash`, metric dimensions that cannot be transformed safely, exemplars and spans with links; not a selectable identity-field action. A rejected resource/scope also removes its descendants. Benign controls in separate resources in the same batch continue through the pipeline. |
 | Principal identity | `user.email`, `user.id`, `user.account_uuid`, `user.account_id`, `organization.id`, `host.name` in resource, scope, log, span, span-event and metric datapoint attributes. | Each field can use `hash`, `mask` or `drop`. Only nonempty strings can be hashed; invalid types are rejected before transformation. |
+| Chargeback allowlist | Preserve `oteru.team` and `oteru.project` when they match slug `^[a-z0-9][a-z0-9-]{0,62}$`. Any other value (including `@`) drops **only that attribute**; the record is kept and lands in `unassigned`. | Non-PII team/project names for #46. Not identity fields; never hashed. |
 | Known content | Remove `user_prompt`, `gen_ai.prompt`, `gen_ai.completion`, `gen_ai.input.messages`, `gen_ai.output.messages` in the covered attribute contexts. | Oteru's `user_prompt` is included. This is separate from principal identity policy. |
 | Operational log body | Preserve. | Keeps diagnostic events useful. A body containing personal data remains personal data; the policy does **not** claim to sanitize free text. Set `content.log_body` to `drop` to replace the entire body with `REDACTED`. |
 | Correlation | Preserve `session.id`, `prompt.id`, trace/span IDs and metric values/timestamps. | Retains joins, but these IDs can link records to a person; access and retention still matter. Email can no longer distinguish live from replayed traffic. |
@@ -30,7 +31,7 @@ HMAC-SHA256 here is **pseudonymization, not anonymization**. Outputs remain link
 
 The `v1` in `hmac:v1:` is the **key version**, not a crypto-algorithm version. Rotating `OTERU_PII_HMAC_KEY` changes every `actor_id` and breaks per-actor series in `fct_cost_actor_daily`. Rotation therefore requires bumping the version prefix (for example to `hmac:v2:`) **and prior notice**. A missing, empty, or short key stops the Collector: ingestion halts and Vigia should alert.
 
-The Collector is pinned to contrib **0.155.0** by digest, plus the `hmacconverter` transform factory (`github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter`) that registers `HMACSHA256(value)`. The policy contract is version **2**. Changing the contract or the key version requires explicit migration. The compiler uses the Python standard library, rejects duplicate or unexpected JSON keys, and publishes a single JSON processor map atomically. Four Collector profiles reference that same map; the privacy tests fail if any of their twelve pipelines omits a required processor. Do not edit generated `processors.json` manually. The HMAC key is read only from the environment at processor Create; it is never written into processors.json.
+The Collector is pinned to contrib **0.155.0** by digest, plus the `hmacconverter` transform factory (`github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter`) that registers `HMACSHA256(value)`. The policy contract is version **3** (identity/content/metrics plus the `oteru.team`/`oteru.project` slug allowlist). Changing the contract or the key version requires explicit migration. The compiler uses the Python standard library, rejects duplicate or unexpected JSON keys, and publishes a single JSON processor map atomically. Four Collector profiles reference that same map; the privacy tests fail if any of their twelve pipelines omits a required processor. Do not edit generated `processors.json` manually. The HMAC key is read only from the environment at processor Create; it is never written into processors.json.
 
 ## Activate or change a policy
 
@@ -59,6 +60,10 @@ From the repository root, run `make setup` once, then `make demo-privacy` with D
 | Policy update and invalid configuration | A valid policy change takes effect after Collector recreation; an invalid policy leaves ingestion stopped rather than exporting unprocessed data. |
 
 `scripts/check_signals_e2e.sh` is the runtime gate for HMAC `actor_id` shape, key stability, fail-closed startup, and the cost-fixture staging totals. It does not change the policy of an existing stack.
+
+### Admin HMAC lookup (#46)
+
+`python3 oteru-collector/privacy/hmac_lookup.py` maps an email to `hmac:v1:<64 hex>` using the same message format as the collector converter (`oteru-pii:v1|user.email|<email>`). **Only Vinícius and collector administrators may run it.** The email is read from stdin only; the key is read from `OTERU_PII_HMAC_KEY` only. A missing, empty, or shorter-than-32-byte key fails closed (nonzero exit, empty stdout and stderr). Success prints that one line and nothing else. The key is never stored in the repo or CI.
 
 `make up-direct` and `make ingest` send telemetry straight to ClickStack without traversing the Oteru Collector. The Collector policy does not protect that mode; use a Collector-backed profile for data requiring this control.
 

@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -30,7 +31,13 @@ CONTENT_KEYS = (
     "gen_ai.input.messages",
     "gen_ai.output.messages",
 )
-CONTRACT_VERSION = 2
+CHARGEBACK_KEYS = (
+    "oteru.team",
+    "oteru.project",
+)
+# Non-PII chargeback slugs (#46). Invalid values drop only the attribute.
+CHARGEBACK_SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+CONTRACT_VERSION = 3
 
 
 class PolicyError(ValueError):
@@ -59,7 +66,7 @@ def _keys(value, expected, label):
 
 
 def validate_policy(source: dict) -> None:
-    _keys(source, ("version", "identity", "content", "metrics"), "policy")
+    _keys(source, ("version", "identity", "content", "metrics", "allowlist"), "policy")
     if type(source["version"]) is not int or source["version"] != CONTRACT_VERSION:
         raise PolicyError("unsupported policy version")
     _keys(source["identity"], IDENTITY_KEYS, "identity")
@@ -75,6 +82,10 @@ def validate_policy(source: dict) -> None:
         raise PolicyError("log_body must be drop or preserve")
     if source["metrics"] != "preserve_hashed":
         raise PolicyError("metrics must preserve hashed dimensions")
+    _keys(source["allowlist"], CHARGEBACK_KEYS, "allowlist")
+    for action in source["allowlist"].values():
+        if action != "slug":
+            raise PolicyError("allowlist action must be slug")
 
 
 def _present(attributes: str, key: str) -> str:
@@ -112,6 +123,37 @@ def _statements(attributes: str, source: dict, *, include_hash: bool = True) -> 
     return result
 
 
+def _slug_drop(attributes: str, key: str) -> str:
+    # Drop only the invalid chargeback attribute; the record is kept.
+    return (
+        f'delete_key({attributes}, "{key}") where {_present(attributes, key)} and '
+        f'(not IsString({attributes}["{key}"]) or '
+        f'not IsMatch({attributes}["{key}"], "^[a-z0-9][a-z0-9-]{{0,62}}$"))'
+    )
+
+
+def _slug_drops(attributes: str) -> list[str]:
+    return [_slug_drop(attributes, key) for key in CHARGEBACK_KEYS]
+
+
+def keep_chargeback_value(value: object) -> bool:
+    return isinstance(value, str) and CHARGEBACK_SLUG.fullmatch(value) is not None
+
+
+def drop_invalid_chargeback_attributes(attributes: list[dict]) -> list[dict]:
+    """Python mirror of the OTTL slug drop: invalid oteru.team/project keys go away."""
+    kept = []
+    for attr in attributes:
+        if not isinstance(attr, dict) or attr.get("key") not in CHARGEBACK_KEYS:
+            kept.append(attr)
+            continue
+        value = attr.get("value")
+        text = value.get("stringValue") if isinstance(value, dict) else None
+        if keep_chargeback_value(text):
+            kept.append(attr)
+    return kept
+
+
 def _hash_identity(attributes: str, source: dict) -> list[str]:
     return [
         _hash_statement(attributes, key)
@@ -147,13 +189,21 @@ def _invalid_hash_conditions(contexts: tuple[str, ...], source: dict) -> list[st
 def compile_policy(source: dict) -> dict:
     validate_policy(source)
     # Fix ordering regardless of JSON key order. No user-supplied OTTL or paths.
-    source = {**source, "identity": {k: source["identity"][k] for k in IDENTITY_KEYS}}
+    source = {
+        **source,
+        "identity": {k: source["identity"][k] for k in IDENTITY_KEYS},
+        "allowlist": {k: source["allowlist"][k] for k in CHARGEBACK_KEYS},
+    }
     transform = {"error_mode": "propagate"}
     # HMACSHA256 is registered on log/span/spanevent/datapoint factories only.
     # resource/scope contexts keep mask/drop (StandardFuncs); hashes of
     # resource and instrumentation_scope attributes run in the leaf context.
     log_statements = [
-        _group("resource", _statements("resource.attributes", source, include_hash=False)),
+        _group(
+            "resource",
+            _statements("resource.attributes", source, include_hash=False)
+            + _slug_drops("resource.attributes"),
+        ),
         _group("scope", _statements("scope.attributes", source, include_hash=False)),
         _group(
             "log",
@@ -175,7 +225,11 @@ def compile_policy(source: dict) -> dict:
         log_group["statements"].append('set(log.body, "REDACTED")')
     transform["log_statements"] = _groups(*log_statements)
     transform["trace_statements"] = _groups(
-        _group("resource", _statements("resource.attributes", source, include_hash=False)),
+        _group(
+            "resource",
+            _statements("resource.attributes", source, include_hash=False)
+            + _slug_drops("resource.attributes"),
+        ),
         _group("scope", _statements("scope.attributes", source, include_hash=False)),
         _group(
             "span",
@@ -194,6 +248,7 @@ def compile_policy(source: dict) -> dict:
                 _hash_identity("resource.attributes", source)
                 + _hash_identity("instrumentation_scope.attributes", source)
                 + _hash_identity("datapoint.attributes", source)
+                + _slug_drops("resource.attributes")
             ),
         )
     )

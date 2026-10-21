@@ -20,6 +20,11 @@ docker inspect --format='{{.Id}}' oteru-collector:0.155.0
 `OTERU_PII_HMAC_KEY` is read only at runtime from `.env` (empty placeholder in
 `.env.example`). It is never an image ARG/ENV, never a Makefile default.
 
+Admin HMAC lookup (`python3 oteru-collector/privacy/hmac_lookup.py`) is
+**restricted to Vinícius and collector administrators**. Email from stdin
+only; key from `OTERU_PII_HMAC_KEY` only; success prints `hmac:v1:<64 hex>`
+and nothing else. See [privacy.md](../docs/privacy.md).
+
 ```
 emitter / Claude Code / POD-1   ──OTLP──► privacy policy ──►  debug (stdout)
         (gRPC :4317 | HTTP :4318)                            └─►  file  (telemetry/)

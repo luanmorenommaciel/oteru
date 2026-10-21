@@ -29,6 +29,7 @@ from collections import Counter
 
 from . import __version__
 from .profiles import get_profile, list_profiles, profile_for_service
+from .resource_attrs import apply_chargeback_resource_attributes
 from .rewrite.restamp import restamp
 from .scheduler.realtime import run_realtime
 from .sources.replay import (
@@ -155,6 +156,9 @@ def cmd_replay(args) -> int:
     if not batches:
         print("no OTLP batches found in the file.", file=sys.stderr)
         return 1
+
+    for batch in batches:
+        apply_chargeback_resource_attributes(batch.payload)
 
     # --emit is a selection over what the capture holds, applied before --limit
     # so that `--emit metric --limit 5` yields 5 metric batches, not the metric
