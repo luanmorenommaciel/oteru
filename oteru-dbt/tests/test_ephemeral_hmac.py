@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import inspect
 import os
 import re
 import secrets
@@ -68,6 +69,28 @@ def test_rfc4231_vector_1_via_hmac_lookup():
     assert gen.actor_id_for(email, RFC4231_KEY) == expected
     assert expected.startswith("hmac:v1:")
     assert HMAC_V1_RE.match(expected)
+
+
+def test_generator_and_loader_import_hmac_lookup_actor_id():
+    """Generator and loader must call hmac_lookup.actor_id, not a copied HMAC."""
+    assert gen.HMAC_LOOKUP_PATH == (
+        gen.REPO_ROOT / "oteru-collector" / "privacy" / "hmac_lookup.py"
+    )
+    lookup = gen.hmac_lookup()
+    assert Path(lookup.__file__).resolve() == gen.HMAC_LOOKUP_PATH.resolve()
+    gen_text = Path(gen.__file__).read_text(encoding="utf-8")
+    assert "hmac_lookup().actor_id(" in inspect.getsource(gen.actor_id_for)
+    assert "hmac.new" not in gen_text
+    assert "hashlib.sha256" not in gen_text
+    loader_text = Path(loader.__file__).read_text(encoding="utf-8")
+    assert "from generate_ephemeral_fixture_hmac import actor_id_for" in loader_text
+    assert "hmac.new" not in loader_text
+    assert "hashlib.sha256" not in loader_text
+    assert "return actor_id_for(email, key)" in inspect.getsource(loader.pseudonymize)
+    material = secrets.token_bytes(32)
+    email = "user@example.com"
+    assert gen.actor_id_for(email, material) == lookup.actor_id(email, material)
+    assert loader.pseudonymize(email, material) == lookup.actor_id(email, material)
 
 
 def test_generator_and_loader_share_actor_id(tmp_path, tmp_path_factory):
