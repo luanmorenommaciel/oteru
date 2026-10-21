@@ -4,3 +4,9 @@ d38115de6cdc0b97e589c84d6ada6fc4c9f83fc8:evidence/duto-fdf9825-image-digest-go-l
 d38115de6cdc0b97e589c84d6ada6fc4c9f83fc8:evidence/duto-fdf9825-image-digest-go-list.txt:generic-api-key:153
 # collector/extension/extensionauth v1.61.0 — public go.sum h1: checksum
 d38115de6cdc0b97e589c84d6ada6fc4c9f83fc8:evidence/duto-fdf9825-image-digest-go-list.txt:generic-api-key:185
+# Historical blob of the same go-list evidence (commit 15f642d). These are
+# public go.sum h1: hashes (aws-sdk-go-v2/credentials, configauth,
+# extensionauth), not secrets.
+15f642d8737fea9a7f6a0a64b0266ae8d8495e77:evidence/duto-fdf9825-image-digest-go-list.txt:generic-api-key:45
+15f642d8737fea9a7f6a0a64b0266ae8d8495e77:evidence/duto-fdf9825-image-digest-go-list.txt:generic-api-key:145
+15f642d8737fea9a7f6a0a64b0266ae8d8495e77:evidence/duto-fdf9825-image-digest-go-list.txt:generic-api-key:177
