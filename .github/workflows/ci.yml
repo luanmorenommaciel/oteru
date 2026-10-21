@@ -12,13 +12,27 @@ on:
     branches: [main]
     paths:
       - "oteru-emitter/**"
+      - "oteru-hooks/**"
       - "scripts/**"
+      - "oteru-collector/**"
       - ".github/workflows/ci.yml"
+      - "tests/**"
+      - ".gitleaks.toml"
+      - "oteru-dbt/seeds/**"
+      - "oteru-dbt/tests/**"
+      - "oteru-dbt/dbt_project.yml"
   pull_request:
     paths:
       - "oteru-emitter/**"
+      - "oteru-hooks/**"
       - "scripts/**"
+      - "oteru-collector/**"
       - ".github/workflows/ci.yml"
+      - "tests/**"
+      - ".gitleaks.toml"
+      - "oteru-dbt/seeds/**"
+      - "oteru-dbt/tests/**"
+      - "oteru-dbt/dbt_project.yml"
   workflow_dispatch:
   schedule:
     - cron: "0 6 * * 1" # weekly full OS x Python matrix
@@ -64,6 +78,11 @@ jobs:
         run: ruff format --check .
       - name: Tests
         run: pytest
+      - name: Hook bridge (lint + tests)
+        run: |
+          ruff check ../oteru-hooks
+          ruff format --check ../oteru-hooks
+          pytest ../oteru-hooks/tests
       - name: Smoke (sample dry-run, no network)
         run: oteru-emitter replay samples/telemetry-sample.json --dry-run
 
@@ -74,3 +93,39 @@ jobs:
       - uses: actions/checkout@v4
       - name: PII guard (committed captures)
         run: python scripts/check_pii.py
+      - name: Chargeback seed guard
+        run: python scripts/check_chargeback_seeds.py
+      - name: Chargeback seed guard tests
+        run: |
+          # Same MIT CLI pin as collector-ocb.yml so the gitleaks rule tests run.
+          ver=8.24.3
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz" -o /tmp/gitleaks.tgz
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          export PATH="/tmp:$PATH"
+          python -m unittest discover -s tests -p "test_chargeback_seeds.py" -v
+      - name: Budget roles bootstrap (syntax; apply is before dbt)
+        run: bash scripts/bootstrap_budget_roles.sh --syntax
+      - name: Budget grant contract tests (2b static)
+        run: python -m unittest discover -s tests -p "test_budget_grants.py" -v
+
+  privacy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependencies
+        run: |
+          python -m pip install -e "./oteru-emitter[dev]"
+          python -m pip install -r oteru-collector/requirements-dev.txt
+      - name: Lint Collector privacy code
+        run: |
+          python -m ruff check oteru-collector/privacy oteru-collector/tests scripts/apply_privacy.py
+          python -m ruff format --check oteru-collector/privacy oteru-collector/tests scripts/apply_privacy.py
+          bash -n scripts/check_signals_e2e.sh
+      - name: Check static policy and topology
+        run: python -m pytest oteru-collector/tests/test_policy.py oteru-collector/tests/test_configs.py oteru-collector/tests/test_chargeback_attrs.py oteru-collector/tests/test_hmac_lookup.py
+      - name: Exercise isolated Collector, ClickHouse and OTLP forwarding
+        run: python -m pytest oteru-collector/tests/test_runtime.py

@@ -1,0 +1,11 @@
+PASS hmac_ok (linhas=0) 
+PASS hmac_dispara (linhas=1) r1	2026-10-21 12:14:20.932240375	2
+PASS hmac_ignora_falho (linhas=0) 
+PASS hmac_so_ultimo (linhas=0) 
+PASS unassigned_ok (linhas=0) 
+PASS unassigned_dispara (linhas=1) 2026-10-20	0.16	0.1	6
+PASS unassigned_limite (linhas=0) 
+PASS unassigned_base_zero (linhas=1) 2026-10-20	0.06	0	6
+PASS unassigned_historico_curto (linhas=0) 
+TODOS OS TESTES PASSARAM
+clickhouse-local ClickHouse local version 26.11.1.421 (official build).; base c130c83

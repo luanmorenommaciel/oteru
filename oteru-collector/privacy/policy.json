@@ -1,0 +1,20 @@
+{
+  "version": 3,
+  "identity": {
+    "user.email": "hash",
+    "user.id": "hash",
+    "user.account_uuid": "hash",
+    "user.account_id": "hash",
+    "organization.id": "hash",
+    "host.name": "hash"
+  },
+  "content": {
+    "known_fields": "drop",
+    "log_body": "preserve"
+  },
+  "metrics": "preserve_hashed",
+  "allowlist": {
+    "oteru.team": "slug",
+    "oteru.project": "slug"
+  }
+}

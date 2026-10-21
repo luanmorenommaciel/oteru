@@ -1,0 +1,28 @@
+late-event run
+max event_ts in fixture+midnight ~ 2026-10-20 18:40:00; 48h cutoff = 2026-10-18 18:40:00
+
+Inserted:
+  late_within_48h  event_ts=2026-10-19 12:00:00  (inside lookback, must land on 2026-10-19)
+  late_beyond_48h  event_ts=2026-10-18 12:00:00  (outside lookback, counted in audit events_dropped_late)
+
+int_api_request_dedup contains late_within, not late_beyond:
+   ┌─dedup_key───────┬──────────────────────event_ts─┬────day_utc─┬─cost_usd_micros─┐
+1. │ late_within_48h │ 2026-10-19 12:00:00.000000000 │ 2026-10-19 │            3000 │
+   └─────────────────┴───────────────────────────────┴────────────┴─────────────────┘
+
+fct_cost_daily after incremental (Oct 19 should include the +3000 micros late-within):
+   ┌────day_utc─┬─micros─┐
+1. │ 2026-10-19 │ 535950 │
+2. │ 2026-10-20 │ 153000 │
+   └────────────┴────────┘
+
+Latest audit_cost_runs row:
+Row 1:
+──────
+run_id:                40751dec-c662-41bc-adc6-06bff4d2f4f6
+rows_processed:        11
+events_dropped_late:   1
+rows_empty_request_id: 1
+max_event_ts_read:     2026-10-20 18:40:00.000000000
+
+Assertion: late_within lands on 2026-10-19; late_beyond is absent from int and counted in events_dropped_late (>=1).

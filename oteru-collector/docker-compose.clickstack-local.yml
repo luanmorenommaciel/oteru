@@ -14,12 +14,15 @@
 services:
   oteru-collector:
     volumes:
-      - ./oteru-collector-config.clickstack-local.yml:/etc/oteru-collector-config.yml
+      - ./oteru-collector-config.clickstack-local.yml:/etc/oteru-collector-config.yml:ro
       - ./telemetry:/telemetry
     environment:
       HYPERDX_API_KEY: ${HYPERDX_API_KEY:-}
     depends_on:
-      - hyperdx
+      privacy-policy:
+        condition: service_completed_successfully
+      hyperdx:
+        condition: service_started
 
   hyperdx:
     image: docker.hyperdx.io/hyperdx/hyperdx-all-in-one

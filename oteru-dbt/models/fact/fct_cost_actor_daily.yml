@@ -1,0 +1,47 @@
+version: 2
+
+models:
+  - name: fct_cost_actor_daily
+    description: "Daily cost aggregates by actor. Grain: day_utc × actor_id. Incremental with 48h lookback, ReplacingMergeTree, delete+insert strategy. TTL: day_utc + INTERVAL 90 DAY (provisional, pending Vinícius)."
+    config:
+      materialized: incremental
+      engine: ReplacingMergeTree()
+      order_by: (day_utc, actor_id)
+      unique_key: [day_utc, actor_id]
+      incremental_strategy: delete+insert
+      ttl: "day_utc + INTERVAL 90 DAY"
+    columns:
+      - name: day_utc
+        description: "Date in UTC (from event_ts)"
+        tests:
+          - not_null
+      - name: actor_id
+        description: "Pseudonymized actor identifier"
+        tests:
+          - not_null
+      - name: cost_usd_micros
+        description: "Total cost in USD micros"
+        tests:
+          - not_null
+      - name: cost_usd
+        description: "Total cost in USD (cost_usd_micros / 1e6)"
+      - name: requests
+        description: "Number of distinct requests"
+        tests:
+          - not_null
+      - name: input_tokens
+        description: "Total input tokens"
+        tests:
+          - not_null
+      - name: output_tokens
+        description: "Total output tokens"
+        tests:
+          - not_null
+      - name: cache_read_tokens
+        description: "Total cache read tokens"
+        tests:
+          - not_null
+      - name: cache_creation_tokens
+        description: "Total cache creation tokens"
+        tests:
+          - not_null

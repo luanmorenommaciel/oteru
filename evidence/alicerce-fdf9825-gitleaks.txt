@@ -1,0 +1,16 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+utc: 2026-10-20T22:58:45Z
+command: gitleaks detect --source . --verbose --redact --log-opts=--all
+
+
+    ○
+    │╲
+    │ ○
+    ○ ░
+    ░    gitleaks
+
+10:54PM INF 134 commits scanned.
+10:54PM INF scanned ~5323710 bytes (5.32 MB) in 691ms
+10:54PM INF no leaks found

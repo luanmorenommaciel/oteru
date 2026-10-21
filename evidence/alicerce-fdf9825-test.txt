@@ -1,0 +1,23 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+utc: 2026-10-20T22:58:45Z
+command: make test
+
+cd oteru-emitter && .venv/bin/python -m pytest
+........................................................................ [ 30%]
+........................................................................ [ 60%]
+........................................................................ [ 90%]
+......................                                                   [100%]
+238 passed in 1.65s
+make --no-print-directory test-hooks
+cd oteru-emitter && .venv/bin/python -m pytest ../oteru-hooks/tests
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0
+rootdir: /workspace
+collected 36 items
+
+../oteru-hooks/tests/test_oteru_hook.py ................................ [ 88%]
+....                                                                     [100%]
+
+============================== 36 passed in 0.11s ==============================

@@ -1,0 +1,26 @@
+late-event run
+max event_ts in fixture+midnight; 48h cutoff from int.event_ts
+Inserted late_within_48h event_ts=2026-10-19 12:00:00 (must land)
+Inserted late_beyond_48h event_ts=2026-10-18 12:00:00 (must NOT land in int; audit events_dropped_late)
+
+int_api_request_dedup late keys:
+   ┌─dedup_key───────┬──────────────────────event_ts─┬────day_utc─┬─cost_usd_micros─┐
+1. │ late_within_48h │ 2026-10-19 12:00:00.000000000 │ 2026-10-19 │            3000 │
+   └─────────────────┴───────────────────────────────┴────────────┴─────────────────┘
+
+fct_cost_daily after incremental:
+   ┌────day_utc─┬─micros─┐
+1. │ 2026-10-19 │ 535950 │
+2. │ 2026-10-20 │ 153000 │
+   └────────────┴────────┘
+
+Latest audit_cost_runs row:
+Row 1:
+──────
+run_id:                50e97546-07e1-4660-9cb4-e7647e0c91dc
+dbt_command:           run
+duration_seconds:      1
+rows_processed:        11
+events_dropped_late:   1
+rows_empty_request_id: 1
+max_event_ts_read:     2026-10-20 18:40:00.000000000

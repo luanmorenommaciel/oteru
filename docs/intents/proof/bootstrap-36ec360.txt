@@ -1,0 +1,10 @@
+tested_sha: 36ec3608c7eed47d4330f617579ea5af7d9ede99
+utc: 2026-10-21T21:35:31Z
+OTERU_BUDGET_DEFINER_PASSWORD definida no ambiente: sim (valor nunca impresso)
+== bootstrap_budget_roles.sh --require (http://localhost:18125/)
+bootstrap_budget_roles: OK
+== bootstrap_budget_roles.sh --require (http://localhost:18126/)
+bootstrap_budget_roles: OK
+== SHOW USERS/ROLES
+oteru_budget_view_definer	['sha256_password']
+oteru_budget_alerts_reader

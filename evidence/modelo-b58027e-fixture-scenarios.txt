@@ -1,0 +1,103 @@
+tested_sha: b58027e614ff458af9ba7bf36b1ddfd11cd6021b
+utc: 2026-10-21T15:07:12Z
+clickhouse: 26.11.1.333
+-----
+### Cenário A: service_map vazio (sem actor_map) — incremental sobre o cenário padrão (troca de seed na janela)
+[0m15:07:19  Done. PASS=113 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=113
+exit=0
+   ┌────day_utc─┬─chargeback_micros─┬─daily_micros─┬─diff_micros─┬─chargeback_requests─┬─daily_requests─┐
+1. │ 2026-10-19 │            531950 │       531950 │           0 │                   6 │              6 │
+2. │ 2026-10-20 │            151000 │       151000 │           0 │                   2 │              2 │
+   └────────────┴───────────────────┴──────────────┴─────────────┴─────────────────────┴────────────────┘
+   ┌─t─────┬─chargeback─┬──daily─┬─diff─┐
+1. │ TOTAL │     682950 │ 682950 │    0 │
+   └───────┴────────────┴────────┴──────┘
+   ┌────day_utc─┬─team───────┬─project────┬─owner_team─┬─attribution_source─┬─cost_usd_micros─┬─requests─┐
+1. │ 2026-10-19 │ unassigned │ unassigned │ unassigned │ unassigned         │          531950 │        6 │
+2. │ 2026-10-20 │ unassigned │ unassigned │ unassigned │ unassigned         │          151000 │        2 │
+   └────────────┴────────────┴────────────┴────────────┴────────────────────┴─────────────────┴──────────┘
+   ┌────day_utc─┬─team───────┬─project────┬─actor_id─────────────────────────────────────────────────────────────────┬─cost_usd_micros─┬─requests─┐
+1. │ 2026-10-19 │ unassigned │ unassigned │ hmac:v1:c71cc8fe3782f8d0510586af964334b6930f817fc79bfb460c764f6be9f5d598 │          251500 │        2 │
+2. │ 2026-10-19 │ unassigned │ unassigned │ hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14 │          280450 │        4 │
+3. │ 2026-10-20 │ unassigned │ unassigned │ hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14 │          151000 │        2 │
+   └────────────┴────────────┴────────────┴──────────────────────────────────────────────────────────────────────────┴─────────────────┴──────────┘
+
+### Cenário B: service_map vazio + actor_map populado (pseudônimo de teste)
+[0m15:07:29  108 of 112 START test test_chargeback_daily_no_actor_map ....................... [RUN]
+[0m15:07:29  108 of 112 PASS test_chargeback_daily_no_actor_map ............................. [[32mPASS[0m in 0.01s]
+[0m15:07:29  Done. PASS=113 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=113
+exit=0
+   ┌────day_utc─┬─chargeback_micros─┬─daily_micros─┬─diff_micros─┬─chargeback_requests─┬─daily_requests─┐
+1. │ 2026-10-19 │            531950 │       531950 │           0 │                   6 │              6 │
+2. │ 2026-10-20 │            151000 │       151000 │           0 │                   2 │              2 │
+   └────────────┴───────────────────┴──────────────┴─────────────┴─────────────────────┴────────────────┘
+   ┌─t─────┬─chargeback─┬──daily─┬─diff─┐
+1. │ TOTAL │     682950 │ 682950 │    0 │
+   └───────┴────────────┴────────┴──────┘
+   ┌────day_utc─┬─team───────┬─project────┬─owner_team─┬─attribution_source─┬─cost_usd_micros─┬─requests─┐
+1. │ 2026-10-19 │ unassigned │ unassigned │ unassigned │ unassigned         │          531950 │        6 │
+2. │ 2026-10-20 │ unassigned │ unassigned │ unassigned │ unassigned         │          151000 │        2 │
+   └────────────┴────────────┴────────────┴────────────┴────────────────────┴─────────────────┴──────────┘
+   ┌────day_utc─┬─team─────────┬─project─────────┬─actor_id─────────────────────────────────────────────────────────────────┬─cost_usd_micros─┬─requests─┐
+1. │ 2026-10-19 │ time-fixture │ projeto-fixture │ hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14 │          280450 │        4 │
+2. │ 2026-10-19 │ unassigned   │ unassigned      │ hmac:v1:c71cc8fe3782f8d0510586af964334b6930f817fc79bfb460c764f6be9f5d598 │          251500 │        2 │
+3. │ 2026-10-20 │ time-fixture │ projeto-fixture │ hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14 │          151000 │        2 │
+   └────────────┴──────────────┴─────────────────┴──────────────────────────────────────────────────────────────────────────┴─────────────────┴──────────┘
+linhas actor_map no permanente: 0
+atribuição em int_cost_attributed:
+   ┌─attribution_source─┬─team─────────┬─count()─┬─sum(cost_usd_micros)─┐
+1. │ actor_map          │ time-fixture │       6 │               431450 │
+2. │ unassigned         │ unassigned   │       2 │               251500 │
+   └────────────────────┴──────────────┴─────────┴──────────────────────┘
+
+### Cenário C: actor_map com hmac:v2: (warn padrão)
+[0m15:07:36  26 of 112 START test test_chargeback_actor_map_hmac_version .................... [RUN]
+[0m15:07:36  26 of 112 WARN 1 test_chargeback_actor_map_hmac_version ........................ [[33mWARN 1[0m in 0.01s]
+[0m15:07:38  75 of 112 START test accepted_values_audit_cost_runs_chargeback_metric_name__actor_map_hmac_version_mismatch_rows__unassigned_share_by_source  [RUN]
+[0m15:07:38  75 of 112 PASS accepted_values_audit_cost_runs_chargeback_metric_name__actor_map_hmac_version_mismatch_rows__unassigned_share_by_source  [[32mPASS[0m in 0.02s]
+[0m15:07:38  [[33mWARNING[0m]: in test test_chargeback_actor_map_hmac_version (tests/singular/chargeback/test_chargeback_actor_map_hmac_version.sql)
+[0m15:07:38    compiled code at target/compiled/oteru_dbt/tests/singular/chargeback/test_chargeback_actor_map_hmac_version.sql
+[0m15:07:38  Done. PASS=112 WARN=1 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=113
+exit=0
+audit (último run):
+   ┌─run_id───────────────────────────────┬─metric_name──────────────────────────┬────day_utc─┬─attribution_source─┬──────metric_value─┐
+1. │ b21fb605-8e2b-4320-8961-82189a8fa761 │ actor_map_hmac_version_mismatch_rows │ 2026-10-21 │                    │                 1 │
+2. │ b21fb605-8e2b-4320-8961-82189a8fa761 │ unassigned_share_by_source           │ 2026-10-19 │ actor_map          │ 0.527211204060532 │
+3. │ b21fb605-8e2b-4320-8961-82189a8fa761 │ unassigned_share_by_source           │ 2026-10-19 │ otel_attr          │                 0 │
+4. │ b21fb605-8e2b-4320-8961-82189a8fa761 │ unassigned_share_by_source           │ 2026-10-19 │ service_map        │                 0 │
+5. │ b21fb605-8e2b-4320-8961-82189a8fa761 │ unassigned_share_by_source           │ 2026-10-19 │ unassigned         │ 0.472788795939468 │
+6. │ b21fb605-8e2b-4320-8961-82189a8fa761 │ unassigned_share_by_source           │ 2026-10-20 │ actor_map          │                 1 │
+7. │ b21fb605-8e2b-4320-8961-82189a8fa761 │ unassigned_share_by_source           │ 2026-10-20 │ otel_attr          │                 0 │
+8. │ b21fb605-8e2b-4320-8961-82189a8fa761 │ unassigned_share_by_source           │ 2026-10-20 │ service_map        │                 0 │
+9. │ b21fb605-8e2b-4320-8961-82189a8fa761 │ unassigned_share_by_source           │ 2026-10-20 │ unassigned         │                 0 │
+   └──────────────────────────────────────┴──────────────────────────────────────┴────────────┴────────────────────┴───────────────────┘
+
+### Cenário C estrito: chargeback_strict_hmac_version=true (deve dar ERROR)
+== dbt build --vars {chargeback_fixtures: true, chargeback_service_map_seed: chargeback_service_map_fixture_empty, chargeback_strict_hmac_version: true, chargeback_actor_map_seed: chargeback_actor_map_fixture_v2}
+[0m15:07:45  26 of 112 START test test_chargeback_actor_map_hmac_version .................... [RUN]
+[0m15:07:45  26 of 112 FAIL 1 test_chargeback_actor_map_hmac_version ........................ [[31mFAIL 1[0m in 0.01s]
+[0m15:07:46  75 of 112 SKIP test accepted_values_audit_cost_runs_chargeback_metric_name__actor_map_hmac_version_mismatch_rows__unassigned_share_by_source  [[33mSKIP[0m]
+[0m15:07:46  [[31mERROR[0m]: in test test_chargeback_actor_map_hmac_version (tests/singular/chargeback/test_chargeback_actor_map_hmac_version.sql)
+[0m15:07:46    compiled code at target/compiled/oteru_dbt/tests/singular/chargeback/test_chargeback_actor_map_hmac_version.sql
+[0m15:07:46  Done. PASS=54 WARN=0 ERROR=1 SKIP=58 NO-OP=0 REUSED=0 TOTAL=113
+exit=1
+
+### Volta ao padrão
+[0m15:07:55  Done. PASS=106 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=106
+exit=0
+   ┌────day_utc─┬─chargeback_micros─┬─daily_micros─┬─diff_micros─┬─chargeback_requests─┬─daily_requests─┐
+1. │ 2026-10-19 │            531950 │       531950 │           0 │                   6 │              6 │
+2. │ 2026-10-20 │            151000 │       151000 │           0 │                   2 │              2 │
+   └────────────┴───────────────────┴──────────────┴─────────────┴─────────────────────┴────────────────┘
+   ┌─t─────┬─chargeback─┬──daily─┬─diff─┐
+1. │ TOTAL │     682950 │ 682950 │    0 │
+   └───────┴────────────┴────────┴──────┘
+   ┌────day_utc─┬─team───────┬─project─┬─owner_team─┬─attribution_source─┬─cost_usd_micros─┬─requests─┐
+1. │ 2026-10-19 │ plataforma │ oteru   │ plataforma │ service_map        │          531950 │        6 │
+2. │ 2026-10-20 │ plataforma │ oteru   │ plataforma │ service_map        │          151000 │        2 │
+   └────────────┴────────────┴─────────┴────────────┴────────────────────┴─────────────────┴──────────┘
+   ┌────day_utc─┬─team───────┬─project─┬─actor_id─────────────────────────────────────────────────────────────────┬─cost_usd_micros─┬─requests─┐
+1. │ 2026-10-19 │ plataforma │ oteru   │ hmac:v1:c71cc8fe3782f8d0510586af964334b6930f817fc79bfb460c764f6be9f5d598 │          251500 │        2 │
+2. │ 2026-10-19 │ plataforma │ oteru   │ hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14 │          280450 │        4 │
+3. │ 2026-10-20 │ plataforma │ oteru   │ hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14 │          151000 │        2 │
+   └────────────┴────────────┴─────────┴──────────────────────────────────────────────────────────────────────────┴─────────────────┴──────────┘

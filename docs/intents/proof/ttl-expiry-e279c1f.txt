@@ -1,0 +1,5 @@
+short-TTL expiry: actor rows expire, fct_cost_daily total unchanged
+before: daily=688950 actor=688950
+actor truncated (TTL expiry stand-in)
+after:  daily=688950 actor=0
+PASS: permanent fct_cost_daily total unchanged (688950 micros)

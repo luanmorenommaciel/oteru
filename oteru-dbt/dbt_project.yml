@@ -1,0 +1,45 @@
+name: 'oteru_dbt'
+version: '1.0.0'
+config-version: 2
+
+profile: 'oteru'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+vars:
+  cost_lookback_hours: 48
+  actor_cost_ttl_days: 90
+  # #48 budget: is_stale quando as_of_ts > N horas (fail-open); hourly = fase 2
+  budget_stale_hours_daily: 26
+  budget_stale_hours_hourly: 2
+  # #48 S5: definer da view budget_status_current (usuário criado fora do dbt, §7.1)
+  budget_view_definer: oteru_budget_view_definer
+
+models:
+  oteru_dbt:
+    intermediate:
+      +materialized: incremental
+      +engine: MergeTree()
+      +order_by: (event_ts, dedup_key)
+      +settings:
+        allow_nullable_key: 1
+    fact:
+      +materialized: incremental
+      +engine: ReplacingMergeTree()
+      +incremental_strategy: delete+insert
+    
+seeds:
+  oteru_dbt:
+    +quote_columns: false
+    
+on-run-end:
+  - "{{ log_run_audit() }}"
+  - "{{ log_budget_audit(results) }}"

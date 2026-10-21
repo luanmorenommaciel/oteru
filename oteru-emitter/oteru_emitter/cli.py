@@ -10,16 +10,26 @@ Examples:
     oteru-emitter replay telemetry.json --no-restamp --transport http
     oteru-emitter replay telemetry.json --emit log,metric   # only these signals
     oteru-emitter replay traces.json --emit trace           # traces alone
+
+``forge`` subcommand: builds a traces capture from a hand-written spec, for
+``replay`` to send (data bootstrap, #43):
+    oteru-emitter forge samples/manual-trace.spec.json -o run.json
+
+``check`` subcommand: does a capture meet the Minimum Integration Surface
+(docs/integration-surface.md, #22)?
+    oteru-emitter check capture.json --strict
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections import Counter
 
 from . import __version__
-from .profiles import get_profile, list_profiles
+from .profiles import get_profile, list_profiles, profile_for_service
+from .resource_attrs import apply_chargeback_resource_attributes
 from .rewrite.restamp import restamp
 from .scheduler.realtime import run_realtime
 from .sources.replay import (
@@ -27,10 +37,33 @@ from .sources.replay import (
     SIGNAL_BY_CLI_NAME,
     Batch,
     iter_scope_names,
+    iter_service_names,
     load_batches,
     select_signals,
 )
 from .transport.base import DEFAULT_GRPC_ENDPOINT, DEFAULT_HTTP_ENDPOINT
+
+AUTO_PROFILE = "auto"
+
+
+def resolve_auto_profiles(
+    batches: list[Batch],
+) -> tuple[tuple[str, ...], frozenset[str], list[str]]:
+    """--profile auto: per service.name in the capture, the profile claiming it.
+
+    Returns the union of the detected profiles' rotate keys, the union of
+    their known scopes, and the service names no profile claims. Unioning is
+    safe because no profile rotates a key any profile preserves (asserted in
+    tests/test_emitter_profiles.py). Unclaimed services get no attribute
+    rotation — only the structural IDs and timestamps every replay rewrites.
+    """
+    services = sorted({name for b in batches for name in iter_service_names(b)})
+    detected = {name: profile_for_service(name) for name in services}
+    profiles = sorted({p.name: p for p in detected.values() if p}.values(), key=lambda p: p.name)
+    rotate = tuple(sorted({k for p in profiles for k in p.rotate_id_keys}))
+    scopes = frozenset(s for p in profiles for s in p.known_scopes)
+    unknown = [name for name, p in detected.items() if p is None]
+    return rotate, scopes, unknown
 
 
 def _event_names(batch: Batch) -> list[str]:
@@ -114,7 +147,7 @@ def _build_transport(args):
 
 
 def cmd_replay(args) -> int:
-    profile = get_profile(args.profile)
+    profile = None if args.profile == AUTO_PROFILE else get_profile(args.profile)
     try:
         batches = load_batches(args.file)
     except OSError as exc:
@@ -123,6 +156,9 @@ def cmd_replay(args) -> int:
     if not batches:
         print("no OTLP batches found in the file.", file=sys.stderr)
         return 1
+
+    for batch in batches:
+        apply_chargeback_resource_attributes(batch.payload)
 
     # --emit is a selection over what the capture holds, applied before --limit
     # so that `--emit metric --limit 5` yields 5 metric batches, not the metric
@@ -149,11 +185,32 @@ def cmd_replay(args) -> int:
     # A scope the profile does not recognise usually means the upstream tool
     # renamed or added one. Warn, never fail: a new scope is information, not a
     # broken capture — and replay stays faithful either way.
-    if profile.known_scopes:
-        unknown = sorted({n for b in batches for n in iter_scope_names(b)} - profile.known_scopes)
+    if profile is None:
+        auto_rotate, known_scopes, unclaimed = resolve_auto_profiles(batches)
+        detected = sorted(
+            {
+                p.name
+                for b in batches
+                for n in iter_service_names(b)
+                if (p := profile_for_service(n)) is not None
+            }
+        )
+        profile_label = f"auto ({', '.join(detected) or 'no known tool'})"
+        for name in unclaimed:
+            print(
+                f"warning: no profile claims service.name '{name}' — replayed literally "
+                "(only trace/span IDs and timestamps rewritten). Add one in profiles/base.py.",
+                file=sys.stderr,
+            )
+    else:
+        auto_rotate, known_scopes = (), profile.known_scopes
+        profile_label = f"{profile.name} ({profile.description})"
+
+    if known_scopes:
+        unknown = sorted({n for b in batches for n in iter_scope_names(b)} - known_scopes)
         if unknown:
             print(
-                f"warning: scope(s) unknown to profile '{profile.name}': "
+                f"warning: scope(s) unknown to profile '{args.profile}': "
                 f"{', '.join(unknown)}. Queries filtering on ScopeName may return "
                 f"nothing without erroring — check profiles/base.py.",
                 file=sys.stderr,
@@ -162,7 +219,10 @@ def cmd_replay(args) -> int:
     if args.limit:
         batches = batches[: args.limit]
 
-    rotate_keys = () if args.no_restamp else profile.rotate_id_keys
+    if args.no_restamp:
+        rotate_keys = ()
+    else:
+        rotate_keys = auto_rotate if profile is None else profile.rotate_id_keys
     offset_ns = restamp(
         batches,
         shift_time=not args.no_restamp,
@@ -173,7 +233,7 @@ def cmd_replay(args) -> int:
 
     print(f"oteru-emitter {__version__} — replay")
     print(f"  file:      {args.file}")
-    print(f"  profile:   {profile.name} ({profile.description})")
+    print(f"  profile:   {profile_label}")
     print(
         "  emit:      "
         + (",".join(_cli_names(selected)) if selected else "all signals in the capture")
@@ -232,6 +292,59 @@ def cmd_replay(args) -> int:
     return 0 if total_fail == 0 else 1
 
 
+def cmd_forge(args) -> int:
+    from .sources.manual import SpecError, forge, load_spec
+
+    try:
+        spec = load_spec(args.spec)
+    except (OSError, ValueError) as exc:  # JSONDecodeError is a ValueError
+        print(f"error: could not read spec '{args.spec}': {exc}", file=sys.stderr)
+        return 1
+    try:
+        batches = forge(spec, seed=args.seed)
+    except SpecError as exc:
+        print(f"error: invalid spec '{args.spec}': {exc}", file=sys.stderr)
+        return 1
+
+    text = "".join(json.dumps(batch) + "\n" for batch in batches)
+    spans = sum(len(ss["spans"]) for b in batches for ss in b["resourceSpans"][0]["scopeSpans"])
+    if args.output == "-":
+        sys.stdout.write(text)
+        print(f"forged {len(batches)} trace(s), {spans} span(s)", file=sys.stderr)
+    else:
+        with open(args.output, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        print(f"forged {len(batches)} trace(s), {spans} span(s) -> {args.output}")
+    return 0
+
+
+def cmd_check(args) -> int:
+    from .surface import check_payloads
+
+    try:
+        batches = load_batches(args.file)
+    except OSError as exc:
+        print(f"error: could not read '{args.file}': {exc}", file=sys.stderr)
+        return 1
+    report = check_payloads([b.payload for b in batches])
+
+    for finding in report.findings:
+        print(f"  {finding.level:<7} {finding.span}: {finding.attribute} — {finding.message}")
+    print(
+        f"  {report.on_surface} span(s) on the surface, {report.outside} outside; "
+        f"{len(report.errors)} error(s), {len(report.warnings)} warning(s)"
+    )
+    if report.on_surface == 0:
+        print(
+            "  no span on the integration surface (needs gen_ai.operation.name or "
+            "mcp.method.name) — see docs/integration-surface.md"
+        )
+        return 1
+    if report.errors or (args.strict and report.warnings):
+        return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="oteru-emitter",
@@ -256,9 +369,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     r.add_argument(
         "--profile",
-        choices=list_profiles(),
+        choices=[*list_profiles(), AUTO_PROFILE],
         default="claude_code",
-        help="emitter profile (defines which IDs to rotate). Default: claude_code",
+        help="emitter profile (defines which IDs to rotate). 'auto' picks one per "
+        "service.name in the capture — use it for mixed collector captures. "
+        "Default: claude_code",
     )
     r.add_argument(
         "--emit",
@@ -300,6 +415,28 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--timeout", type=float, default=30.0, help="network timeout (s)")
     r.add_argument("--dry-run", action="store_true", help="validate and summarize only; no send")
     r.set_defaults(func=cmd_replay)
+
+    f = sub.add_parser(
+        "forge",
+        help="builds an OTLP traces capture from a hand-written spec (feed it to replay)",
+    )
+    f.add_argument("spec", help="JSON spec: spans with id/name/parent/start_ms/duration_ms")
+    f.add_argument(
+        "-o",
+        "--output",
+        default="-",
+        help="capture file to write (one OTLP/JSON batch per line). Default: stdout",
+    )
+    f.add_argument("--seed", type=int, default=None, help="seed for trace/span IDs (reproducible)")
+    f.set_defaults(func=cmd_forge)
+
+    c = sub.add_parser(
+        "check",
+        help="checks a capture's spans against the Minimum Integration Surface (#22)",
+    )
+    c.add_argument("file", help="capture file (one OTLP/JSON batch per line)")
+    c.add_argument("--strict", action="store_true", help="fail on warnings too")
+    c.set_defaults(func=cmd_check)
     return parser
 
 

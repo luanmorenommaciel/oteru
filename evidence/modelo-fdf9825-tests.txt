@@ -1,0 +1,38 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+clickhouse_version: 26.11.1.333
+dbt --version:
+Core:
+  - installed: 1.12.6
+  - latest:    1.12.6 - Up to date!
+
+Plugins:
+  - clickhouse: 1.10.3 - Up to date!
+
+
+22:51:03  dbt v2 is available, and is the default for new installations. This is dbt Core v1.
+          New project - install v2: https://docs.getdbt.com/docs/local/install-dbt?utm_source=dbt-cli
+          Existing v1 project - upgrade guide: https://docs.getdbt.com/docs/dbt-versions/dbt-upgrade/upgrading-to-v2?utm_source=dbt-cli
+utc_timestamp: 2026-10-20T22:51:03Z
+-----
+== singular test results from incremental dbt build log
+22:50:26  12 of 34 START test test_no_pii ................................................ [RUN]
+22:50:26  12 of 34 PASS test_no_pii ...................................................... [PASS in 0.01s]
+22:50:27  32 of 34 START test test_actor_daily_equals_daily .............................. [RUN]
+22:50:27  32 of 34 PASS test_actor_daily_equals_daily .................................... [PASS in 0.02s]
+== same from full-refresh log
+22:50:21  12 of 34 START test test_no_pii ................................................ [RUN]
+22:50:21  12 of 34 PASS test_no_pii ...................................................... [PASS in 0.01s]
+22:50:21  32 of 34 START test test_actor_daily_equals_daily .............................. [RUN]
+22:50:21  32 of 34 PASS test_actor_daily_equals_daily .................................... [PASS in 0.02s]
+### SELECT 'fct_cost_actor_daily' t, count() total, countIf(match(actor_id,'^hmac:v1:[0-9a-f]{64}$')) hmac_match, uniqExact(actor_id) distinct_actors FROM otel.fct_cost_actor_daily FINAL UNION ALL SELECT 'stg_api_request', count(), countIf(match(actor_id,'^hmac:v1:[0-9a-f]{64}$')), uniqExact(actor_id) FROM otel.stg_api_request
+   ┌─t────────────────────┬─total─┬─hmac_match─┬─distinct_actors─┐
+1. │ fct_cost_actor_daily │     3 │          3 │               2 │
+2. │ stg_api_request      │     9 │          9 │               2 │
+   └──────────────────────┴───────┴────────────┴─────────────────┘
+### SELECT 'fct_cost_actor_daily' t, actor_id, count() FROM otel.fct_cost_actor_daily FINAL GROUP BY actor_id UNION ALL SELECT 'stg_api_request', actor_id, count() FROM otel.stg_api_request GROUP BY actor_id ORDER BY 1,2
+   ┌─t────────────────────┬─actor_id─────────────────────────────────────────────────────────────────┬─count()─┐
+1. │ fct_cost_actor_daily │ hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14 │       2 │
+2. │ fct_cost_actor_daily │ hmac:v1:c71cc8fe3782f8d0510586af964334b6930f817fc79bfb460c764f6be9f5d598 │       1 │
+3. │ stg_api_request      │ hmac:v1:c71cc8fe3782f8d0510586af964334b6930f817fc79bfb460c764f6be9f5d598 │       2 │
+4. │ stg_api_request      │ hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14 │       7 │
+   └──────────────────────┴──────────────────────────────────────────────────────────────────────────┴─────────┘

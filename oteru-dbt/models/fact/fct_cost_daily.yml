@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: fct_cost_daily
+    description: "Daily cost aggregates by model family. Grain: day_utc × model_family. Permanent history, NO TTL, NO actor_id. Incremental with 48h lookback, ReplacingMergeTree, delete+insert strategy."
+    config:
+      materialized: incremental
+      engine: ReplacingMergeTree()
+      order_by: (day_utc, model_family)
+      unique_key: [day_utc, model_family]
+      incremental_strategy: delete+insert
+    columns:
+      - name: day_utc
+        description: "Date in UTC (from event_ts)"
+        tests:
+          - not_null
+      - name: model_family
+        description: "Model family (from model_aliases seed, or 'unmapped')"
+        tests:
+          - not_null
+      - name: cost_usd_micros
+        description: "Total cost in USD micros"
+        tests:
+          - not_null
+      - name: cost_usd
+        description: "Total cost in USD (cost_usd_micros / 1e6)"
+      - name: requests
+        description: "Number of distinct requests"
+        tests:
+          - not_null
+      - name: input_tokens
+        description: "Total input tokens"
+        tests:
+          - not_null
+      - name: output_tokens
+        description: "Total output tokens"
+        tests:
+          - not_null
+      - name: cache_read_tokens
+        description: "Total cache read tokens"
+        tests:
+          - not_null
+      - name: cache_creation_tokens
+        description: "Total cache creation tokens"
+        tests:
+          - not_null
