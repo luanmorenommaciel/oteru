@@ -1,6 +1,8 @@
 """Tests for the api_request cost fixture contract."""
 
+import importlib.util
 import json
+import secrets
 from pathlib import Path
 
 # Import expected values
@@ -220,24 +222,20 @@ def test_fixture_cost_sum_pre_dedup():
 
 
 def test_view_pseudonymizes_emails():
-    """Collector writes hmac:v1:<64 hex>; staging view does not re-hash."""
-    import hashlib
-
-    test_email = "user@example.com"
-    expected_input = f"oteru-pii:v1|user.email|{test_email}"
-    expected_hash = hashlib.sha256(expected_input.encode("utf-8")).hexdigest()
-    expected_pseudonym = f"hmac:v1:{expected_hash}"
-
-    assert expected_pseudonym.startswith("hmac:v1:")
-    assert "@" not in expected_pseudonym
-    assert len(expected_pseudonym) == len("hmac:v1:") + 64
-
+    """Collector writes hmac:v1:<64 hex> via HMAC-SHA256; staging does not re-hash."""
+    spec = importlib.util.spec_from_file_location(
+        "hmac_lookup",
+        Path(__file__).resolve().parents[2] / "oteru-collector" / "privacy" / "hmac_lookup.py",
+    )
+    assert spec is not None and spec.loader is not None
+    lookup = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lookup)
+    key = secrets.token_bytes(32)
     for email in ["user@example.com", "test@example.org"]:
-        digest_input = f"oteru-pii:v1|user.email|{email}"
-        hash_hex = hashlib.sha256(digest_input.encode("utf-8")).hexdigest()
-        pseudonym = f"hmac:v1:{hash_hex}"
+        pseudonym = lookup.actor_id(email, key)
         assert "@" not in pseudonym, f"Pseudonym contains @: {pseudonym}"
         assert pseudonym.startswith("hmac:v1:")
+        assert len(pseudonym) == len("hmac:v1:") + 64
 
 
 def test_fixture_cost_sum_post_dedup():

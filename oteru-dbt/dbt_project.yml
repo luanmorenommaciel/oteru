@@ -7,7 +7,11 @@ profile: 'oteru'
 model-paths: ["models"]
 analysis-paths: ["analyses"]
 test-paths: ["tests"]
-seed-paths: ["seeds"]
+# #107: env replaces the gabarito (does not add a second seed-path with the
+# same names). Unset → seeds/ as today. Empty never becomes [""] and never
+# falls back: the sentinel path does not exist, and check_ephemeral_seed_dir
+# raises a clear compiler error.
+seed-paths: ["{{ env_var('OTERU_EPHEMERAL_SEED_DIR', 'seeds') or '__EMPTY_EPHEMERAL_SEED_DIR_REFUSING_FALLBACK__' }}"]
 macro-paths: ["macros"]
 
 clean-targets:
@@ -34,6 +38,43 @@ models:
 seeds:
   oteru_dbt:
     +quote_columns: false
+    # enabled + column_types also live in seeds/_seeds_chargeback.yml; repeated
+    # here so they apply when OTERU_EPHEMERAL_SEED_DIR replaces seeds/ (#107).
+    # Empty fixture CSVs must not be inferred as Int32 (JOIN vs String fails).
+    chargeback_service_map:
+      +column_types:
+        service_name: String
+        team: String
+        project: String
+        owner_team: String
+        valid_from: Date
+    chargeback_actor_map:
+      +column_types:
+        actor_id: String
+        team: String
+        project: String
+    chargeback_service_map_fixture_empty:
+      +enabled: "{{ var('chargeback_fixtures', false) | as_bool }}"
+      +column_types:
+        service_name: String
+        team: String
+        project: String
+        owner_team: String
+        valid_from: Date
+    chargeback_actor_map_fixture:
+      +enabled: "{{ var('chargeback_fixtures', false) | as_bool }}"
+      +column_types:
+        actor_id: String
+        team: String
+        project: String
+    chargeback_actor_map_fixture_v2:
+      +enabled: "{{ var('chargeback_fixtures', false) | as_bool }}"
+      +column_types:
+        actor_id: String
+        team: String
+        project: String
     
+on-run-start:
+  - "{{ check_ephemeral_seed_dir() }}"
 on-run-end:
   - "{{ log_run_audit() }}"
