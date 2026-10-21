@@ -103,7 +103,10 @@ jobs:
           # Source mode (./...) is unchanged; no continue-on-error.
           allowlist='GO-2026-6615 go.opentelemetry.io/otel/sdk/log@v0.20.0
           GO-2026-6508 go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc@v0.20.0
-          GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace@v1.44.0'
+          GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace@v1.44.0
+          GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc@v1.44.0
+          GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.44.0
+          GO-2026-6505 go.opentelemetry.io/otel/sdk@v1.44.0'
           tmp="$(mktemp)"
           set +e
           govulncheck -json ./... >"$tmp"
