@@ -475,20 +475,20 @@ hmac_isolated_checks() {
 
   hmac_run_keyed() {
     local key="$1" outdir="$2" name="$3"
-    local cid http i code
-    cid="$(MSYS_NO_PATHCONV=1 "$CTR" run -d --name "$name" \
+    local http code
+    MSYS_NO_PATHCONV=1 "$CTR" run -d --name "$name" \
       -e "OTERU_PII_HMAC_KEY=$key" \
       -p 127.0.0.1::4318 \
       -v "$(host_path "$HMAC_DIR/config.yml"):/etc/oteru-collector-config.yml:ro" \
       -v "$(host_path "$HMAC_DIR/privacy"):/etc/oteru-privacy:ro" \
       -v "$(host_path "$outdir"):/telemetry" \
-      "$HMAC_IMAGE" --config=/etc/oteru-collector-config.yml)" || {
+      "$HMAC_IMAGE" --config=/etc/oteru-collector-config.yml >/dev/null || {
       fail "HMAC keyed run: $CTR run $name failed"
       return 1
     }
     http="http://127.0.0.1:$("$CTR" port "$name" 4318/tcp | head -1 | awk -F: '{print $NF}')"
     code=""
-    for i in $(seq 1 50); do
+    for _ in $(seq 1 50); do
       code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$http/v1/logs" \
         -H 'content-type: application/json' --data '{}' || true)"
       if [ "$code" = "200" ]; then
