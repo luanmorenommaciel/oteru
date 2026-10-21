@@ -1,0 +1,65 @@
+version: 2
+
+# Seeds de chargeback (#46, fase 1). Chaves permitidas: service_name (não-PII)
+# e actor_id pseudonimizado (hmac:vN:<64 hex>). Nunca e-mail, nome ou login,
+# nem em comentários.
+seeds:
+  - name: chargeback_service_map
+    description: "Mapeamento declarado service_name → time/projeto/owner_team (caminho principal da fase 1). owner_team é um time, nunca uma pessoa. valid_from reservado (sem versionamento temporal na fase 1)."
+    config:
+      column_types:
+        service_name: String
+        team: String
+        project: String
+        owner_team: String
+        valid_from: Date
+    columns:
+      - name: service_name
+        data_tests: [unique, not_null]
+      - name: team
+        data_tests: [not_null]
+      - name: project
+        data_tests: [not_null]
+      - name: owner_team
+        data_tests: [not_null]
+      - name: valid_from
+        data_tests: [not_null]
+
+  - name: chargeback_actor_map
+    description: "Exceção: actor_id HMAC (hmac:v1:<64 hex>) → time/projeto. Fica só com header até existir a ferramenta self-hmac (fase 2, Duto). Pseudônimo = dado pessoal: revisão da Sentinela obrigatória."
+    config:
+      column_types:
+        actor_id: String
+        team: String
+        project: String
+    columns:
+      - name: actor_id
+        data_tests: [unique, not_null]
+      - name: team
+        data_tests: [not_null]
+      - name: project
+        data_tests: [not_null]
+
+  # --- Fixtures de teste (#46): desligadas por padrão; só carregam com
+  # --vars '{chargeback_fixtures: true}'. Nunca são lidas em produção.
+  - name: chargeback_service_map_fixture_empty
+    description: "Fixture: service_map vazio (cenário 100% unassigned / actor_map)."
+    config:
+      enabled: "{{ var('chargeback_fixtures', false) | as_bool }}"
+      column_types: {service_name: String, team: String, project: String, owner_team: String, valid_from: Date}
+  - name: chargeback_actor_map_fixture
+    description: "Fixture: actor_map populado com pseudônimo de teste (derivado do e-mail de fixture com chave de teste)."
+    config:
+      enabled: "{{ var('chargeback_fixtures', false) | as_bool }}"
+      column_types: {actor_id: String, team: String, project: String}
+    columns:
+      - name: actor_id
+        data_tests: [unique, not_null]
+  - name: chargeback_actor_map_fixture_v2
+    description: "Fixture: actor_map com uma linha hmac:v2: (simula rotação de chave)."
+    config:
+      enabled: "{{ var('chargeback_fixtures', false) | as_bool }}"
+      column_types: {actor_id: String, team: String, project: String}
+    columns:
+      - name: actor_id
+        data_tests: [unique, not_null]
