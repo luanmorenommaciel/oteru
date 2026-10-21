@@ -1,0 +1,60 @@
+tested_sha: dc881f89a494a0f91ea188425c9d619052eade8c
+utc: 2026-10-21T13:22:13Z
+cwd: oteru-collector/_build
+command: govulncheck -json ./...  + exact ID+module@version filter
+allowlist:
+  GO-2026-6615 go.opentelemetry.io/otel/sdk/log@v0.20.0
+  GO-2026-6508 go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc@v0.20.0
+  GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace@v1.44.0
+docs: docs/intents/proof/ocb-vulns.md
+compose: docker compose config --quiet  (oteru-collector/; rc=0; no resolved config printed)
+
+== govulncheck -version ==
+Go: go1.26.10
+Scanner: govulncheck@v1.1.4
+DB: https://vuln.go.dev
+DB updated: 2026-10-21 00:27:29 +0000 UTC
+
+== raw findings (text source ./...; rc=3) ==
+Vulnerability #1: GO-2026-6615
+  Module: go.opentelemetry.io/otel/sdk/log
+    Found in: go.opentelemetry.io/otel/sdk/log@v0.20.0
+    Fixed in: go.opentelemetry.io/otel/sdk/log@v0.21.0
+Vulnerability #2: GO-2026-6508
+  Module: go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc
+    Found in: go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc@v0.20.0
+    Fixed in: go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc@v0.21.0
+Vulnerability #3: GO-2026-6505
+  Module: go.opentelemetry.io/otel/exporters/otlp/otlptrace
+    Found in: go.opentelemetry.io/otel/exporters/otlp/otlptrace@v1.44.0
+    Fixed in: go.opentelemetry.io/otel/exporters/otlp/otlptrace@v1.45.0
+  Module: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
+    Found in: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc@v1.44.0
+    Fixed in: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc@v1.45.0
+  Module: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
+    Found in: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.44.0
+    Fixed in: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.45.0
+  Module: go.opentelemetry.io/otel/sdk
+    Found in: go.opentelemetry.io/otel/sdk@v1.44.0
+    Fixed in: go.opentelemetry.io/otel/sdk@v1.45.0
+Your code is affected by 3 vulnerabilities from 3 modules.
+
+== called pairs (govulncheck -json; called = trace has package/function) ==
+GO-2026-6615 go.opentelemetry.io/otel/sdk/log@v0.20.0
+GO-2026-6508 go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc@v0.20.0
+GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace@v1.44.0
+GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc@v1.44.0
+GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.44.0
+GO-2026-6505 go.opentelemetry.io/otel/sdk@v1.44.0
+
+== filter result (3-pair allowlist) ==
+unexpected:
+  GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc@v1.44.0
+  GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.44.0
+  GO-2026-6505 go.opentelemetry.io/otel/sdk@v1.44.0
+step_rc: 3  (same as govulncheck text; allowlist not loosened)
+
+== filter result (same allowlist + fake extra ID GO-2026-9999 example.com/fake@v0.0.1) ==
+unexpected also includes:
+  GO-2026-9999 example.com/fake@v0.0.1
+step_rc: 3

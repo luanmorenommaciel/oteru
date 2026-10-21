@@ -97,7 +97,49 @@ jobs:
         working-directory: oteru-collector/_build
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
-          govulncheck ./...
+          # Documented remainder: docs/intents/proof/ocb-vulns.md
+          # Exact ID + module@version. A new ID, or the same ID on a
+          # different module or version, fails with govulncheck's original rc.
+          # Source mode (./...) is unchanged; no continue-on-error.
+          allowlist='GO-2026-6615 go.opentelemetry.io/otel/sdk/log@v0.20.0
+          GO-2026-6508 go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc@v0.20.0
+          GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace@v1.44.0'
+          tmp="$(mktemp)"
+          set +e
+          govulncheck -json ./... >"$tmp"
+          rc=$?
+          set -e
+          unexpected="$(jq -nr --arg allow "$allowlist" '
+            ($allow | split("\n") | map(gsub("^\\s+|\\s+$";"")) | map(select(length>0))) as $ok
+            | [inputs
+               | .finding
+               | select(.)
+               | select(any(.trace[]?; .package or .function))
+               | "\(.osv) \(.trace[0].module)@\(.trace[0].version)"
+              ]
+            | unique
+            | map(select(. as $p | $ok | index($p) | not))
+            | .[]
+          ' <"$tmp")"
+          if [ -n "$unexpected" ]; then
+            echo "govulncheck findings not on the documented allowlist:"
+            echo "$unexpected"
+            echo "See docs/intents/proof/ocb-vulns.md"
+            if [ "$rc" -eq 0 ]; then
+              # -json exits 0 even with findings; text source mode exits 3.
+              set +e
+              govulncheck ./...
+              rc=$?
+              set -e
+              [ "$rc" -ne 0 ] || rc=3
+            fi
+            exit "$rc"
+          fi
+          if [ "$rc" -ne 0 ]; then
+            echo "govulncheck -json failed with $rc"
+            exit "$rc"
+          fi
+          echo "govulncheck: called findings match docs/intents/proof/ocb-vulns.md"
 
       - name: SBOM (syft)
         uses: anchore/sbom-action@f8bdd1d8ac5e901a77a92f111440fdb1b593736b # v0.20.6
