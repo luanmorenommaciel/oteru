@@ -1,0 +1,7 @@
+tested_sha: 913ca7e412203e5759111f1ede973fbcfdd3a814
+clickhouse_version: 26.9.23.15
+utc: 2026-10-21T04:52:05Z
+command: make views
+
+  view applied: oteru-collector/clickhouse/views/mcp_calls.sql
+  view applied: oteru-collector/clickhouse/views/stg_api_request.sql
