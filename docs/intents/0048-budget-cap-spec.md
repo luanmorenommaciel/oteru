@@ -128,7 +128,7 @@ Unicidade: (run_id, team, project, status). Sem actor_id. `audit_cost_runs`/`aud
 - S1: saída do teste "run sem custo novo" (as_of_ts antes/depois, is_stale=true).
 - S2: saída dos unit tests de borda + `system.columns` sem Float.
 - S3/S4: `dbt test -s budgets` verde e uma execução negativa com fixture inválida (warn ≥ breach, `@`, slug inválido, budget < 0) falhando como esperado, em schema/target de teste e sem alterar o seed real.
-- S5: saída do script de privilégio (SELECT ok na view, ACCESS_DENIED em `fct_*`, SHOW CREATE/SHOW GRANTS).
+- S5: saída do script de privilégio (SELECT ok na view, ACCESS_DENIED em `fct_*`, SHOW CREATE/SHOW GRANTS). O que `oteru_budget_alerts_reader` pode `SELECT` é **exatamente como no §7.12**.
 
 ## 7. Enforcement (Alicerce)
 
@@ -156,84 +156,81 @@ Claude Code / Cursor / outros agentes  →  API do provedor (Anthropic etc., for
 
 **Conclusão:** não há ponto de corte no caminho da chamada. Collector, hooks e emitter são pós-fato ou proibidos de bloquear.
 
-**Proposta de corte (a construir, owner Alicerce, só se Vinícius escolher `block` — §9 item 1):** um gateway HTTP novo (`oteru-budget-enforcer`, fora do collector) **à frente do provedor**. Lê `budget_status_current` por `oteru.team` × `oteru.project` (header ou resource attrs) e devolve allow/deny **antes** do POST ao vendor. Quem não passar pelo gateway (Claude Code nativo contra `api.anthropic.com`) **não pode ser bloqueado** — só alerta (Vigia). Não usar hooks como corte. Não filtrar no collector: isso esconderia telemetria e não evitaria a fatura.
-
-O MVP diário é **alert-only na prática** até o gateway existir e até a decisão de política do §9 item 1. `action_on_breach='block'` no seed fica declarado, mas o mecanismo só age quando o gateway estiver no caminho.
+**Decisão do Vinícius (esta entrega):** **só alertar**. Gateway, `block` e as condições 6–8 **saem de escopo**. Follow-up: https://github.com/luanmorenommaciel/oteru/issues/108. A estimativa de custo/latência do `oteru-budget-enforcer` (§7.10) fica só como contexto para #108.
 
 ### 7.1 Reader
 
-**Padrão proposto:** o enforcement lê **somente** a view `budget_status_current`, com um role ClickHouse dedicado somente-leitura (`oteru_budget_reader`) que tem `SELECT` **apenas** nessa view (sem `SELECT` em `otel_logs`, seeds, `fct_*`, `audit_*`, sem `INSERT`/`ALTER`/`DROP`). Credencial (`CLICKHOUSE_BUDGET_READER_DSN` ou equivalente) só em secret/env (mesmo padrão de `CLICKSTACK_API_KEY` / `.env` gitignorado). Nunca em código, workflow, evidência ou seed.
+**Padrão desta entrega:** a Vigia lê o sinal via `oteru_budget_alerts_reader`, **exatamente como no §7.12**. Credencial só em secret/env. O role `oteru_budget_reader` (gateway) **não entra nesta entrega** — #108.
 
-**Justificativa:** o contrato da view já é o sinal (`team`, `project`, `budget_status`, `action_on_breach`, `is_stale`, `as_of_ts`). Ampliar o grant reabre PII/`actor_id` e tabelas de fato. Segredo no repo quebra a disciplina de credenciais do monorepo.
+**Justificativa:** decisão só-alerta; o grant do alerta já está no §7.12. Ampliar o grant reabre `fct_*` e ator.
 
 ### 7.2 Latência
 
-**Padrão proposto:** MVP = status **diário** (`fct_budget_consumption_daily` → `budget_status_current`). Enforcement **real** (bloquear runaway) depende do sinal horário da fase 2 (`fct_budget_consumption_hourly`), latência **≤ 1 h**. Até a fase 2, o breaker no máximo alerta com atraso de até um dia UTC.
+**Padrão desta entrega:** alerta no grão **diário** (`fct_budget_consumption_daily` → `budget_status_current`). O sinal horário da fase 2 (`fct_budget_consumption_hourly`, ≤ 1 h) continua requisito para detectar runaway mais cedo; **não** há breaker nesta entrega.
 
-**Justificativa:** um loop de agente estoura o cap em minutos; o grão diário só vê depois. A spec §8 e o intent já marcam o horário como requisito, não como extra.
+**Justificativa:** um loop de agente estoura o cap em minutos; o diário só alerta depois. Sem gateway (#108).
 
-### 7.3 Chave de corte
+### 7.3 Chave do limite
 
-**Padrão proposto:** corte **somente** `team × project` (as duas colunas da view). Nunca por `actor_id`, e-mail, `user.id` ou service_name isolado. Corte por ator só via regras já existentes do `actor_map` (#46), **fora de escopo** deste card.
-
-**Justificativa:** CA5 e §9.2; agregado permanente de #46 não carrega ator. Cortar por pessoa seria re-identificação e foge do grão do budget.
+**Padrão (decisão do Vinícius):** caps em quatro `scope`: `global` (inclui `unassigned`), `team`, `project`, `team_project`. Nunca por `actor_id`. Corte por ator só via `actor_map` (#46), fora de escopo. Bloqueio por par sai para #108.
 
 ### 7.4 Ownership
 
 | Peça | Owner | Padrão proposto | Justificativa |
 |---|---|---|---|
-| `alert` | **Vigia** | lê `audit_budget_runs`, `budget_status_current` e `audit_cost_runs` (lista exata de colunas no §7.12) com o role próprio `oteru_budget_alerts_reader` (§7.12), no estilo `ops/alerts/46/` | já é o dono de alerta; grant separado do `oteru_budget_reader` do gateway |
-| `block` (mecanismo do gateway) | **Alicerce** | implementa o reader + o corte no gateway proposto em §7.0 | o ponto de corte é infra, não dbt |
-| `action_on_breach` no seed | política | muda **só por PR**, com **OK do Vinícius** | §3.1 e §9.2; troca alert↔block é decisão de produto, não de plantão |
+| `alert` | **Vigia** | lê `audit_budget_runs`, `budget_status_current` e `audit_cost_runs` (lista exata de colunas no §7.12) com o role próprio `oteru_budget_alerts_reader` (§7.12), no estilo `ops/alerts/46/` | já é o dono de alerta; grant separado do `oteru_budget_reader` (#108) |
+| `block` (mecanismo do gateway) | **fora desta entrega** | https://github.com/luanmorenommaciel/oteru/issues/108 | decisão do Vinícius: só alertar |
+| `action_on_breach` no seed | **só `alert` nesta entrega** | validação do seed **rejeita** `block`; muda só por PR depois de #108 | decisão do Vinícius |
 
-**Testes allowed/denied de `oteru_budget_alerts_reader`** (conectar só com esse role; lista idêntica à do §7.12):
+**Testes allowed/denied de `oteru_budget_alerts_reader`** (conectar só com esse role; **exatamente** a lista do §7.12 v3):
 
-- **Allowed:** `SELECT` de todas as colunas de `audit_budget_runs`; de `budget_status_current` só `team`, `project`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`; de `audit_cost_runs` só `run_id`, `run_completed_at`, `run_status`, `events_dropped_late`.
+- **Allowed:** `SELECT` de **todas** as colunas de `audit_budget_runs` (incluindo `scope`); de `budget_status_current` só `scope`, `team`, `project`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`; de `audit_cost_runs` só `run_id`, `run_completed_at`, `run_status`, `events_dropped_late`.
 - **Denied:** `SELECT` de qualquer outra coluna de `budget_status_current` ou de `audit_cost_runs`; `SELECT` em qualquer `fct_*`, seeds ou `otel_*`; `INSERT`/`ALTER`/`DROP` em qualquer relação.
 
-Valores de budget e a escolha breaker=`block` vs só-alerta são **decisão de política do Vinícius** (§9 itens 1 e 4). Este documento não os fixa.
+Valores dos budgets são configuráveis (warn 80% / breach 100% = `warn_milli=800` / `breach_milli=1000` até o Vinícius fixar os números do seed).
 
 ### 7.5 Dados stale
 
-**Padrão proposto (provisório):** **fail-open + alerta** quando `is_stale = true`. Vars: `budget_stale_hours_daily = 26`, `budget_stale_hours_hourly = 2` (fase 2). Fail-open = o gateway **não** bloqueia; a Vigia alerta (scheduler parado, lookback furado, ClickHouse down).
+**DECIDIDO pelo Vinícius:** **fail-open + alerta** quando `is_stale = true` (via a coluna `is_stale` da view). Vars: `budget_stale_hours_daily = 26`, `budget_stale_hours_hourly = 2` (fase 2). Fail-open nesta entrega = **não** há recusa de chamada (não há gateway); a Vigia alerta (A2/A3).
 
-**Justificativa:** um dbt/CH indisponível não pode parar todos os times. 26 h cobre um dia UTC + folga do cron; 2 h cobre o SLA de ≤ 1 h da fase 2 com margem de um ciclo.
-
-**DECISÃO DE POLÍTICA para o Vinícius (§9 item 2):** fail-open (aqui proposto) vs fail-closed. Se escolher fail-closed, o default deste §7.5 inverte e o teste de aceite stale muda.
+**Justificativa:** um dbt/CH indisponível não pode ser tratado como block. 26 h cobre um dia UTC + folga do cron; 2 h cobre o SLA de ≤ 1 h da fase 2 com margem de um ciclo.
 
 ### 7.6 Reversão
 
-**Padrão proposto:** reverter bloqueio = (a) PR no seed `budgets` com **override de vigência** (`valid_from`/`valid_to`) ou (b) expiração automática na **virada do mês UTC** (`period_start`). **Nenhuma edição manual em produção** (nem `ALTER` na view, nem UPDATE no seed aplicado no CH).
+**Padrão proposto:** sair de `warn`/`breach` = (a) PR no seed `budgets` com **override de vigência** (`valid_from`/`valid_to`) ou (b) expiração automática na **virada do mês UTC** (`period_start`). **Nenhuma edição manual em produção**.
 
-**Justificativa:** o seed é a fonte versionada; override com vigência é o mecanismo já descrito em §3.1. Edição no cluster foge de auditoria e de reconciliação.
+**Justificativa:** o seed é a fonte versionada; override com vigência é o mecanismo de §3.1.
 
 ### 7.7 `unassigned`
 
-**Padrão proposto:** custo `unassigned` **fica fora** dos caps de team × project. Entra só num **cap global de alerta** (seed com `team='unassigned'`, `project='unassigned'`, `action_on_breach='alert'`). Não bloqueia ninguém: `unassigned` mistura times sem `oteru.team`/`service_map`.
+**DECIDIDO pelo Vinícius:** custo `unassigned` **entra no cap `scope='global'`** (o global soma todo o custo, inclusive sem time/projeto). Os caps `team` / `project` / `team_project` não atribuem `unassigned` a um time.
 
-**Justificativa:** bloquear `unassigned` puniria tráfego ainda sem atribuição (fase 2 de #46 incompleta, slug drop, seed vazio). Alertar o volume global evita buraco invisível.
+**Justificativa:** sem isso o volume sem atribuição some do radar; o global fecha o buraco. Sem `block` nesta entrega.
 
-**DECISÃO DE POLÍTICA para o Vinícius (§9 item 3):** fora dos caps de time + cap global de alerta (aqui proposto) vs incluir `unassigned` em algum cap de block.
+**Teste de aceite:** fixture com custo `unassigned` e um cap `global`; `consumed_*` do `scope='global'` inclui esse custo; A1 dispara se o global cruzar 80%/100%. Um cap `team`/`team_project` de outro time **não** sobe por causa do `unassigned`.
 
 ### 7.8 Agendamento
 
 **Padrão proposto:** o mesmo scheduler das runs da **#103** (já decidido, §9.2). Nenhuma infra nova de cron/orquestração neste card. Qualquer custo novo de compute (job extra, gateway 24/7, fila) vai **primeiro ao Maestro**.
 
-**Justificativa:** um segundo scheduler diverge lookback/idempotência de #45–#47 e #103. Gateway e reader usam a view já materializada pelo run existente.
+**Justificativa:** um segundo scheduler diverge lookback/idempotência de #45–#47 e #103. Os alertas leem a view já materializada pelo run existente.
 
 ### 7.9 Testes de aceite do enforcement
 
-Complementam CA1–CA8 (dados). São do mecanismo Alicerce + grants + Vigia; não exigem `--full-refresh`.
+Complementam os CA de dados. Só alerta + grants; não exigem `--full-refresh`. Testes de gateway/`block` → #108.
 
-1. **Breach → block só naquele team × project.** Fixture: time A/projeto X em `breach` com `action_on_breach='block'`; time B/projeto Y em `ok`. O gateway (ou o stub do reader) recusa A×X e aceita B×Y e A×Z. Nenhum outro par muda.
-2. **Stale → fail-open + alerta** (enquanto §9 item 2 não inverter). `as_of_ts` mais velho que `budget_stale_hours_daily` (26) ⇒ `is_stale`; gateway permite a chamada; Vigia dispara em `audit_budget_runs` / ausência de run fresco. Com `as_of_ts` fresco e `breach`+`block`, o caso 1 continua válido.
-3. **Role somente-leitura não escreve.** Conectar com `oteru_budget_reader` e tentar `INSERT`/`ALTER`/`DROP`/`SELECT` fora de `budget_status_current` falha. `SELECT` na view passa.
-4. **Segredo fora do repo.** `gitleaks` + `check_pii` + grep de DSN/password/token em `docs/`, `.github/workflows/`, seeds e evidências: zero hits. Credencial só em env/secret.
-5. **Reader não vê ator.** Result set de `budget_status_current` não tem coluna `actor_id` nem valor `hmac:v1:` (alinha CA5).
-6. **Alert-only sem gateway.** Com `action_on_breach='alert'` (ou gateway ausente), não há recusa; a Vigia ainda lê `audit_budget_runs` no breach.
-7. **Revert.** Override no seed com vigência nova, no próximo run #103, tira o par do `breach` sem `ALTER` manual; virada de `period_start` zera o acumulado (CA3) e encerra o block do mês anterior.
+1. **Só alerta.** Seed e view só aceitam `action_on_breach='alert'`. Não há recusa de chamada. A Vigia lê `audit_budget_runs` no `warn`/`breach` (A1) nos quatro `scope`.
+2. **Seed rejeita `block`.** Fixture com `action_on_breach='block'` (ou valor fora de `{alert}`) falha a validação do seed / guard. O seed real não muda.
+3. **Stale → fail-open + alerta (DECIDIDO).** `as_of_ts` mais velho que `budget_stale_hours_daily` (26) ⇒ `is_stale`; nenhuma chamada é recusada; A2/A3 disparam.
+4. **`unassigned` conta no `global`.** Ver teste de §7.7.
+5. **Grants `oteru_budget_alerts_reader`.** Allowed/denied exatamente como §7.4 / §7.12.
+6. **Segredo fora do repo.** `gitleaks` + `check_pii` + grep de DSN/password/token em `docs/`, `.github/workflows/`, seeds e evidências: zero hits. Credencial só em env/secret.
+7. **Reader não vê ator.** Result set permitido não tem `actor_id` nem `hmac:v1:` (alinha CA5).
+8. **Revert de status.** Override no seed com vigência nova, no próximo run #103, tira a linha do `breach`/`warn` sem `ALTER` manual; virada de `period_start` zera o acumulado (CA3).
 
-### 7.10 Estimativa de custo e latência do `oteru-budget-enforcer`
+### 7.10 Estimativa de custo e latência do `oteru-budget-enforcer` (contexto para #108)
+
+**Fora desta entrega.** Vinícius escolheu só alertar; o gateway não se constrói aqui. O texto abaixo permanece só como contexto para https://github.com/luanmorenommaciel/oteru/issues/108.
 
 Nenhum número abaixo é medido em produção. O que o repo **de fato** implanta hoje: só **Docker Compose** local (`oteru-collector/docker-compose.yml` + overrides). **Não há** k8s, Helm nem Terraform neste monorepo. O collector é imagem local (`oteru-collector:0.155.0`), sem registry. ClickHouse no override é `clickhouse/clickhouse-server:latest` no mesmo compose network. O README do collector documenta um *exemplo* (não commitado como `docker-compose.limits.yml`) de `deploy.resources.limits.memory: 512M` no collector e 2G no ClickHouse, e diz que o sandbox esperado é collector ~50–150 MB — **não** é sizing de deploy compartilhado.
 
@@ -282,15 +279,11 @@ Hot path: lookup in-process no cache de `budget_status_current` (mapa `team×pro
 - **Credencial do provedor no gateway:** a chave (Anthropic etc.) só em secret/env, nunca no repo, nunca em log. Request/response body e prompts **não se logam**. Gateway **não é público** (rede interna / allowlist). Ver §7.11.
 - **Bypass:** quem chama o vendor direto não passa pelo corte — §7.11 item 8.
 
-### 7.11 Condições para a spec futura do gateway (Sentinela)
+### 7.11 Gateway / condições 6–8
 
-O `oteru-budget-enforcer` **precisa de spec própria + revisão de segurança da Sentinela antes de qualquer código.** Este §7 só amarra o contrato de dados e as condições abaixo. Não implementar o gateway neste card.
+**Fora desta entrega.** Condições 6–8 (credencial por par, segredo do provedor, bypass) e o `oteru-budget-enforcer` vivem em https://github.com/luanmorenommaciel/oteru/issues/108. Precisam de spec própria + revisão da Sentinela **antes de qualquer código**.
 
-6. **Identidade team × project.** Vem de uma **credencial do gateway por par team×project** (token/mTLS emitido para aquele par), **nunca** de headers declarados pelo cliente (`X-Oteru-Team` etc. são ignorados). Par ausente, malformado, revogado ou que não case com a credencial ⇒ **rejeitar sem forward ao provedor** (proposta: HTTP 401 se a credencial falta/é inválida; HTTP 403 se a credencial é válida mas o par está em `breach`+`block`). A resposta de recusa **não** inclui `consumed_*`, `budget_*` nem status de **outros** pares.
-7. **Segredo e exposição.** Chave do provedor só em secret/env (mesmo padrão `OTERU_PII_HMAC_KEY` / `.env` gitignorado). Nunca logar body de request/response nem prompts. Gateway não publicado na internet. Fail-open também em **outage do gateway** (além de `is_stale`, §7.5), com **SLO de latência** a fixar na spec do gateway (hipótese de trabalho: se o hop extra p99 exceder 50 ms no mesmo host/AZ de forma sustentada, ou healthcheck falhar, fail-open + alerta — número do SLO não é medido aqui). Recusa nunca revela budget/consumo de outro par.
-8. **Bypass.** Quem tem a chave do provedor e chama `api.anthropic.com` (ou equivalente) **direto** — o default do Claude Code e de qualquer SDK sem apontar o proxy — **fura o block**. Documentar na spec do gateway: o corte só vale para tráfego que usa a credencial do par e o endpoint do enforcer. A Vigia alerta sobre esse tráfego: linhas em `fct_cost_chargeback_daily` / `int_cost_attributed` cujo `team×project` não tem request correspondente no enforcer no mesmo lookback (ou `service_name` conhecido de cliente que não passou pelo proxy). Sem gateway no caminho, o default é esse bypass — por isso o MVP é alert-only até a spec+review.
-
-Na fase de implementação dos **dados** (não do gateway), o seed guard (`scripts/check_chargeback_seeds.py`) será estendido para `seeds/budgets.csv`: `@` proibido; slugs de `team`/`project`/`owner_team` no mesmo espírito de `oteru.team`/`oteru.project` (`^[a-z0-9][a-z0-9-]{0,62}$`, salvo `unassigned` e o `*` se a decisão de §9.1 permitir). `hmac:vN` não se aplica (não há `actor_id` no seed de budget).
+**Guard do seed (esta entrega, dados):** `scripts/check_chargeback_seeds.py` será estendido para `seeds/budgets.csv`: `@` proibido em qualquer coluna; regex de slug (`^[a-z0-9][a-z0-9-]{0,62}$`) **só** em `team`/`project` **não vazios**; **nenhum** `*` em qualquer coluna; `scope` ∈ {`global`, `team`, `project`, `team_project`}. `hmac:vN` não se aplica (não há `actor_id`).
 
 ### 7.12 Alertas (Vigia)
 
