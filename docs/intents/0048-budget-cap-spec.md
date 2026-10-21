@@ -298,17 +298,17 @@ Entrega em `ops/alerts/48/`: SQL + `run_alert_tests.sh` (clickhouse-local, casos
 
 | # | Alerta | Fonte | Dispara quando |
 |---|---|---|---|
-| A1 | `budget_warn_breach_new` | `audit_budget_runs` (último run com sucesso) | um team × project entra em `warn` ou `breach` e não estava nesse status no run anterior; `breach` com `action_on_breach='block'` sem gateway também dispara |
+| A1 | `budget_warn_breach_new` | `audit_budget_runs` (último run com sucesso) | uma linha (`scope`, `team`, `project`) entra em `warn` (80%) ou `breach` (100%) e não estava nesse status no run anterior; vale para os 4 escopos (`global`, `team`, `project`, `team_project`); o `global` inclui `unassigned` |
 | A2 | `budget_status_stale` | `budget_status_current` | alguma linha com `is_stale = true`; é o sinal que sustenta o fail-open (§7.5). Depende de `as_of_ts` medir o último custo processado, não a hora do run (condição 1 da Sentinela) |
 | A3 | `budget_run_missing` | `audit_budget_runs` | nenhum run com sucesso há mais de `budget_stale_hours_daily` (26h; 2h na fase 2) |
 | A4 | `cost_late_beyond_lookback` | `audit_cost_runs.events_dropped_late` (contrato #45/#47, só leitura, sem mudança) | soma no dia UTC fechado > 0, ou seja, custo chegou com mais de 48h e ficou fora do consumo (§8) |
-| A5 | `budget_gateway_bypass` | só se o gateway existir (§7.11 item 8) | custo por team × project em `fct_cost_chargeback_daily` sem request correspondente no enforcer no mesmo lookback |
+| A5 | `budget_gateway_bypass` | **fora desta entrega** (Vinícius: só alertar, sem gateway) | vai para a issue de follow-up do bloqueio, junto com as condições 6–8 |
 
-**Grant (privilégio mínimo):** role `oteru_budget_alerts_reader`, separado do `oteru_budget_reader`. `SELECT` só em `audit_budget_runs` (todas as colunas; só agregados), `budget_status_current` (colunas `team`, `project`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`) e `audit_cost_runs` (`run_id`, `run_completed_at`, `run_status`, `events_dropped_late`). Sem `fct_*`, seeds, `otel_*`, `INSERT`/`ALTER`/`DROP`. Mesma regra de `SQL SECURITY DEFINER` da condição 5. Credencial só em secret/env.
+**Grant (privilégio mínimo):** role `oteru_budget_alerts_reader`, separado do `oteru_budget_reader`. `SELECT` só em `audit_budget_runs` (todas as colunas, incluindo `scope`; só agregados), `budget_status_current` (colunas `scope`, `team`, `project`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`) e `audit_cost_runs` (`run_id`, `run_completed_at`, `run_status`, `events_dropped_late`). Sem `fct_*`, seeds, `otel_*`, `INSERT`/`ALTER`/`DROP`. Mesma regra de `SQL SECURITY DEFINER` da condição 5. Credencial só em secret/env.
 
 **Testes allowed/denied** (iguais aos de §7.4): allowed = cada coluna da lista acima; denied = qualquer outra coluna de `budget_status_current` ou de `audit_cost_runs`, qualquer `fct_*`, seeds, `otel_*`, e `INSERT`/`ALTER`/`DROP`.
 
-**Sem ator:** nenhum alerta lê ou emite `actor_id`, hmac ou `@`; a saída é só team × project × status × contagem.
+**Sem ator:** nenhum alerta lê ou emite `actor_id`, hmac ou `@`; a saída é só scope × team × project × status × contagem.
 
 ## 8. Riscos
 - **Granularidade**: o diário (MVP) detecta um agente em loop só depois; o horário (fase 2, ≤ 1h) é o que de fato atende "runaway".
