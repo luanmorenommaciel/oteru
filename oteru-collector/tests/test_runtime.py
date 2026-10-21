@@ -34,7 +34,8 @@ from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportM
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2_grpc import MetricsServiceStub
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2_grpc import TraceServiceStub
-from support import ROOT, default, hmac_v1 as _hmac_v1, policy
+from support import ROOT, default, policy
+from support import hmac_v1 as _hmac_v1
 
 # Bound by the session fixture. Never written to disk or printed.
 _HMAC_RUNTIME_KEY = ""

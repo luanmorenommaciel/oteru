@@ -88,7 +88,7 @@ jobs:
         working-directory: oteru-collector
         run: |
           if compgen -G "hmacconverter/*.go" > /dev/null; then
-            go test ./hmacconverter/...
+            (cd hmacconverter && go test -v ./...)
           else
             echo "hmacconverter has no Go packages yet; skipping go test"
           fi
