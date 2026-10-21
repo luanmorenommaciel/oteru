@@ -44,12 +44,11 @@ _HMAC_RUNTIME_KEY = ""
 def hmac_v1(field: str, value: str, key: str | None = None) -> str:
     return _hmac_v1(field, value, key if key is not None else _HMAC_RUNTIME_KEY)
 
+
 # Local OCB distro. Built from oteru-collector/Dockerfile. Override with
 # OTERU_COLLECTOR_IMAGE only for a already-built local tag — never contrib.
 IMAGE = os.environ.get("OTERU_COLLECTOR_IMAGE", "oteru-collector:0.155.0")
-_RUN_VERBS = frozenset(
-    {"run", "network", "compose", "exec", "cp", "logs", "inspect", "rm"}
-)
+_RUN_VERBS = frozenset({"run", "network", "compose", "exec", "cp", "logs", "inspect", "rm"})
 SIGNALS = {
     "logs": ("resourceLogs", "scopeLogs", "logRecords", ExportLogsServiceRequest, LogsServiceStub),
     "traces": ("resourceSpans", "scopeSpans", "spans", ExportTraceServiceRequest, TraceServiceStub),
