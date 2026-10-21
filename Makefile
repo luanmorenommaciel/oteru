@@ -70,7 +70,7 @@ CLICKHOUSE_URL ?= http://localhost:8123/?user=otel&password=otel
 
 views: ## (re)apply the ClickHouse views in oteru-collector/clickhouse/views (needs `make up-clickhouse`)
 	@for f in $(COLLECTOR)/clickhouse/views/*.sql; do \
-		curl -sSf '$(CLICKHOUSE_URL)' --data-binary @"$$f" >/dev/null && echo "  view applied: $$f"; \
+		curl -sSf '$(CLICKHOUSE_URL)&allow_suspicious_low_cardinality_types=1' --data-binary @"$$f" >/dev/null && echo "  view applied: $$f"; \
 	done
 
 check-cost-retention: ## verify aggregate tables have no TTL, raw TTL intact, lookback < TTL (needs `make up-clickhouse`)
