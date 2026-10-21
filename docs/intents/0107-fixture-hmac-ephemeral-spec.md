@@ -30,6 +30,18 @@ Por execução de teste/evidência:
 
 A linha `hmac:v2:` **não** é HMAC da chave efêmera; continua placeholder de rotação.
 
+### 1.1 CI artifacts e `git ls-files` (Alicerce)
+O `TemporaryDirectory` do gerador e o `oteru-dbt/target/` **nunca** sobem como artifact de CI (nenhum job `actions/upload-artifact`, equivalente, ou `dbt docs generate` que empacote esses paths). O tmp vive fora do working tree; `git ls-files` (e o seed guard, que já usa `git ls-files`) **não** o lista — nem durante o job, nem depois. `.gitignore` de `target/` permanece; nenhum workflow passa `--include-untracked` / path do tmp para upload. Prova: dump dos steps de artifact do workflow + `git ls-files` vazio para o path do tmp.
+
+### 1.2 Isolamento dos gabaritos `hmac:*:000…` (Vigia)
+Os CSVs de gabarito com `hmac:v1:` + 64 zeros e `hmac:v2:` + 64 zeros **só** podem ser lidos pelo `seed-paths` de **teste** (`chargeback_fixtures=true` e/ou `OTERU_EPHEMERAL_SEED_DIR`). Fora do teste, o `actor_map` de produção (`chargeback_actor_map`, build padrão, `chargeback_fixtures=false`) **não** lê esses arquivos e **não** contém nenhuma linha `hmac:vN:` só de zeros.
+
+**Teste (Modelo, critério Vigia), obrigatório — falha se:**
+- qualquer seed de produção (`seeds/chargeback_*.csv` **fora** de `seeds/chargeback_fixtures/`) tiver `actor_id` casando `^hmac:v[0-9]+:0{64}$`; ou
+- o `actor_map` materializado no **build padrão** (`ref(var('chargeback_actor_map_seed', 'chargeback_actor_map'))` com fixtures desligadas) tiver qualquer linha `hmac:vN:` só de zeros.
+
+Extensão natural de `test_chargeback_default_no_fixture_rows` (ou singular novo `test_chargeback_no_zero_hmac_placeholder`). O alerta da Vigia não muda nesta issue; o teste é o fail-closed.
+
 ### Alternativas consideradas
 - *`--vars` com o digest* (`chargeback_fixture_actor_id: hmac:v1:<hex>`) e um seed/modelo jinja de uma linha. Menos I/O; o digest (não a chave) aparece na linha de comando do dbt (`ps`, traces). Mais mudança dbt. Rejeitada como primária; fica de fallback se o Modelo recusar `seed-paths` + env de path.
 - *Sobrescrever os CSVs rastreados no working tree e restaurar.* Simples, mas suja o tree e arrisca commit. Rejeitada.
@@ -51,7 +63,7 @@ A chave **nunca** aparece em:
 Vetor de regressão: reutilizar `hmac_lookup.actor_id` / `digest` (RFC 4231) para não divergir do collector.
 
 ## 3. Seeds, regex, produção
-- Seed guard e macro `chargeback_seed_actor_regex` (`^hmac:v[0-9]+:[0-9a-f]{64}$`) **não mudam de significado**. Fixtures geradas e gabaritos rastreados (zeros) passam. Produção continua `hmac:v1:` só-header.
+- Seed guard e macro `chargeback_seed_actor_regex` (`^hmac:v[0-9]+:[0-9a-f]{64}$`) **não mudam de significado**. Fixtures geradas e gabaritos rastreados (zeros) passam **no seed-paths de teste**. Produção continua `hmac:v1:` só-header, **sem** `hmac:*:` só de zeros (§1.2).
 - `test_chargeback_default_no_fixture_rows`: deixar de hardcodar `dd5cefde…`; marcadores `time-fixture` / `projeto-fixture` / `hmac:v2:` / `attribution_source='actor_map'` bastam (Modelo).
 - `chargeback_service_map_fixture_empty` e o seed de produção **não** ganham linhas de fixture.
 - Nenhum `@` em `seeds/chargeback_*` rastreados. E-mail sintético só no gerador.
@@ -80,7 +92,7 @@ Grep de aceite: fora de `evidence/` e de `docs/intents/proof/`, nenhum `sha256("
 | `actor_id` (`hmac:v1:` de chave efêmera) | pseudônimo de **teste** | tmp fora do repo, ClickHouse local, stdout do teste (só o digest) |
 | chave `token_bytes(32)` | secret de teste | **somente** memória do processo de teste |
 | `user@example.com` | e-mail sintético RFC 2606 | gerador Python / fixture OTLP já redigida; **nunca** em `seeds/chargeback_*` |
-| `hmac:v2:` + zeros | placeholder de rotação | CSV de fixture (rastreado e gerado) |
+| `hmac:v1:`/`hmac:v2:` + 64 zeros | placeholder de forma (não é ator) | **somente** gabarito de teste / `seed-paths` de teste; **nunca** seed de produção nem `actor_map` do build padrão |
 | `OTERU_PII_HMAC_KEY` | chave de produção | **nunca** nesta issue |
 
 ## 7. Critérios de aceite (testáveis)
@@ -94,6 +106,8 @@ Grep de aceite: fora de `evidence/` e de `docs/intents/proof/`, nenhum `sha256("
 8. `gitleaks` 8.24.3 no delta PASS. Nenhum `@` novo em `seeds/chargeback_*`.
 9. Sem `--full-refresh` / backfill de produção. Modelo deu OK na parte dbt antes do merge da implementação.
 10. `git diff` da implementação não altera contratos #46 (`fct_cost_daily`, `fct_cost_actor_daily`, `int_api_request_dedup`, `stg_api_request`).
+11. **(Alicerce)** Nenhum job de CI faz upload do `TemporaryDirectory` nem de `oteru-dbt/target/` como artifact; o path do tmp **nunca** entra em `git ls-files` (§1.1).
+12. **(Vigia)** Gabaritos `hmac:v1:000…` / `hmac:v2:000…` só no `seed-paths` de teste. Teste §1.2 FAIL se `hmac:v[0-9]+:0{64}` aparecer em seed de produção ou no `actor_map` do build padrão.
 
 ## 8. Provas esperadas (em `docs/intents/proof/`, sufixo = SHA curto do commit testado)
 - `dbt-build-107-<sha>.txt` — `PASS=… WARN=0 ERROR=0 SKIP=0` no build padrão.
@@ -101,6 +115,8 @@ Grep de aceite: fora de `evidence/` e de `docs/intents/proof/`, nenhum `sha256("
 - `ephemeral-hmac-107-<sha>.txt` — loader e CSV gerado iguais; segundo run diferente; regex; v2 intacta.
 - `key-leak-107-<sha>.txt` — saída do teste §2 (chave ausente de stdout/stderr/arquivos/argv).
 - `seed-guard-107-<sha>.txt` + gitleaks no delta.
+- `ci-artifacts-107-<sha>.txt` — jobs de CI sem upload de tmp/`target/`; `git ls-files` do path do tmp vazio.
+- `zero-hmac-isolation-107-<sha>.txt` — teste §1.2 PASS no build padrão; FAIL deliberado se um placeholder de zeros for injetado no seed de produção.
 - Não incluir a chave nem o `token_bytes` em nenhum arquivo de prova (só `hmac:v1:<hex>` e PASS/FAIL).
 
 ## 9. Open questions
@@ -111,5 +127,5 @@ Grep de aceite: fora de `evidence/` e de `docs/intents/proof/`, nenhum `sha256("
 ## Status e decisões (2026-10-21)
 
 - Status: spec proposta; **docs only**. Implementação após OK do Modelo na questão 1.
-- Donos: Duto (loader + gerador + teste de vazamento); Modelo (seeds/fixtures dbt).
+- Donos: Duto (loader + gerador + teste de vazamento); Modelo (seeds/fixtures dbt); Alicerce (§1.1 CI artifacts); Vigia (critério §1.2).
 - Sem backfill, sem `--full-refresh` de produção, sem prioridade (texto da #107).
