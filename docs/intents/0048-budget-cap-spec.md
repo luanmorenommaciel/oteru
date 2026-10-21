@@ -186,6 +186,11 @@ O MVP diário é **alert-only na prática** até o gateway existir e até a deci
 | `block` (mecanismo do gateway) | **Alicerce** | implementa o reader + o corte no gateway proposto em §7.0 | o ponto de corte é infra, não dbt |
 | `action_on_breach` no seed | política | muda **só por PR**, com **OK do Vinícius** | §3.1 e §9.2; troca alert↔block é decisão de produto, não de plantão |
 
+**Testes allowed/denied de `oteru_budget_alerts_reader`** (conectar só com esse role; lista idêntica à do §7.12):
+
+- **Allowed:** `SELECT` de todas as colunas de `audit_budget_runs`; de `budget_status_current` só `team`, `project`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`; de `audit_cost_runs` só `run_id`, `run_completed_at`, `run_status`, `events_dropped_late`.
+- **Denied:** `SELECT` de qualquer outra coluna de `budget_status_current` ou de `audit_cost_runs`; `SELECT` em qualquer `fct_*`, seeds ou `otel_*`; `INSERT`/`ALTER`/`DROP` em qualquer relação.
+
 Valores de budget e a escolha breaker=`block` vs só-alerta são **decisão de política do Vinícius** (§9 itens 1 e 4). Este documento não os fixa.
 
 ### 7.5 Dados stale
@@ -299,7 +304,9 @@ Entrega em `ops/alerts/48/`: SQL + `run_alert_tests.sh` (clickhouse-local, casos
 | A4 | `cost_late_beyond_lookback` | `audit_cost_runs.events_dropped_late` (contrato #45/#47, só leitura, sem mudança) | soma no dia UTC fechado > 0, ou seja, custo chegou com mais de 48h e ficou fora do consumo (§8) |
 | A5 | `budget_gateway_bypass` | só se o gateway existir (§7.11 item 8) | custo por team × project em `fct_cost_chargeback_daily` sem request correspondente no enforcer no mesmo lookback |
 
-**Grant (privilégio mínimo):** role `oteru_budget_alerts_reader`, separado do `oteru_budget_reader`. `SELECT` só em `audit_budget_runs` (todas as colunas; só agregados), `budget_status_current` (colunas `team`, `project`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`) e `audit_cost_runs` (`run_id`, `run_completed_at`, `run_status`, `events_dropped_late`). Sem `fct_*`, seeds, `otel_*`, `INSERT`/`ALTER`/`DROP`. Mesma regra de `SQL SECURITY DEFINER` da condição 5. Credencial só em secret/env. Teste: o SELECT nas colunas permitidas passa e o SELECT em `fct_*` falha.
+**Grant (privilégio mínimo):** role `oteru_budget_alerts_reader`, separado do `oteru_budget_reader`. `SELECT` só em `audit_budget_runs` (todas as colunas; só agregados), `budget_status_current` (colunas `team`, `project`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`) e `audit_cost_runs` (`run_id`, `run_completed_at`, `run_status`, `events_dropped_late`). Sem `fct_*`, seeds, `otel_*`, `INSERT`/`ALTER`/`DROP`. Mesma regra de `SQL SECURITY DEFINER` da condição 5. Credencial só em secret/env.
+
+**Testes allowed/denied** (iguais aos de §7.4): allowed = cada coluna da lista acima; denied = qualquer outra coluna de `budget_status_current` ou de `audit_cost_runs`, qualquer `fct_*`, seeds, `otel_*`, e `INSERT`/`ALTER`/`DROP`.
 
 **Sem ator:** nenhum alerta lê ou emite `actor_id`, hmac ou `@`; a saída é só team × project × status × contagem.
 
