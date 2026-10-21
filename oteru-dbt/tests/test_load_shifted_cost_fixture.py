@@ -1,10 +1,13 @@
-"""Unit tests for the cost-fixture loader's client fallback and hash format."""
+"""Unit tests for the cost-fixture loader's client fallback and HMAC format."""
 
 from __future__ import annotations
 
 import hashlib
 import hmac
 import importlib.util
+import logging
+import re
+import secrets
 from pathlib import Path
 
 import pytest
@@ -86,13 +89,68 @@ def test_last_resort_is_clickhouse_client_name(isolated_root, monkeypatch):
     assert cwd is None
 
 
-def test_pseudonymize_is_unkeyed_sha256_with_hmac_v1_prefix():
-    email = "user@example.com"
-    digest = hashlib.sha256(f"oteru-pii:v1|user.email|{email}".encode()).hexdigest()
-    assert mod.pseudonymize(email) == f"hmac:v1:{digest}"
-    keyed = hmac.new(
-        b"not-the-fixture-key",
+def _expected_actor_id(email: str, key: bytes) -> str:
+    digest = hmac.new(
+        key,
         f"oteru-pii:v1|user.email|{email}".encode(),
         hashlib.sha256,
     ).hexdigest()
-    assert mod.pseudonymize(email) != f"hmac:v1:{keyed}"
+    return f"hmac:v1:{digest}"
+
+
+def test_same_key_same_actor_id():
+    key = secrets.token_bytes(32)
+    email = "user@example.com"
+    assert mod.pseudonymize(email, key=key) == mod.pseudonymize(email, key=key)
+
+
+def test_different_key_different_actor_id():
+    email = "user@example.com"
+    first = mod.pseudonymize(email, key=secrets.token_bytes(32))
+    second = mod.pseudonymize(email, key=secrets.token_bytes(32))
+    assert first != second
+
+
+def test_actor_id_matches_hmac_v1_hex64():
+    out = mod.pseudonymize("user@example.com", key=secrets.token_bytes(32))
+    assert re.fullmatch(r"hmac:v1:[0-9a-f]{64}", out)
+
+
+def test_matches_stdlib_hmac_sha256_message_format():
+    key = secrets.token_bytes(32)
+    email = "user@example.com"
+    assert mod.pseudonymize(email, key=key) == _expected_actor_id(email, key)
+
+
+def test_default_key_is_stable_and_not_unkeyed_sha256():
+    email = "user@example.com"
+    first = mod.pseudonymize(email)
+    second = mod.pseudonymize(email)
+    assert first == second
+    unkeyed = "hmac:v1:" + hashlib.sha256(
+        f"oteru-pii:v1|user.email|{email}".encode()
+    ).hexdigest()
+    assert first != unkeyed
+
+
+def test_key_never_appears_in_output_repr_or_log(caplog, capsys):
+    key = secrets.token_bytes(32)
+    with caplog.at_level(logging.DEBUG):
+        out = mod.pseudonymize("user@example.com", key=key)
+        recs = mod.records()
+    printed, err = capsys.readouterr()
+    leak_haystacks = (
+        out,
+        repr(out),
+        repr(recs),
+        printed,
+        err,
+        caplog.text,
+    )
+    hex_key = key.hex()
+    runtime_hex = mod._RUNTIME_HMAC_KEY.hex()
+    for blob in leak_haystacks:
+        assert hex_key not in blob
+        assert runtime_hex not in blob
+        assert key not in blob.encode("utf-8", "surrogatepass")
+        assert mod._RUNTIME_HMAC_KEY not in blob.encode("utf-8", "surrogatepass")

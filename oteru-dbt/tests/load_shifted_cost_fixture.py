@@ -2,12 +2,13 @@
 """Load the cost fixture into otel.otel_logs with timestamps shifted near now().
 
 Does NOT edit the teammate fixture file and does NOT use restamp (request_id
-values stay as written). cost_usd is unchanged. user.email is hashed with
-unkeyed SHA-256 of ``oteru-pii:v1|user.email|{email}`` and prefixed
-``hmac:v1:`` so staging ``actor_id`` looks like a collector pseudonym. This
-is not keyed HMACSHA256 (compile.py / hmacconverter); the hex digest will
-not match a collector-produced actor_id. Distinct fixture calendar days map
-to yesterday/today UTC so the load still crosses midnight.
+values stay as written). cost_usd is unchanged. user.email is HMAC-SHA256
+over the exact message ``oteru-pii:v1|user.email|{email}`` (compile.py /
+collector HMACSHA256 semantics) and prefixed ``hmac:v1:``. The key is
+``secrets.token_bytes(32)`` generated at import; tests may pass ``key=``
+only. The key is never read from or written to a file, never taken from
+the environment, and never printed or logged. Distinct fixture calendar
+days map to yesterday/today UTC so the load still crosses midnight.
 
 If no repo-local ``clickhouse`` binary and no host ``clickhouse-client`` are
 available, inserts go through ``docker compose exec`` (or podman compose
@@ -20,7 +21,9 @@ Usage (repo root, ClickHouse running, otel.otel_logs exists):
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
+import secrets
 import shutil
 import subprocess
 import sys
@@ -44,6 +47,9 @@ _COMPOSE_CLIENT = (
 )
 
 
+_RUNTIME_HMAC_KEY = secrets.token_bytes(32)
+
+
 def clickhouse_cmd() -> tuple[list[str], Path | None]:
     """Return (argv, cwd) for a ClickHouse client.
 
@@ -63,8 +69,13 @@ def clickhouse_cmd() -> tuple[list[str], Path | None]:
     return ["clickhouse-client"], None
 
 
-def pseudonymize(email: str) -> str:
-    digest = hashlib.sha256(f"oteru-pii:v1|user.email|{email}".encode()).hexdigest()
+def pseudonymize(email: str, key: bytes | None = None) -> str:
+    material = _RUNTIME_HMAC_KEY if key is None else key
+    digest = hmac.new(
+        material,
+        f"oteru-pii:v1|user.email|{email}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
     return f"hmac:v1:{digest}"
 
 
