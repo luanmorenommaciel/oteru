@@ -1,0 +1,67 @@
+tested_sha: 913ca7e412203e5759111f1ede973fbcfdd3a814
+clickhouse_version: 26.9.23.15
+image: clickhouse/clickhouse-server:26.9.23.15@sha256:d40ed32b22730ef2c1ba995e8affd28cf324b47399323f8b4c43f2cdcb7c35b4
+utc: 2026-10-21T04:41:10Z
+command: crane manifest + podman pull --root $(mktemp -d) (no cache)
+
+=== crane digest ===
+sha256:d40ed32b22730ef2c1ba995e8affd28cf324b47399323f8b4c43f2cdcb7c35b4
+=== crane manifest (index) ===
+{
+  "schemaVersion": 2,
+  "mediaType": "application/vnd.oci.image.index.v1+json",
+  "manifests": [
+    {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:7b309ce43dcd42267e91661fb259d43f7e281d2af84ddb8166badd440c90ddf1",
+      "size": 2374,
+      "platform": {
+        "architecture": "amd64",
+        "os": "linux"
+      }
+    },
+    {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:8a80183b4d92c94b5f5fbb5558ff088104dd40326641d82b30f72d5365b34657",
+      "size": 2374,
+      "platform": {
+        "architecture": "arm64",
+        "os": "linux"
+      }
+    },
+    {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:76e2935faf534cec2e5ee1aa32216c32bc6cd09268130e1a5b81a754e0c7a6a7",
+      "size": 1112,
+      "annotations": {
+        "vnd.docker.reference.digest": "sha256:7b309ce43dcd42267e91661fb259d43f7e281d2af84ddb8166badd440c90ddf1",
+        "vnd.docker.reference.type": "attestation-manifest"
+      },
+      "platform": {
+        "architecture": "unknown",
+        "os": "unknown"
+      }
+    },
+    {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:40308d9223ff455b5fa091ee8e2389d75aebb625fa2cb9dcbede417efa79039b",
+      "size": 1112,
+      "annotations": {
+        "vnd.docker.reference.digest": "sha256:8a80183b4d92c94b5f5fbb5558ff088104dd40326641d82b30f72d5365b34657",
+        "vnd.docker.reference.type": "attestation-manifest"
+      },
+      "platform": {
+        "architecture": "unknown",
+        "os": "unknown"
+      }
+    }
+  ]
+}
+=== podman pull --root clean storage ===
+9c4f9e513ff8242c9a8bd413fcf8e0ca629f0b168070caee380f76bad0f97528
+
+=== podman image inspect (clean root) ===
+Id=9c4f9e513ff8242c9a8bd413fcf8e0ca629f0b168070caee380f76bad0f97528 Digests=[docker.io/clickhouse/clickhouse-server@sha256:7b309ce43dcd42267e91661fb259d43f7e281d2af84ddb8166badd440c90ddf1 docker.io/clickhouse/clickhouse-server@sha256:d40ed32b22730ef2c1ba995e8affd28cf324b47399323f8b4c43f2cdcb7c35b4] VersionLabel=26.9.23.15
+
+=== version from clean pull ===
+ClickHouse server version 26.9.23.15 (official build).

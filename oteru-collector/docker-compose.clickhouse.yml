@@ -10,14 +10,17 @@
 services:
   oteru-collector:
     volumes:
-      - ./oteru-collector-config.clickhouse.yml:/etc/oteru-collector-config.yml
+      - ./oteru-collector-config.clickhouse.yml:/etc/oteru-collector-config.yml:ro
       - ./telemetry:/telemetry
     depends_on:
       clickhouse:
         condition: service_healthy
 
   clickhouse:
-    image: clickhouse/clickhouse-server:latest
+    # #103 foi provado na 26.11.1.323; esta é a stable fixada
+    # (26.11.1.323/333 not published as tags; crane ls has no 26.11.*;
+    # 26.9.23.15 is current stable, OCI index via crane digest).
+    image: clickhouse/clickhouse-server:26.9.23.15@sha256:d40ed32b22730ef2c1ba995e8affd28cf324b47399323f8b4c43f2cdcb7c35b4
     # Provisions a dedicated otel user/db on first init. Recent ClickHouse
     # requires a password for the `default` user over the network, so the
     # collector (a separate container) needs real credentials — not default/empty.

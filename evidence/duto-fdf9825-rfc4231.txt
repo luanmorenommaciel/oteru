@@ -1,0 +1,113 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+go_version: go version go1.26.10 linux/amd64
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+cwd: oteru-collector/hmacconverter
+detached_at: fdf98252227899b81976ef194790a4ef9e8484c1
+captured_at_utc: 2026-10-20T23:14:55Z
+
+== go test -v -count=1 -run '4231|RFC' ./... ==
+=== RUN   TestRFC4231HMACSHA256
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_1
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_2
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_3
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_4
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_5_(128-bit_truncation)
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_6
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_7
+--- PASS: TestRFC4231HMACSHA256 (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_1 (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_2 (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_3 (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_4 (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_5_(128-bit_truncation) (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_6 (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_7 (0.00s)
+PASS
+ok  	github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter	0.005s
+
+== go test -v -count=1 ./... ==
+=== RUN   TestHMACSHA256OTTLEmptyValue
+--- PASS: TestHMACSHA256OTTLEmptyValue (0.00s)
+=== RUN   TestHMACSHA256OTTLNilValue
+--- PASS: TestHMACSHA256OTTLNilValue (0.00s)
+=== RUN   TestHMACSHA256OTTLRejectsUnboundKey
+--- PASS: TestHMACSHA256OTTLRejectsUnboundKey (0.00s)
+=== RUN   TestNewHMACSHA256FactoryName
+--- PASS: TestNewHMACSHA256FactoryName (0.00s)
+=== RUN   TestNewFactoryType
+--- PASS: TestNewFactoryType (0.00s)
+=== RUN   TestCreateFailsWithoutKey
+=== RUN   TestCreateFailsWithoutKey/unset
+=== RUN   TestCreateFailsWithoutKey/empty
+=== RUN   TestCreateFailsWithoutKey/short
+=== RUN   TestCreateFailsWithoutKey/traces_and_metrics_also_fail_closed
+--- PASS: TestCreateFailsWithoutKey (0.00s)
+    --- PASS: TestCreateFailsWithoutKey/unset (0.00s)
+    --- PASS: TestCreateFailsWithoutKey/empty (0.00s)
+    --- PASS: TestCreateFailsWithoutKey/short (0.00s)
+    --- PASS: TestCreateFailsWithoutKey/traces_and_metrics_also_fail_closed (0.00s)
+=== RUN   TestCreateSucceedsWithValidKey
+--- PASS: TestCreateSucceedsWithValidKey (0.00s)
+=== RUN   TestKeyNeverAppearsInErrorOrConfigString
+--- PASS: TestKeyNeverAppearsInErrorOrConfigString (0.00s)
+=== RUN   TestFactoryImplementsXProcessor
+--- PASS: TestFactoryImplementsXProcessor (0.00s)
+=== RUN   TestRFC4231HMACSHA256
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_1
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_2
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_3
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_4
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_5_(128-bit_truncation)
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_6
+=== RUN   TestRFC4231HMACSHA256/RFC_4231_test_vector_7
+--- PASS: TestRFC4231HMACSHA256 (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_1 (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_2 (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_3 (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_4 (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_5_(128-bit_truncation) (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_6 (0.00s)
+    --- PASS: TestRFC4231HMACSHA256/RFC_4231_test_vector_7 (0.00s)
+=== RUN   TestDigestEmptyValue
+--- PASS: TestDigestEmptyValue (0.00s)
+=== RUN   TestValidateProductionKey
+=== RUN   TestValidateProductionKey/nil
+=== RUN   TestValidateProductionKey/empty
+=== RUN   TestValidateProductionKey/short_31
+=== RUN   TestValidateProductionKey/ok_32
+=== RUN   TestValidateProductionKey/ok_long
+--- PASS: TestValidateProductionKey (0.00s)
+    --- PASS: TestValidateProductionKey/nil (0.00s)
+    --- PASS: TestValidateProductionKey/empty (0.00s)
+    --- PASS: TestValidateProductionKey/short_31 (0.00s)
+    --- PASS: TestValidateProductionKey/ok_32 (0.00s)
+    --- PASS: TestValidateProductionKey/ok_long (0.00s)
+=== RUN   TestLoadKeyFromEnvErrorsOmitSecret
+=== RUN   TestLoadKeyFromEnvErrorsOmitSecret/unset
+=== RUN   TestLoadKeyFromEnvErrorsOmitSecret/empty
+=== RUN   TestLoadKeyFromEnvErrorsOmitSecret/short
+=== RUN   TestLoadKeyFromEnvErrorsOmitSecret/ok
+--- PASS: TestLoadKeyFromEnvErrorsOmitSecret (0.00s)
+    --- PASS: TestLoadKeyFromEnvErrorsOmitSecret/unset (0.00s)
+    --- PASS: TestLoadKeyFromEnvErrorsOmitSecret/empty (0.00s)
+    --- PASS: TestLoadKeyFromEnvErrorsOmitSecret/short (0.00s)
+    --- PASS: TestLoadKeyFromEnvErrorsOmitSecret/ok (0.00s)
+=== RUN   TestErrorFormNeverContainsKey
+--- PASS: TestErrorFormNeverContainsKey (0.00s)
+PASS
+ok  	github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter	0.009s
+
+== index (names from this tree; PASS from the runs above) ==
+RFC 4231:
+  TestRFC4231HMACSHA256/RFC_4231_test_vector_1  PASS
+  TestRFC4231HMACSHA256/RFC_4231_test_vector_2  PASS
+  TestRFC4231HMACSHA256/RFC_4231_test_vector_3  PASS
+  TestRFC4231HMACSHA256/RFC_4231_test_vector_4  PASS
+  TestRFC4231HMACSHA256/RFC_4231_test_vector_5_(128-bit_truncation)  PASS
+  TestRFC4231HMACSHA256/RFC_4231_test_vector_6  PASS
+  TestRFC4231HMACSHA256/RFC_4231_test_vector_7  PASS
+key-never-in-output (by test function name):
+  TestKeyNeverAppearsInErrorOrConfigString  PASS
+  TestErrorFormNeverContainsKey  PASS
+  TestLoadKeyFromEnvErrorsOmitSecret  PASS

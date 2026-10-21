@@ -1,0 +1,48 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+utc: 2026-10-20T22:58:45Z
+command: buildah build --no-cache --layers=false --timestamp "$(git log -1 --format=%ct fdf9825)" --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct fdf9825)" -f oteru-collector/Dockerfile -t oteru-collector:0.155.0 oteru-collector  # first no-cache run
+
+[1/2] STEP 1/6: FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS builder
+[1/2] STEP 2/6: WORKDIR /src
+[1/2] STEP 3/6: ENV CGO_ENABLED=0     GOPROXY=https://proxy.golang.org,direct     GOBIN=/usr/local/bin     GOTOOLCHAIN=go1.26.10
+[1/2] STEP 4/6: RUN go install go.opentelemetry.io/collector/cmd/builder@v0.155.0     && mv /usr/local/bin/builder /usr/local/bin/ocb
+go: downloading go.opentelemetry.io/collector/cmd/builder v0.155.0
+go: downloading go.opentelemetry.io/collector v0.155.0
+go: downloading github.com/spf13/cobra v1.10.2
+go: downloading github.com/knadh/koanf/parsers/yaml v1.1.0
+go: downloading github.com/knadh/koanf/providers/env/v2 v2.0.0
+go: downloading github.com/knadh/koanf/providers/file v1.2.1
+go: downloading github.com/knadh/koanf/v2 v2.3.5
+go: downloading github.com/spf13/pflag v1.0.10
+go: downloading go.uber.org/multierr v1.11.0
+go: downloading go.uber.org/zap v1.28.0
+go: downloading go.yaml.in/yaml/v3 v3.0.4
+go: downloading github.com/fsnotify/fsnotify v1.9.0
+go: downloading golang.org/x/mod v0.37.0
+go: downloading github.com/knadh/koanf/providers/fs v1.0.0
+go: downloading github.com/go-viper/mapstructure/v2 v2.4.0
+go: downloading github.com/knadh/koanf/maps v0.1.2
+go: downloading github.com/mitchellh/copystructure v1.2.0
+go: downloading golang.org/x/sys v0.41.0
+go: downloading github.com/mitchellh/reflectwalk v1.0.2
+[1/2] STEP 5/6: COPY . /tmp/context
+[1/2] STEP 6/6: RUN cp /tmp/context/builder-config.yaml /src/builder-config.yaml     && if [ -d /tmp/context/hmacconverter ]; then          cp -a /tmp/context/hmacconverter /src/hmacconverter;        fi     && rm -rf /tmp/context     && if [ ! -f /src/hmacconverter/go.mod ]; then          mkdir -p /src/hmacconverter          && printf 'module github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter\n\ngo 1.26.0\n'               > /src/hmacconverter/go.mod;        fi     && ocb --config=/src/builder-config.yaml     && test -x /src/_build/otelcol-oteru
+2026-10-20T22:50:52.418Z	INFO	internal/command.go:97	OpenTelemetry Collector Builder	{"version": "v0.155.0"}
+2026-10-20T22:50:52.418Z	INFO	internal/command.go:102	Using config file	{"path": "/src/builder-config.yaml"}
+2026-10-20T22:50:52.418Z	INFO	builder/config.go:165	Using go	{"go-executable": "/usr/local/go/bin/go"}
+2026-10-20T22:50:52.419Z	INFO	builder/main.go:110	Sources created	{"path": "./_build"}
+2026-10-20T22:51:00.495Z	INFO	builder/main.go:229	Getting go modules
+2026-10-20T22:51:01.615Z	INFO	builder/main.go:121	Compiling
+2026-10-20T22:51:53.490Z	INFO	builder/main.go:153	Compiled	{"binary": "./_build/otelcol-oteru"}
+[2/2] STEP 1/5: FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+[2/2] STEP 2/5: COPY --from=builder --chown=nonroot:nonroot /src/_build/otelcol-oteru /otelcol-oteru
+[2/2] STEP 3/5: USER nonroot
+[2/2] STEP 4/5: ENTRYPOINT ["/otelcol-oteru"]
+[2/2] STEP 5/5: CMD ["--config=/etc/oteru-collector-config.yml"]
+[2/2] COMMIT oteru-collector:0.155.0
+--> d7a637ceeed1
+[Warning] one or more build args were not consumed: [SOURCE_DATE_EPOCH]
+Successfully tagged localhost/oteru-collector:0.155.0
+d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9

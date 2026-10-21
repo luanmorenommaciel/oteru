@@ -1,0 +1,9 @@
+tested_sha: 40ad3874f69380fbcb91939192dfd18feb0dcaee
+clickhouse_version: 26.9.23.15
+utc: 2026-10-21T12:38:31Z
+command: python3 oteru-dbt/tests/load_shifted_cost_fixture.py </dev/null
+
+loaded 10 records; utc days=[datetime.date(2026, 10, 20), datetime.date(2026, 10, 21)]; request_ids preserved (no restamp)
+otel_logs=10
+verified: 10
+2 actor_ids match ^hmac:v1:[0-9a-f]{64}$

@@ -1,0 +1,12 @@
+tested_sha: 40ad3874f69380fbcb91939192dfd18feb0dcaee
+clickhouse_version: 26.9.23.15
+utc: 2026-10-21T12:38:35Z
+command: reconciliação after dbt build (criterion 4); expected 682950
+
+fct_cost_actor_daily	3	682950
+
+fct_cost_daily	5	682950
+
+int_api_request_dedup	8	682950
+
+682950

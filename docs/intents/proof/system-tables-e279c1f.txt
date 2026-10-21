@@ -1,0 +1,17 @@
+Row 1:
+──────
+name:        fct_cost_actor_daily
+engine_full: ReplacingMergeTree ORDER BY ((day_utc, actor_id)) TTL day_utc + toIntervalDay(90) SETTINGS replicated_deduplication_window = '0', index_granularity = 8192
+ddl:         CREATE TABLE otel.fct_cost_actor_daily (`day_utc` Date, `actor_id` String, `cost_usd_micros` Nullable(Int64), `cost_usd` Nullable(Float64), `requests` UInt64, `input_tokens` Nullable(Int64), `output_tokens` Nullable(Int64), `cache_read_tokens` Nullable(Int64), `cache_creation_tokens` Nullable(Int64)) ENGINE = ReplacingMergeTree ORDER BY ((day_utc, actor_id)) TTL day_utc + toIntervalDay(90) SETTINGS replicated_deduplication_window = '0', index_granularity = 8192
+
+Row 2:
+──────
+name:        fct_cost_daily
+engine_full: ReplacingMergeTree ORDER BY ((day_utc, model_family)) SETTINGS replicated_deduplication_window = '0', index_granularity = 8192
+ddl:         CREATE TABLE otel.fct_cost_daily (`day_utc` Date, `model_family` String, `cost_usd_micros` Nullable(Int64), `cost_usd` Nullable(Float64), `requests` UInt64, `input_tokens` Nullable(Int64), `output_tokens` Nullable(Int64), `cache_read_tokens` Nullable(Int64), `cache_creation_tokens` Nullable(Int64)) ENGINE = ReplacingMergeTree ORDER BY ((day_utc, model_family)) SETTINGS replicated_deduplication_window = '0', index_granularity = 8192
+
+Row 3:
+──────
+name:        otel_logs
+engine_full: MergeTree ORDER BY Timestamp TTL toDateTime(Timestamp) + toIntervalHour(72) SETTINGS index_granularity = 8192
+ddl:         CREATE TABLE otel.otel_logs (`Timestamp` DateTime64(9), `Body` String, `ServiceName` String, `ResourceAttributes` Map(String, String), `LogAttributes` Map(String, String)) ENGINE = MergeTree ORDER BY Timestamp TTL toDateTime(Timestamp) + toIntervalHour(72) SETTINGS index_granularity = 8192

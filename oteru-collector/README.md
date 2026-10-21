@@ -1,12 +1,27 @@
 # oteru-collector
 
-**OpenTelemetry Collector** sandbox (contrib distribution) for the Oteru
-platform. Receives OTLP telemetry, prints it to stdout (`debug`) and persists
-it to disk (`file`). It is the **receiving** end — its pair is the
+**OpenTelemetry Collector** sandbox (custom OCB distribution, otelcol v0.155.0)
+for the Oteru platform. Receives OTLP telemetry, applies a bounded privacy
+policy, prints the result to stdout (`debug`) and persists it to disk (`file`).
+It is the **receiving** end — its pair is the
 [`oteru-emitter`](../oteru-emitter), which forges the traffic.
 
+The collector image is built locally (`oteru-collector:0.155.0`, see
+`builder-config.yaml` + `Dockerfile`). The builder stage is
+`golang:1.26.10-bookworm` pinned by digest (`GOTOOLCHAIN=go1.26.10`);
+core/contrib stay on v0.155.0 and stable core on v1.61.0. It is not
+pulled from a registry. After `docker compose build`, pin the result
+by digest:
+
+```bash
+docker inspect --format='{{.Id}}' oteru-collector:0.155.0
 ```
-emitter / Claude Code / POD-1   ──OTLP──►   this collector   ──►  debug (stdout)
+
+`OTERU_PII_HMAC_KEY` is read only at runtime from `.env` (empty placeholder in
+`.env.example`). It is never an image ARG/ENV, never a Makefile default.
+
+```
+emitter / Claude Code / POD-1   ──OTLP──► privacy policy ──►  debug (stdout)
         (gRPC :4317 | HTTP :4318)                            └─►  file  (telemetry/)
 ```
 
@@ -26,7 +41,10 @@ docker compose down                     # stop
 From the monorepo root, `make up` / `make down` / `make demo` (start + send 5
 emitter batches + show the logs) do the same via the Makefile.
 
-After editing `oteru-collector-config.yml`, recreate to remount the config:
+For policy changes on a running installation, use the profile-aware activation
+command from [the privacy runbook](../docs/privacy.md). It stops ingestion before
+compilation and leaves it stopped if validation fails. For other Collector config
+changes, recreate the stack:
 
 ```bash
 docker compose up -d --force-recreate
@@ -41,6 +59,9 @@ automated API-key bootstrap, see [`docs/clickstack.md`](../docs/clickstack.md):
 make up-direct            # ClickStack alone; emitter ingests direct on :4318
 make up-clickstack-local  # collector + ClickStack (collector forwards internally)
 ```
+
+Direct ingest bypasses the Collector privacy policy. Use `up-clickstack-local`
+for telemetry that requires its masking and dropping rules.
 
 ## Forwarding to ClickStack (optional)
 
@@ -99,6 +120,100 @@ Notes:
   ClickStack all-in-one (see above); **`up-clickhouse`** is fully self-contained
   (raw ClickHouse tables you query with SQL); **`up-hyperdx`** (below) keeps
   that self-contained ClickHouse and puts the HyperDX UI in front of it.
+
+## Views over the raw tables (`make views`)
+
+`clickhouse/views/*.sql` holds plain ClickHouse views over the `otel_*`
+tables — typed, named reads of what the exporter stores in attribute maps.
+They are `CREATE OR REPLACE`, hold no data, and need the tables to exist, so
+apply them after `make up-clickhouse`:
+
+```bash
+make views     # from the monorepo root; re-run any time, it is idempotent
+```
+
+| View | What it holds |
+|---|---|
+| `otel.mcp_calls` | one row per MCP span (#42): `method`, `tool_name`, `resource_uri`, `prompt_name`, `session_id`, `request_id`, `side` (client/server), `failed`, `error_type`, `duration_ms` |
+
+```sql
+-- slowest MCP tools, failures first
+SELECT tool_name, countIf(failed) AS failures, count() AS calls,
+       quantile(0.95)(duration_ms) AS p95_ms
+FROM otel.mcp_calls
+WHERE method = 'tools/call' AND side = 'client'
+GROUP BY tool_name ORDER BY failures DESC, p95_ms DESC;
+```
+
+The attribute names follow the OTel MCP semantic conventions — see
+[`../docs/integration-surface.md`](../docs/integration-surface.md) once #22
+lands. `make e2e-signals` replays an MCP fixture and asserts the view's
+per-method counts, the failed call and the client/server join.
+
+## Dual retention: hot for query, cold for legal archive (`make up-archive`)
+
+Two stores with two jobs (#44):
+
+| | HOT — ClickHouse | COLD — S3 bucket with Object Lock |
+|---|---|---|
+| For | dashboards, SQL, every Oteru feature | proving to an auditor what happened |
+| Lifetime | `OTERU_HOT_TTL` (default `72h`), then ClickHouse drops the rows | the legal retention, then the object may be deleted |
+| Mutable? | yes | **no** — write once, read many (WORM) |
+| Format | `otel_*` tables | one gzip OTLP/JSON object per batch, `year=…/month=…/day=…/hour=…/logs_<uuidv7>.json.gz` |
+
+The collector writes every batch to both (`oteru-collector-config.archive.yml`
+adds the `awss3/archive` exporter next to `clickhouse`), so a record that ages
+out of hot is still in cold.
+
+```bash
+make up-archive     # collector + ClickHouse (hot) + MinIO with a locked bucket (cold)
+make e2e-archive    # replay → rows in hot, objects in cold, version delete refused
+make down-archive   # stop and remove both volumes
+```
+
+Read the cold archive back from ClickHouse when it is needed (dev credentials;
+ClickHouse reaches the bucket by service name on the compose network):
+
+```sql
+SELECT _path, json
+FROM s3('http://archive:9000/oteru-archive/year=2026/month=10/**/*.json.gz',
+        'oteru-archive', 'oteru-archive-dev-secret', 'JSONAsString', 'json String', 'gzip')
+WHERE position(json, 'some-session-id') > 0;
+```
+
+The MinIO console is on http://localhost:9001 and the S3 API on `:9002` (9000
+is ClickHouse's native port).
+
+Configuration (env vars or the gitignored `.env`, see `.env.example`):
+
+| Variable | Default (dev) | Production |
+|---|---|---|
+| `OTERU_HOT_TTL` | `72h` | as long as queries need |
+| `OTERU_ARCHIVE_RETENTION_MODE` | `GOVERNANCE` (an admin can bypass) | `COMPLIANCE` (nobody can shorten or bypass) |
+| `OTERU_ARCHIVE_RETENTION_DAYS` | `1` | the legal period — the EU AI Act asks for automatically generated logs to be kept at least six months (Art. 19 / 26); confirm with legal |
+| `OTERU_ARCHIVE_ENDPOINT` / `_BUCKET` | `http://archive:9000` / `oteru-archive` | the real object store |
+| `OTERU_ARCHIVE_ACCESS_KEY` / `_SECRET_KEY` | throwaway placeholders | real credentials, never in the repo |
+
+Gotchas:
+
+- **The hot TTL is set when the tables are created.** The `clickhouse`
+  exporter applies `ttl` only under `create_schema` (72h becomes
+  `toIntervalDay(3)`). Changing `OTERU_HOT_TTL` later does not alter existing
+  tables: `make down-archive` first, or `ALTER TABLE … MODIFY TTL`.
+- **Object Lock can only be enabled when the bucket is created** — the
+  `archive-init` one-shot does it; an existing unlocked bucket cannot be
+  converted.
+- **A plain DELETE is not refused**, by S3 design: on a versioned bucket it
+  adds a delete marker and the locked version survives. Deleting the
+  *version* is what Object Lock refuses — and what `make e2e-archive` asserts.
+- **Image choice.** MinIO no longer publishes community images on Docker Hub
+  (`minio/minio` does not pull), so the override uses Chainguard's
+  `cgr.dev/chainguard/minio`, which tracks current releases. It has no shell:
+  the bucket is set up with the official AWS CLI image, which also keeps the
+  setup portable to any S3.
+- **This is not the persistent buffer (#6 / ADR-002 #8).** Cold archive keeps
+  what the collector received; a collector that is down still loses what it
+  never received. The decoupled buffer is a separate piece.
 
 ## Browsing it in HyperDX (local UI, no API key)
 
@@ -175,12 +290,15 @@ guidance for a shared deployment.
 | `4317` | OTLP/gRPC | emitter `--transport grpc`, production POD-1 |
 | `4318` | OTLP/HTTP (`http/protobuf` and `http/json`) | Claude Code CLI, emitter `--transport http` |
 
-Both receivers feed the same pipelines (`traces`, `logs`, `metrics`).
+Both receivers feed the same pipelines (`traces`, `logs`, `metrics`). Each
+pipeline applies the privacy policy before any exporter. Metric records with
+identity labels are rejected to avoid merging distinct series; the committed
+sample's 934 metric datapoints are all affected by the default policy.
 
 ## Exporters
 
-All three signals fan out to **two** exporters (see
-`oteru-collector-config.yml`):
+After privacy processing, all three signals fan out to **two** base exporters
+(see `oteru-collector-config.yml`):
 
 - **`debug`** (`verbosity: detailed`) — prints human-readable telemetry to
   stdout.

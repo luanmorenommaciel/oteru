@@ -1,0 +1,130 @@
+# Custom OpenTelemetry Collector distribution (OCB).
+# Builds the binary, tests the local HMAC converter module, produces an SBOM,
+# and fails on HIGH/CRITICAL vulns or leaked secrets. Does not push an image.
+name: Collector OCB
+
+on:
+  push:
+    paths:
+      - "oteru-collector/hmacconverter/**"
+      - "oteru-collector/builder-config.yaml"
+      - "oteru-collector/Dockerfile"
+      - ".github/workflows/collector-ocb.yml"
+  pull_request:
+    paths:
+      - "oteru-collector/hmacconverter/**"
+      - "oteru-collector/builder-config.yaml"
+      - "oteru-collector/Dockerfile"
+      - ".github/workflows/collector-ocb.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: collector-ocb-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ocb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout (full history for gitleaks)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.26.10"
+          cache: false
+      - name: Pin GOTOOLCHAIN
+        run: echo "GOTOOLCHAIN=go1.26.10" >> "$GITHUB_ENV"
+
+      - name: Install OCB v0.155.0
+        run: |
+          go install go.opentelemetry.io/collector/cmd/builder@v0.155.0
+          mkdir -p "$HOME/.local/bin"
+          mv "$(go env GOPATH)/bin/builder" "$HOME/.local/bin/ocb"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Uncommitted stub if hmacconverter is absent
+        working-directory: oteru-collector
+        run: |
+          # Duto owns hmacconverter/. A compile-only stub is CI-local and
+          # must never be committed from this job.
+          if [ ! -f hmacconverter/go.mod ]; then
+            mkdir -p hmacconverter
+            printf 'module github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter\n\ngo 1.26.0\n' > hmacconverter/go.mod
+          fi
+
+      - name: OCB build
+        working-directory: oteru-collector
+        run: ocb --config=builder-config.yaml
+
+      - name: Collector modules stay on v0.155.0 / v1.61.0
+        working-directory: oteru-collector/_build
+        run: |
+          # Fail if any collector core/contrib module drifted off the
+          # v0.155.0 (unstable) / v1.61.0 (stable) line.
+          off="$(go list -m all | awk '
+            $1 ~ /go\.opentelemetry\.io\/collector(\/|$)/ ||
+            $1 ~ /github\.com\/open-telemetry\/opentelemetry-collector-contrib(\/|$)/ {
+              v=$2
+              if (v ~ /^v0\./ && v != "v0.155.0") print
+              else if (v ~ /^v1\./ && v != "v1.61.0") print
+            }')"
+          if [ -n "$off" ]; then
+            echo "collector modules off the v0.155.0 / v1.61.0 line:"
+            echo "$off"
+            exit 1
+          fi
+          go list -m all | grep -E 'opentelemetry-collector|go.opentelemetry.io/collector' || true
+
+      - name: go test (hmacconverter)
+        working-directory: oteru-collector
+        run: |
+          if compgen -G "hmacconverter/*.go" > /dev/null; then
+            go test ./hmacconverter/...
+          else
+            echo "hmacconverter has no Go packages yet; skipping go test"
+          fi
+
+      - name: govulncheck
+        working-directory: oteru-collector/_build
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          govulncheck ./...
+
+      - name: SBOM (syft)
+        uses: anchore/sbom-action@f8bdd1d8ac5e901a77a92f111440fdb1b593736b # v0.20.6
+        with:
+          path: oteru-collector/_build
+          format: spdx-json
+          upload-artifact: false
+
+      - name: Trivy filesystem (fail on CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: oteru-collector
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: false
+
+      # gitleaks-action is commercial; run the MIT CLI against full history.
+      - name: Gitleaks (full branch history)
+        run: |
+          ver=8.24.3
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz" -o /tmp/gitleaks.tgz
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          /tmp/gitleaks detect --source . --verbose --redact --log-opts=--all
+
+      - name: Docker image (local tag, no push)
+        working-directory: oteru-collector
+        run: |
+          docker build -t oteru-collector:0.155.0 .
+          docker inspect --format='id={{.Id}}' oteru-collector:0.155.0

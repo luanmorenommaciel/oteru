@@ -1,0 +1,19 @@
+reconciliation: sum(actor) == sum(daily) per day; both == int
+(this is the equality that must hold; 0 actor rows is a FAIL)
+
+After fixture-only full-refresh (see dedup-totals-e22dbcc.txt):
+  int 8 / 682950
+  daily 682950
+  actor 682950
+  2026-10-19: 531950 == 531950
+  2026-10-20: 151000 == 151000
+
+After midnight + late_within (this file's query window):
+   ┌────day_utc─┬─daily_micros─┬─actor_micros─┬─diff─┐
+   │ 2026-10-19 │       535950 │       535950 │    0 │
+   │ 2026-10-20 │       153000 │       153000 │    0 │
+   └────────────┴──────────────┴──────────────┴──────┘
+
+analyses/reconciliation_daily_vs_staging.sql compares pre-dedup staging
+to post-dedup facts. The 123450 micros gap on 2026-10-19 is the known
+req_001 duplicate (806400 - 682950), not an actor/daily mismatch.

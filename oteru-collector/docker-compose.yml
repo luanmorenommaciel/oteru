@@ -1,11 +1,42 @@
-# docker-compose.yml
+# A policy compilation failure prevents a new Collector from accepting traffic.
 services:
-  oteru-collector:
-    image: otel/opentelemetry-collector-contrib:latest
-    command: ["--config=/etc/oteru-collector-config.yml"]
+  privacy-policy:
+    image: python:3.13.8-alpine3.22@sha256:3a77fbbb5bc88c0f63cc2692a13b011547f25ee93536e991544c452801856226
+    network_mode: none
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    command: [python, /privacy/compile.py, --policy, /privacy/policy.json, --output, /compiled/processors.json]
     volumes:
-      - ./oteru-collector-config.yml:/etc/oteru-collector-config.yml
+      - ./privacy:/privacy:ro
+      - privacy-config:/compiled
+
+  oteru-collector:
+    # Local OCB distro. Built here, never pulled from a registry.
+    # Tag is local-only. Pin a rebuilt image by digest:
+    #   docker inspect --format='{{index .RepoDigests 0}}' oteru-collector:0.155.0
+    # or, for an image that was never pushed (no RepoDigests):
+    #   docker inspect --format='{{.Id}}' oteru-collector:0.155.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: oteru-collector:0.155.0
+    command: ["--config=/etc/oteru-collector-config.yml"]
+    depends_on:
+      privacy-policy:
+        condition: service_completed_successfully
+    environment:
+      # HMAC key for Duto's OTTL converter. From oteru-collector/.env only —
+      # no default here, none in the Makefile, never baked into the image.
+      # Compose interpolation fails closed if the key is unset or empty.
+      OTERU_PII_HMAC_KEY: ${OTERU_PII_HMAC_KEY:?defina em oteru-collector/.env}
+    volumes:
+      - ./oteru-collector-config.yml:/etc/oteru-collector-config.yml:ro
+      - privacy-config:/etc/oteru-privacy:ro
       - ./telemetry:/telemetry
     ports:
       - "4317:4317"   # gRPC
       - "4318:4318"   # HTTP
+
+volumes:
+  privacy-config:
