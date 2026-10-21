@@ -138,7 +138,7 @@ O MVP diário é **alert-only na prática** até o gateway existir e até a deci
 
 | Peça | Owner | Padrão proposto | Justificativa |
 |---|---|---|---|
-| `alert` | **Vigia** | lê só `audit_budget_runs` (agregados por run × team × project × status), no estilo `ops/alerts/46/` | já é o dono de alerta; não precisa de grant na view de enforcement |
+| `alert` | **Vigia** | lê `audit_budget_runs` e `budget_status_current` (só `team`, `project`, `as_of_ts`, `is_stale`) com o role próprio `oteru_alert_reader` (§7.12), no estilo `ops/alerts/46/` | já é o dono de alerta; grant separado do `oteru_budget_reader` do gateway |
 | `block` (mecanismo do gateway) | **Alicerce** | implementa o reader + o corte no gateway proposto em §7.0 | o ponto de corte é infra, não dbt |
 | `action_on_breach` no seed | política | muda **só por PR**, com **OK do Vinícius** | §3.1 e §9.2; troca alert↔block é decisão de produto, não de plantão |
 
@@ -242,6 +242,22 @@ O `oteru-budget-enforcer` **precisa de spec própria + revisão de segurança da
 8. **Bypass.** Quem tem a chave do provedor e chama `api.anthropic.com` (ou equivalente) **direto** — o default do Claude Code e de qualquer SDK sem apontar o proxy — **fura o block**. Documentar na spec do gateway: o corte só vale para tráfego que usa a credencial do par e o endpoint do enforcer. A Vigia alerta sobre esse tráfego: linhas em `fct_cost_chargeback_daily` / `int_cost_attributed` cujo `team×project` não tem request correspondente no enforcer no mesmo lookback (ou `service_name` conhecido de cliente que não passou pelo proxy). Sem gateway no caminho, o default é esse bypass — por isso o MVP é alert-only até a spec+review.
 
 Na fase de implementação dos **dados** (não do gateway), o seed guard (`scripts/check_chargeback_seeds.py`) será estendido para `seeds/budgets.csv`: `@` proibido; slugs de `team`/`project`/`owner_team` no mesmo espírito de `oteru.team`/`oteru.project` (`^[a-z0-9][a-z0-9-]{0,62}$`, salvo `unassigned` e o `*` se a decisão de §9.1 permitir). `hmac:vN` não se aplica (não há `actor_id` no seed de budget).
+
+### 7.12 Alertas (Vigia)
+
+Entrega em `ops/alerts/48/`: SQL + `run_alert_tests.sh` (clickhouse-local, casos ok/dispara/limite/histórico curto) + evidência com sha256, igual a `ops/alerts/46/`. Só leitura; nenhum alerta escreve em tabela.
+
+| # | Alerta | Fonte | Dispara quando |
+|---|---|---|---|
+| A1 | `budget_warn_breach_new` | `audit_budget_runs` (último run com sucesso) | um team × project entra em `warn` ou `breach` e não estava nesse status no run anterior; `breach` com `action_on_breach='block'` sem gateway também dispara |
+| A2 | `budget_status_stale` | `budget_status_current` | alguma linha com `is_stale = true`; é o sinal que sustenta o fail-open (§7.5). Depende de `as_of_ts` medir o último custo processado, não a hora do run (condição 1 da Sentinela) |
+| A3 | `budget_run_missing` | `audit_budget_runs` | nenhum run com sucesso há mais de `budget_stale_hours_daily` (26h; 2h na fase 2) |
+| A4 | `cost_late_beyond_lookback` | `audit_cost_runs.events_dropped_late` (contrato #45/#47, só leitura, sem mudança) | soma no dia UTC fechado > 0, ou seja, custo chegou com mais de 48h e ficou fora do consumo (§8) |
+| A5 | `budget_gateway_bypass` | só se o gateway existir (§7.11 item 8) | custo por team × project em `fct_cost_chargeback_daily` sem request correspondente no enforcer no mesmo lookback |
+
+**Grant (privilégio mínimo):** role `oteru_alert_reader`, separado do `oteru_budget_reader`. `SELECT` só em `audit_budget_runs`, `budget_status_current` (colunas `team`, `project`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`) e `audit_cost_runs` (`run_id`, `run_completed_at`, `run_status`, `events_dropped_late`). Sem `fct_*`, seeds, `otel_*`, `INSERT`/`ALTER`/`DROP`. Mesma regra de `SQL SECURITY DEFINER` da condição 5. Credencial só em secret/env. Teste: o SELECT nas colunas permitidas passa e o SELECT em `fct_*` falha.
+
+**Sem ator:** nenhum alerta lê ou emite `actor_id`, hmac ou `@`; a saída é só team × project × status × contagem.
 
 ## 8. Riscos
 - **Granularidade**: o diário (MVP) detecta um agente em loop só depois; o horário (fase 2, ≤ 1h) é o que de fato atende "runaway".
