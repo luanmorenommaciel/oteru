@@ -34,10 +34,10 @@ Alternativas consideradas:
 ## 2. Reconciliação com `actor_id` HMAC sem re-identificação
 - Chaves permitidas em mapeamentos: `service_name`, atributos de recurso não-PII (`oteru.team`, `oteru.project`) e `actor_id` no formato `^hmac:v1:[0-9a-f]{64}$`. **Nunca** e-mail, nome, login, ou qualquer identificador em claro; o arquivo de mapeamento **nunca** armazena originais (nem em comentários).
 - Caminho preferido: `service_name` ou atributos `oteru.team`/`oteru.project` em `OTEL_RESOURCE_ATTRIBUTES`. `chargeback_actor_map` é exceção.
-- Como alguém obtém o hmac de si mesmo para o `chargeback_actor_map` sem que o repo veja o e-mail: **open question para Duto/Sentinela** (ex.: ferramenta local que calcula o HMAC com a chave e imprime só o `hmac:v1:...`; a chave nunca sai do ambiente do collector). Até resolver, `chargeback_actor_map` entra vazio (só header).
-- Rotação de chave (`v1`→`v2`) invalida `chargeback_actor_map`; linhas com versão diferente da corrente caem em `unassigned` (não quebram).
+- **Ferramenta self-hmac (owner: Duto, comando administrativo da fase 2):** script local que lê a chave **somente** da env `OTERU_PII_HMAC_KEY` e o e-mail **somente** do stdin (nunca argv, para não ir ao histórico do shell). Falha fechada (exit ≠ 0, stdout vazio) se a chave estiver ausente ou curta (< 32 bytes). Em sucesso imprime **apenas** `hmac:v1:<64hex>` e nada mais; não loga nada (nem e-mail, nem chave, nem hash) em stderr, arquivo ou syslog. A chave **nunca** fica no repo nem em CI (testes usam chave de teste gerada no próprio teste). Quem pode executá-la é **decisão em aberto do Vinícius** (Open questions). Até a ferramenta existir, `chargeback_actor_map` entra vazio (só header).
+- **Rotação de chave (`v1`→`v2`) não pode falhar em silêncio:** linhas do `chargeback_actor_map` com prefixo de versão diferente do corrente (`hmac:v1:`) continuam caindo em `unassigned` no join, mas são detectadas: (i) teste dbt `test_chargeback_actor_map_hmac_version` no seed, `severity: warn` por padrão e `error` via `var('chargeback_strict_hmac_version', false)`; (ii) métrica em `audit_cost_runs` (ver §4) com alerta da Vigia quando > 0.
 - **TTL:** toda tabela por ator herda `day_utc + INTERVAL {{ var('actor_cost_ttl_days') }} DAY` (90). Agregados por team/projeto **sem** `actor_id` podem ser permanentes como `fct_cost_daily`. Motivo: minimização de dados (guardrail 5 já exige isso) e chargeback histórico precisa de série longa por time, não por pessoa. Um seed `chargeback_actor_map` é dado de referência (não fato), mas por conter pseudônimos também deve ser revisado por Sentinela.
-- Tabela permanente por team só é derivada de dados não-PII; nenhum campo permanente depende de `actor_map` de forma que permita inferir um indivíduo — **risco**: time com 1 pessoa mapeado via `actor_map` torna o agregado permanente equivalente a dado individual. Mitigação proposta: na tabela permanente, `attribution_source='actor_map'` só é permitido se Vinícius aprovar; senão o agregado permanente usa apenas `otel_attr`/`service_map` e o resto vai para `unassigned` (decisão a confirmar — Open questions).
+- **Decisão: `actor_map` nunca entra na tabela permanente.** Linhas com `attribution_source='actor_map'` existem apenas em `int_cost_attributed` e `fct_cost_chargeback_actor_daily` (TTL 90d). Em `fct_cost_chargeback_daily` esse custo é somado em `team='unassigned'`, `project='unassigned'`, `owner_team='unassigned'`, `attribution_source='unassigned'`. Assim nenhum agregado permanente pode equivaler a dado individual (ex.: time unipessoal), e a reconciliação exata com `fct_cost_daily` se mantém.
 
 ## 3. Mudanças de contrato
 **Nenhuma mudança em contratos existentes** (`fct_cost_daily`, `fct_cost_actor_daily`, `int_api_request_dedup`, `stg_api_request`): mesmas colunas, grão, engine e TTL. Fase 1 é 100% aditiva.
@@ -45,7 +45,13 @@ Alternativas consideradas:
 Fase 2 (atributos OTel) exige propagar `ResourceAttributes['oteru.team'|'oteru.project']`. Opções:
 - (a) adicionar colunas `team_attr`, `project_attr` em `int_api_request_dedup` — aditivo, não quebra consumidores, mas altera modelo existente → **requer OK de Vinícius**;
 - (b) novo modelo `int_api_request_attrs` (`dedup_key → team_attr, project_attr`) lendo do source com o mesmo lookback — sem tocar no existente, mas duplica lógica de dedup.
-Recomendação: (a), marcado **aditivo, requer OK**. Nada é `breaking`.
+Recomendação: (a), marcado **aditivo, requer OK do Vinícius** (fase 2 não começa sem esse OK). Nada é `breaking`.
+
+### Fase 2 — atributos OTel (owner: Duto)
+- O emitter lê `oteru.team` / `oteru.project` de `OTEL_RESOURCE_ATTRIBUTES` como **resource attributes** (mecanismo padrão do SDK). **Nenhuma mudança nos hooks** (`oteru-hooks/oteru_hook.py`); o collector apenas repassa (pass-through).
+- `oteru-collector/privacy/policy.json`: allowlist de `oteru.team` e `oteru.project` com regex de slug `^[a-z0-9][a-z0-9-]{0,62}$`.
+- Valor inválido (incluindo qualquer `@`): o collector descarta **somente o atributo**, mantém o registro; o custo desse registro cai em `unassigned`.
+- Testes (Duto): (1) valor válido passa intacto até `otel_logs`; (2) valor com `@` é removido e o registro permanece; (3) atributo ausente → custo em `unassigned`; (4) com `oteru.team` inválido, contagem de registros e `sum(cost_usd_micros)` são iguais aos do mesmo envio sem o atributo.
 
 ## 4. Novos objetos
 ### Seeds
@@ -62,6 +68,11 @@ Colunas: `day_utc Date, team String, project String, owner_team String, attribut
 ### `fct_cost_chargeback_actor_daily` — por ator, TTL 90d
 Grão: `day_utc × team × project × actor_id`. Mesmas métricas + `actor_id String`. `ttl: "day_utc + INTERVAL {{ var('actor_cost_ttl_days') }} DAY"`. (Opcional; só se líderes precisarem de drill-down por pseudônimo.)
 
+### Métricas em `audit_cost_runs` (escrita: Modelo; critério/alerta: Vigia, sem código da Vigia neste intent)
+- `actor_map_hmac_version_mismatch_rows`: a cada run, nº de linhas do seed `chargeback_actor_map` cujo prefixo `hmac:vN:` difere da versão corrente (`v1`). Alerta Vigia se > 0.
+- `unassigned_share_by_source`: por dia e `attribution_source`, participação do custo em `unassigned`. Alerta Vigia se subir > 5 p.p. em relação à mediana dos 7 dias anteriores.
+- Gravadas de forma aditiva (novas linhas/colunas de métrica; sem alterar colunas existentes de `audit_cost_runs`).
+
 ### Contratos e testes dbt
 - `contract: enforced: true` nos novos modelos com tipos acima.
 - `not_null` em todas as chaves e métricas; `unique` combinado no grão (`dbt_utils.unique_combination_of_columns` se o pacote já estiver em `packages.yml`, senão teste singular).
@@ -69,6 +80,8 @@ Grão: `day_utc × team × project × actor_id`. Mesmas métricas + `actor_id St
 - `relationships` (seed → valores de time válidos), `unique` em `service_name`/`actor_id` dos seeds.
 - **Reconciliação (singular, exata em micros)** `test_chargeback_equals_daily.sql`: retorna linhas quando
   `sum(cost_usd_micros)` por `day_utc` em `fct_cost_chargeback_daily` ≠ `sum(cost_usd_micros)` por `day_utc` em `fct_cost_daily` (FULL OUTER JOIN por dia; dia ausente de um lado = falha). Idem para `requests`. Mesmo teste para `fct_cost_chargeback_actor_daily` vs `fct_cost_actor_daily` nos dias dentro do TTL.
+- **Sem `actor_map` no permanente (singular)** `test_chargeback_daily_no_actor_map.sql`: retorna linhas se existir `attribution_source='actor_map'` em `fct_cost_chargeback_daily`; executado com fixture que tem `actor_map` populado (pseudônimo de teste), provando que o custo foi para `unassigned` e que a reconciliação com `fct_cost_daily` continua exata.
+- **Versão HMAC (singular, seed)** `test_chargeback_actor_map_hmac_version.sql`: linhas com prefixo ≠ `hmac:v1:`; severidade warn/error conforme §2.
 - **PII (singular)** `test_chargeback_no_pii.sql`: nenhuma coluna String dos novos modelos/seeds contém `'@'`; todo `actor_id` casa `^hmac:v1:[0-9a-f]{64}$` (`match()` no ClickHouse).
 - **Estrutura/TTL**: estender guardrail 5 (Alicerce) para cobrir `fct_cost_chargeback*` — já é dinâmico por prefixo `fct_cost*`; prova via `system.tables`.
 - **Zero testes pulados**: `dbt build` deve terminar com `SKIP=0` e `ERROR=0`.
@@ -91,6 +104,11 @@ Grão: `day_utc × team × project × actor_id`. Mesmas métricas + `actor_id St
 7. Nenhum `'@'` em qualquer coluna; regex de `actor_id` 100%.
 8. Idempotência: dois `dbt build` seguidos sobre os mesmos dados → mesmos totais.
 9. `git diff` não altera nenhum arquivo existente (fase 1).
+10. Com `chargeback_actor_map` populado na fixture: zero linhas `attribution_source='actor_map'` em `fct_cost_chargeback_daily`; esse custo aparece em `unassigned` no permanente e com o time mapeado em `fct_cost_chargeback_actor_daily`; reconciliação por dia exata em micros vs `fct_cost_daily`.
+11. Seed com linha `hmac:v2:…` (fixture): teste de versão dispara (warn; error em modo estrito) e `audit_cost_runs.actor_map_hmac_version_mismatch_rows` > 0.
+12. `audit_cost_runs` registra `unassigned_share_by_source` por dia em todo run.
+13. Self-hmac (Duto): testes provam (a) vetor estilo RFC 4231 (HMAC-SHA256 com chave/mensagem conhecidas → hex esperado) e saída exatamente `hmac:v1:<64hex>`; (b) chave ausente ou curta → exit ≠ 0 e stdout/stderr vazios; (c) e-mail e chave não aparecem em stdout além do hash, stderr, logs ou histórico do shell (entrada só por stdin/env).
+14. Fase 2 (Duto, após OK do Vinícius): os 4 testes de §3 PASS.
 
 ## 7. Provas esperadas (em `docs/intents/proof/`, sufixo = SHA curto do commit testado)
 - `dbt-build-46-<sha>.txt` (saída completa, linha final com `PASS=… WARN=0 ERROR=0 SKIP=0`).
@@ -99,9 +117,10 @@ Grão: `day_utc × team × project × actor_id`. Mesmas métricas + `actor_id St
 - `pii-46-<sha>.txt`, `check-cost-retention-46-<sha>.txt`, `idempotency-46-<sha>.txt`.
 
 ## 8. Open questions para Duto (e outros)
-1. **Duto:** adicionar `oteru.team` / `oteru.project` (e talvez `oteru.repo`) como resource attributes via `OTEL_RESOURCE_ATTRIBUTES` no emitter e em `oteru-hooks/oteru_hook.py` (hoje só `service.name`)? Convenção de nomes e valores (slug minúsculo)?
-2. **Duto/Sentinela:** a política de privacidade (`oteru-collector/privacy/policy.json`) precisa permitir esses atributos e garantir que não carreguem e-mail? Validar que o collector não os remove.
-3. **Duto/Sentinela:** como um usuário obtém seu próprio `hmac:v1:` para `chargeback_actor_map` sem expor e-mail no repo nem a chave?
-4. **Vinícius:** OK para adicionar colunas (aditivas) em `int_api_request_dedup` na fase 2? Permitir `actor_map` alimentar o agregado permanente (risco de time unipessoal)?
-5. **Vinícius/Finanças:** `owner` = time (não pessoa) é suficiente? Precisa de histórico de mudanças de mapeamento (SCD) ou o mapeamento atual reaplicado no lookback de 48h basta? (Hoje: mudança de seed só afeta as últimas 48h; dias antigos ficam congelados.)
-6. Valor de `service.name` é estável o suficiente (`cursor-hooks`, `claude-code-hooks` etc.) para ser chave?
+Resolvidas nesta revisão: convenção/transporte de `oteru.team`/`oteru.project` e política de privacidade (§3 Fase 2); obtenção do próprio `hmac:v1:` (ferramenta self-hmac, §2); `actor_map` no permanente (proibido, §2).
+
+1. **Vinícius:** OK para adicionar colunas (aditivas) em `int_api_request_dedup` na fase 2? (Fase 2 bloqueada até o OK.)
+2. **Vinícius:** quem pode executar a ferramenta self-hmac (só admins com acesso à chave do collector? o próprio usuário em sessão assistida?).
+3. **Duto:** incluir também `oteru.repo` no futuro?
+4. **Vinícius/Finanças:** `owner` = time (não pessoa) é suficiente? Precisa de histórico de mudanças de mapeamento (SCD) ou o mapeamento atual reaplicado no lookback de 48h basta? (Hoje: mudança de seed só afeta as últimas 48h; dias antigos ficam congelados.)
+5. Valor de `service.name` é estável o suficiente (`cursor-hooks`, `claude-code-hooks` etc.) para ser chave?

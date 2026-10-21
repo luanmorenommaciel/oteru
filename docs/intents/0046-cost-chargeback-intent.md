@@ -13,7 +13,9 @@ Não existe nenhuma dimensão de **time / owner / projeto**. Finanças e lídere
 1. Custo diário por `team` e `project` (e `owner` = time responsável), reconciliando **exatamente** (em micros) com `fct_cost_daily` por dia.
 2. Custo não atribuído **nunca é descartado**: vai para o bucket literal `unassigned`.
 3. Nenhuma re-identificação: mapeamentos só por atributos não-PII (`service_name`, atributos de recurso OTel) ou por `actor_id` HMAC (`hmac:v1:<64hex>`); nunca por e-mail ou outro identificador em claro.
-4. Mudanças **apenas aditivas**: nenhum contrato existente (`fct_cost_daily`, `fct_cost_actor_daily`, `int_api_request_dedup`, `stg_api_request`) muda de grão ou de colunas na fase 1.
+4. Custo atribuído via `chargeback_actor_map` (pseudônimo) **nunca** entra na tabela permanente: fica só em `fct_cost_chargeback_actor_daily` (TTL 90d) e no permanente soma em `unassigned`.
+5. Rotação de chave HMAC detectável (teste dbt + métrica/alerta), nunca silenciosa.
+6. Mudanças **apenas aditivas**: nenhum contrato existente (`fct_cost_daily`, `fct_cost_actor_daily`, `int_api_request_dedup`, `stg_api_request`) muda de grão ou de colunas na fase 1.
 
 ## Fora de escopo
 - Faturamento/rateio de custos fixos, orçamento e alertas (#23 e futuras).
@@ -25,5 +27,7 @@ Não existe nenhuma dimensão de **time / owner / projeto**. Finanças e lídere
 - Tráfego sintético excluído em `otel.stg_api_request` (`ResourceAttributes['oteru.traffic'] != 'synthetic'`).
 - Guardrail 5 de `check_cost_retention.sh`: toda tabela `fct_cost*` com coluna `actor_id` precisa de TTL ≤ 90 dias; tabela permanente não pode ter `actor_id`.
 - `actor_id` vem de `LogAttributes['user.email']` já substituído pelo `hmacconverter` do collector (chave `OTERU_PII_HMAC_KEY`).
+
+Fase 2 (atributos `oteru.team`/`oteru.project` via `OTEL_RESOURCE_ATTRIBUTES`, owner Duto) depende de OK do Vinícius para a mudança aditiva em `int_api_request_dedup`.
 
 Detalhes: `0046-cost-chargeback-spec.md`; execução: `0046-cost-chargeback-plan.md`.
