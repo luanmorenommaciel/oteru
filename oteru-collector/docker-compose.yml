@@ -26,9 +26,10 @@ services:
       privacy-policy:
         condition: service_completed_successfully
     environment:
-      # HMAC key for Duto's OTTL converter. From .env only — no default here,
-      # none in the Makefile, never baked into the image.
-      OTERU_PII_HMAC_KEY: ${OTERU_PII_HMAC_KEY}
+      # HMAC key for Duto's OTTL converter. From oteru-collector/.env only —
+      # no default here, none in the Makefile, never baked into the image.
+      # Compose interpolation fails closed if the key is unset or empty.
+      OTERU_PII_HMAC_KEY: ${OTERU_PII_HMAC_KEY:?defina em oteru-collector/.env}
     volumes:
       - ./oteru-collector-config.yml:/etc/oteru-collector-config.yml:ro
       - privacy-config:/etc/oteru-privacy:ro

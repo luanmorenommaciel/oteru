@@ -268,7 +268,7 @@ def isolated_clickhouse(network):
             "CLICKHOUSE_USER=otel",
             "-e",
             "CLICKHOUSE_PASSWORD=otel",
-            "clickhouse/clickhouse-server:latest",
+            "clickhouse/clickhouse-server:26.9.23.15@sha256:d40ed32b22730ef2c1ba995e8affd28cf324b47399323f8b4c43f2cdcb7c35b4",
             timeout=300,
         )
         for _ in range(120):
@@ -869,7 +869,7 @@ def test_clickhouse_tables_receive_only_scrubbed_records(tmp_path, action):
                 "CLICKHOUSE_USER=otel",
                 "-e",
                 "CLICKHOUSE_PASSWORD=otel",
-                "clickhouse/clickhouse-server:latest",
+                "clickhouse/clickhouse-server:26.9.23.15@sha256:d40ed32b22730ef2c1ba995e8affd28cf324b47399323f8b4c43f2cdcb7c35b4",
                 timeout=300,
             )
             for _ in range(120):
