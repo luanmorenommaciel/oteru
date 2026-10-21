@@ -1,0 +1,6 @@
+# TEST FIXTURE ONLY — not a production seed.
+# actor_id is hmac:v1: + 64 dummy hex 'a' characters. This is NOT an HMAC of
+# any email or other identifier; it is a documented dummy key for the
+# ^hmac:v1:[0-9a-f]{64}$ pass case.
+actor_id,team,project
+hmac:v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,platform,oteru

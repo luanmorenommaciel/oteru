@@ -1,0 +1,5 @@
+# TEST FIXTURE ONLY — not a production seed.
+# Actor key is deliberately not ^hmac:v1:[0-9a-f]{64}$ (too short, non-hex).
+# No at-sign, no real identity.
+actor_id,team,project
+hmac:v1:deadbeef,platform,oteru
