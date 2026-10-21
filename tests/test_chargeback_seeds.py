@@ -86,6 +86,61 @@ class ChargebackSeedGuardTests(unittest.TestCase):
         self.assertEqual(
             self.guard.HMAC_FIXTURE_RE.pattern, r"^hmac:v[0-9]+:[0-9a-f]{64}$"
         )
+        self.assertEqual(
+            self.guard.HMAC_ZERO_DIGEST_RE.pattern, r"^hmac:v[0-9]+:0{64}$"
+        )
+
+    def test_all_zero_digest_in_production_fails(self) -> None:
+        """Positive: hmac:v1: + 64 zeros outside fixtures is rejected."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dest = root / "seeds"
+            dest.mkdir()
+            zero = "hmac:v1:" + "0" * 64
+            (dest / "chargeback_actor_map.csv").write_text(
+                f"actor_id,team,project\n{zero},platform,oteru\n",
+                encoding="utf-8",
+            )
+            violations = self.guard.check_tree(root)
+            self.assertTrue(
+                any("all-zero digest" in v for v in violations),
+                msg=violations,
+            )
+            self.assertEqual(self.guard.main(["--path", str(root)]), 1)
+
+    def test_nonzero_digest_outside_fixtures_passes(self) -> None:
+        """Negative: a non-all-zero hmac:v1: digest outside fixtures still passes."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dest = root / "seeds"
+            dest.mkdir()
+            near_zero = "hmac:v1:" + "0" * 63 + "1"
+            (dest / "chargeback_actor_map.csv").write_text(
+                f"actor_id,team,project\n{near_zero},platform,oteru\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(self.guard.check_tree(root), [])
+            self.assertEqual(self.guard.main(["--path", str(root)]), 0)
+
+    def test_all_zero_digest_in_fixtures_allowed(self) -> None:
+        """Fixture path: hmac:v1:/hmac:v2: + 64 zeros under chargeback_fixtures/ pass."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dest = root / "seeds" / "chargeback_fixtures"
+            dest.mkdir(parents=True)
+            zero_v1 = "hmac:v1:" + "0" * 64
+            zero_v2 = "hmac:v2:" + "0" * 64
+            (dest / "chargeback_actor_map_fixture.csv").write_text(
+                f"actor_id,team,project\n{zero_v1},time-fixture,projeto-fixture\n",
+                encoding="utf-8",
+            )
+            (dest / "chargeback_actor_map_fixture_v2.csv").write_text(
+                f"actor_id,team,project\n{zero_v1},time-fixture,projeto-fixture\n"
+                f"{zero_v2},time-fixture,projeto-fixture\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(self.guard.check_tree(root), [])
+            self.assertEqual(self.guard.main(["--path", str(root)]), 0)
 
     def test_header_only_actor_map_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

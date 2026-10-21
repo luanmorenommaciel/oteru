@@ -6,9 +6,12 @@ Fails if any **git-tracked** file matching ``**/seeds/chargeback_*`` contains
 in that glob are a reported violation (no traceback). Actor keys:
 ``hmac:vN:`` (``^hmac:v[0-9]+:[0-9a-f]{64}$``) is allowed **only** under
 ``seeds/chargeback_fixtures/``; every other ``seeds/chargeback_*`` CSV with
-an ``actor_id`` column must match ``^hmac:v1:[0-9a-f]{64}$``. Header-only
-files and an empty glob pass. Stdlib-only. Ignored/untracked trees such as
-``oteru-dbt/target/`` are never scanned (``git ls-files``).
+an ``actor_id`` column must match ``^hmac:v1:[0-9a-f]{64}$``. An all-zero
+hex digest (``^hmac:v[0-9]+:0{64}$``) is rejected outside
+``seeds/chargeback_fixtures/``; placeholders of that form stay allowed
+inside the fixtures dir. Header-only files and an empty glob pass.
+Stdlib-only. Ignored/untracked trees such as ``oteru-dbt/target/`` are
+never scanned (``git ls-files``).
 
 The RFC 2606 ``.invalid`` fixture lives only at the exact path
 ``tests/fixtures/chargeback_guard/at_forbidden.csv`` (documented there and
@@ -37,6 +40,9 @@ ACTOR_ID_COLUMN = "actor_id"
 HMAC_RE = re.compile(r"^hmac:v1:[0-9a-f]{64}$")
 # dbt fixtures may include hmac:v2: to prove rotation is not silent (#46 3a).
 HMAC_FIXTURE_RE = re.compile(r"^hmac:v[0-9]+:[0-9a-f]{64}$")
+# #107: all-zero placeholders are fixtures-only; production seeds must not
+# carry hmac:vN: + 64 zeros. Does not loosen HMAC_RE / HMAC_FIXTURE_RE.
+HMAC_ZERO_DIGEST_RE = re.compile(r"^hmac:v[0-9]+:0{64}$")
 
 # Directories that are never production seeds (local venvs, deps, git).
 _SKIP_DIR_NAMES = frozenset(
@@ -187,11 +193,18 @@ def check_file(path: Path, rel: str, root: Path) -> list[str]:
             return violations
 
         hmac_re = _actor_hmac_re(path, root)
+        in_fixtures = _under_chargeback_fixtures(path, root)
         for lineno, row in rows:
             actor_id = (row or {}).get(ACTOR_ID_COLUMN, "")
             if not hmac_re.fullmatch(actor_id):
                 violations.append(
                     f"{rel}:{lineno}: actor_id {actor_id!r} does not match {hmac_re.pattern}"
+                )
+                continue
+            if not in_fixtures and HMAC_ZERO_DIGEST_RE.fullmatch(actor_id):
+                violations.append(
+                    f"{rel}:{lineno}: actor_id all-zero digest is forbidden "
+                    "outside seeds/chargeback_fixtures/"
                 )
     except AttributeError as exc:
         violations.append(
