@@ -46,6 +46,6 @@ def _host_path_fn() -> str:
 def test_host_path_is_noop_without_cygpath():
     if shutil.which("cygpath"):
         return
-    script = _host_path_fn() + '\nhost_path /tmp/oteru-windows-path-test\n'
+    script = _host_path_fn() + "\nhost_path /tmp/oteru-windows-path-test\n"
     out = subprocess.check_output(["bash", "-c", script], text=True)
     assert out.strip() == "/tmp/oteru-windows-path-test"
