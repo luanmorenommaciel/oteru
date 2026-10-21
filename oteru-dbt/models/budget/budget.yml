@@ -1,0 +1,98 @@
+version: 2
+
+# #48: camada de budget (spec §4). Contratos enforced, sem Float (S2), sem actor_id (CA5).
+x-scope-values: &scope_values
+  accepted_values:
+    arguments:
+      values: ['global', 'team', 'project', 'team_project']
+x-status-values: &status_values
+  accepted_values:
+    arguments:
+      values: ['ok', 'warn', 'breach', 'no_budget']
+x-action-values: &action_values
+  accepted_values:
+    arguments:
+      values: ['alert']
+
+models:
+  - name: stg_budgets
+    description: "#48: seed budgets tipado, com scope_key (§3.1) e valid_to_effective (NULL = aberto, inclusive)."
+    config:
+      contract: {enforced: true}
+    columns:
+      - {name: scope, data_type: LowCardinality(String), data_tests: [not_null, *scope_values]}
+      - {name: scope_key, data_type: String, data_tests: [not_null]}
+      - {name: team, data_type: String, data_tests: [not_null]}
+      - {name: project, data_type: String, data_tests: [not_null]}
+      - {name: period, data_type: LowCardinality(String), data_tests: [not_null]}
+      - {name: budget_usd_micros, data_type: Int64, data_tests: [not_null]}
+      - {name: warn_milli, data_type: UInt16, data_tests: [not_null]}
+      - {name: breach_milli, data_type: UInt16, data_tests: [not_null]}
+      - {name: action_on_breach, data_type: LowCardinality(String), data_tests: [not_null, *action_values]}
+      - {name: valid_from, data_type: Date, data_tests: [not_null]}
+      - {name: valid_to, data_type: Nullable(Date)}
+      - {name: valid_to_effective, data_type: Date, data_tests: [not_null]}
+      - {name: owner_team, data_type: String, data_tests: [not_null]}
+
+  - name: fct_budget_consumption_daily
+    description: "#48: consumo diário e acumulado do mês UTC vs. budget, por day_utc × scope × scope_key (budgets vigentes). Custo de fct_cost_chargeback_daily (global inclui unassigned). Sem actor_id."
+    config:
+      contract: {enforced: true}
+      on_schema_change: fail
+    columns:
+      - {name: day_utc, data_type: Date, data_tests: [not_null]}
+      - {name: period_start, data_type: Date, data_tests: [not_null]}
+      - {name: scope, data_type: LowCardinality(String), data_tests: [not_null, *scope_values]}
+      - {name: scope_key, data_type: String, data_tests: [not_null]}
+      - {name: team, data_type: String, data_tests: [not_null]}
+      - {name: project, data_type: String, data_tests: [not_null]}
+      - {name: owner_team, data_type: String, data_tests: [not_null]}
+      - {name: budget_usd_micros, data_type: Int64, data_tests: [not_null]}
+      - {name: consumed_usd_micros, data_type: Int64, description: "Custo do dia no grão do scope", data_tests: [not_null]}
+      - {name: consumed_period_usd_micros, data_type: Int64, description: "Acumulado no mês UTC", data_tests: [not_null]}
+      - {name: consumed_milli, data_type: Int64, description: "intDiv(acumulado*1000, budget); 0 em no_budget; informativo"}
+      - {name: warn_milli, data_type: UInt16}
+      - {name: breach_milli, data_type: UInt16}
+      - {name: budget_status, data_type: LowCardinality(String), data_tests: [not_null, *status_values]}
+      - {name: action_on_breach, data_type: LowCardinality(String), description: "Do seed (só 'alert'); carregado para a view não precisar ler o seed (S5)", data_tests: [not_null, *action_values]}
+      - {name: last_cost_ts, data_type: DateTime64(9), description: "max(event_ts) do custo do scope_key no dia; epoch se sem custo (S1)"}
+      - {name: projected_period_usd_micros, data_type: Int64, description: "Projeção linear até o fim do mês (informativa)"}
+      - {name: loaded_at, data_type: DateTime64(3)}
+
+  - name: budget_status_current
+    description: "#48: view SQL SECURITY DEFINER lida pelo alerta. 1 linha por scope × scope_key no último dia processado. as_of_ts = high-water mark de custo (S1); is_stale fail-open."
+    config:
+      contract: {enforced: true}
+    columns:
+      - {name: scope, data_type: LowCardinality(String), data_tests: [not_null, *scope_values]}
+      - {name: scope_key, data_type: String, data_tests: [not_null]}
+      - {name: team, data_type: String}
+      - {name: project, data_type: String}
+      - {name: owner_team, data_type: String}
+      - {name: period_start, data_type: Date}
+      - {name: as_of_day, data_type: Date}
+      - {name: as_of_ts, data_type: DateTime64(9), data_tests: [not_null]}
+      - {name: budget_usd_micros, data_type: Int64}
+      - {name: consumed_period_usd_micros, data_type: Int64}
+      - {name: consumed_milli, data_type: Int64}
+      - {name: warn_milli, data_type: UInt16}
+      - {name: breach_milli, data_type: UInt16}
+      - {name: budget_status, data_type: LowCardinality(String), data_tests: [not_null, *status_values]}
+      - {name: action_on_breach, data_type: LowCardinality(String), data_tests: [not_null, *action_values]}
+      - {name: stale_threshold_hours, data_type: UInt16}
+      - {name: is_stale, data_type: Bool, data_tests: [not_null]}
+
+  - name: audit_budget_runs
+    description: "#48: contagem por run × scope × scope_key × status (dias do período corrente). Só agregados; não altera audit_cost_runs."
+    config:
+      contract: {enforced: true}
+      on_schema_change: fail
+    columns:
+      - {name: run_id, data_type: String, description: "invocation_id do dbt", data_tests: [not_null]}
+      - {name: run_completed_at, data_type: DateTime64(3), data_tests: [not_null]}
+      - {name: scope, data_type: LowCardinality(String), data_tests: [not_null, *scope_values]}
+      - {name: scope_key, data_type: String, data_tests: [not_null]}
+      - {name: team, data_type: String, data_tests: [not_null]}
+      - {name: project, data_type: String, data_tests: [not_null]}
+      - {name: status, data_type: LowCardinality(String), data_tests: [not_null, *status_values]}
+      - {name: count, data_type: UInt64, data_tests: [not_null]}

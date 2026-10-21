@@ -1,0 +1,5 @@
+scope,team,project,period,budget_usd_micros,warn_milli,breach_milli,action_on_breach,valid_from,valid_to,owner_team
+global,,,month,5000000,800,1000,alert,2026-10-01,,plataforma
+team,plataforma,,month,600000,800,1000,alert,2026-10-01,,plataforma
+project,,oteru,month,2000000,800,1000,alert,2026-10-01,,plataforma
+team_project,plataforma,oteru,month,800000,800,1000,alert,2026-10-01,,plataforma

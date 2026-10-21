@@ -1,0 +1,135 @@
+version: 2
+
+# #48 unit tests (spec §5). Fixtures sintéticas: slugs de exemplo, sem ator.
+unit_tests:
+  - name: budget_status_thresholds
+    description: "S2: bordas exatas 79,9%/80%/100% com budget 1_000_000 e warn/breach 800/1000; budget 0 = no_budget; micros ≈ 9e15 sem overflow."
+    model: fct_budget_consumption_daily
+    given:
+      - input: ref('fct_cost_chargeback_daily')
+        rows:
+          - {day_utc: 2026-10-05, team: a, project: p799000, cost_usd_micros: 799000}
+          - {day_utc: 2026-10-05, team: a, project: p799999, cost_usd_micros: 799999}
+          - {day_utc: 2026-10-05, team: a, project: p800000, cost_usd_micros: 800000}
+          - {day_utc: 2026-10-05, team: a, project: p999999, cost_usd_micros: 999999}
+          - {day_utc: 2026-10-05, team: a, project: p1000000, cost_usd_micros: 1000000}
+          - {day_utc: 2026-10-05, team: a, project: pzero, cost_usd_micros: 5}
+          - {day_utc: 2026-10-05, team: a, project: pbig-breach, cost_usd_micros: 9000000000000000}
+          - {day_utc: 2026-10-05, team: a, project: pbig-warn, cost_usd_micros: 8999999999999999}
+      - input: ref('int_cost_attributed')
+        rows:
+          - {day_utc: 2026-10-05, team: a, project: p799000, attribution_source: service_map, event_ts: '2026-10-05 10:00:00'}
+      - input: ref('stg_budgets')
+        format: sql
+        rows: |
+          SELECT 'team_project' AS scope, concat('a/', p) AS scope_key, 'a' AS team, p AS project, 'month' AS period,
+                 toInt64(b) AS budget_usd_micros, toUInt16(800) AS warn_milli, toUInt16(1000) AS breach_milli,
+                 'alert' AS action_on_breach, toDate('2026-10-01') AS valid_from, CAST(NULL AS Nullable(Date)) AS valid_to,
+                 toDate('2149-06-06') AS valid_to_effective, 'a' AS owner_team
+          FROM (SELECT arrayJoin([('p799000', 1000000), ('p799999', 1000000), ('p800000', 1000000), ('p999999', 1000000),
+                                  ('p1000000', 1000000), ('pzero', 0), ('pbig-breach', 9000000000000000), ('pbig-warn', 9000000000000000)]) AS t,
+                       t.1 AS p, t.2 AS b)
+    expect:
+      rows:
+        - {scope_key: a/p799000, budget_status: ok, consumed_milli: 799}
+        - {scope_key: a/p799999, budget_status: ok, consumed_milli: 799}
+        - {scope_key: a/p800000, budget_status: warn, consumed_milli: 800}
+        - {scope_key: a/p999999, budget_status: warn, consumed_milli: 999}
+        - {scope_key: a/p1000000, budget_status: breach, consumed_milli: 1000}
+        - {scope_key: a/pzero, budget_status: no_budget, consumed_milli: 0}
+        - {scope_key: a/pbig-breach, budget_status: breach, consumed_milli: 1000}
+        - {scope_key: a/pbig-warn, budget_status: warn, consumed_milli: 999}
+
+  - name: budget_multi_grain
+    description: "§9 item 3: custo de team=a, project=x conta em global, team a, project x e team_project a/x; custo unassigned conta só no global e em team='unassigned' (que tem cap); cap de outro time não sobe."
+    model: fct_budget_consumption_daily
+    given:
+      - input: ref('fct_cost_chargeback_daily')
+        rows:
+          - {day_utc: 2026-10-05, team: a, project: x, cost_usd_micros: 100}
+          - {day_utc: 2026-10-05, team: unassigned, project: unassigned, cost_usd_micros: 7}
+      - input: ref('int_cost_attributed')
+        rows:
+          - {day_utc: 2026-10-05, team: a, project: x, attribution_source: service_map, event_ts: '2026-10-05 10:00:00'}
+          - {day_utc: 2026-10-05, team: unassigned, project: unassigned, attribution_source: unassigned, event_ts: '2026-10-05 11:00:00'}
+      - input: ref('stg_budgets')
+        format: sql
+        rows: |
+          SELECT scope, scope_key, team, project, 'month' AS period, toInt64(1000) AS budget_usd_micros,
+                 toUInt16(800) AS warn_milli, toUInt16(1000) AS breach_milli, 'alert' AS action_on_breach,
+                 toDate('2026-10-01') AS valid_from, CAST(NULL AS Nullable(Date)) AS valid_to,
+                 toDate('2149-06-06') AS valid_to_effective, 'a' AS owner_team
+          FROM (SELECT arrayJoin([('global', 'global', '', ''), ('team', 'a', 'a', ''), ('project', 'x', '', 'x'),
+                                  ('team_project', 'a/x', 'a', 'x'), ('team', 'unassigned', 'unassigned', ''), ('team', 'b', 'b', '')]) AS t,
+                       t.1 AS scope, t.2 AS scope_key, t.3 AS team, t.4 AS project)
+    expect:
+      rows:
+        - {scope: global, scope_key: global, consumed_usd_micros: 107, last_cost_ts: '2026-10-05 11:00:00'}
+        - {scope: team, scope_key: a, consumed_usd_micros: 100, last_cost_ts: '2026-10-05 10:00:00'}
+        - {scope: project, scope_key: x, consumed_usd_micros: 100, last_cost_ts: '2026-10-05 10:00:00'}
+        - {scope: team_project, scope_key: a/x, consumed_usd_micros: 100, last_cost_ts: '2026-10-05 10:00:00'}
+        - {scope: team, scope_key: unassigned, consumed_usd_micros: 7, last_cost_ts: '2026-10-05 11:00:00'}
+        - {scope: team, scope_key: b, consumed_usd_micros: 0, last_cost_ts: '1970-01-01 00:00:00'}
+
+  - name: budget_month_rollover
+    description: "CA3: acumulado monotônico dentro do mês e zera na virada; override de vigência troca o budget sem zerar o acumulado do mês."
+    model: fct_budget_consumption_daily
+    given:
+      - input: ref('fct_cost_chargeback_daily')
+        rows:
+          - {day_utc: 2026-10-30, team: a, project: x, cost_usd_micros: 600}
+          - {day_utc: 2026-10-31, team: a, project: x, cost_usd_micros: 300}
+          - {day_utc: 2026-11-01, team: a, project: x, cost_usd_micros: 50}
+      - input: ref('int_cost_attributed')
+        rows:
+          - {day_utc: 2026-10-30, team: a, project: x, attribution_source: service_map, event_ts: '2026-10-30 10:00:00'}
+      - input: ref('stg_budgets')
+        format: sql
+        rows: |
+          SELECT 'team' AS scope, 'a' AS scope_key, 'a' AS team, '' AS project, 'month' AS period, toInt64(b) AS budget_usd_micros,
+                 toUInt16(800) AS warn_milli, toUInt16(1000) AS breach_milli, 'alert' AS action_on_breach,
+                 toDate(vf) AS valid_from, CAST(vt AS Nullable(Date)) AS valid_to,
+                 ifNull(CAST(vt AS Nullable(Date)), toDate('2149-06-06')) AS valid_to_effective, 'a' AS owner_team
+          FROM (SELECT arrayJoin([(1000, '2026-10-01', '2026-10-30'), (2000, '2026-10-31', NULL)]) AS t, t.1 AS b, t.2 AS vf, t.3 AS vt)
+    expect:
+      rows:
+        - {day_utc: 2026-10-30, period_start: 2026-10-01, budget_usd_micros: 1000, consumed_period_usd_micros: 600, budget_status: ok}
+        - {day_utc: 2026-10-31, period_start: 2026-10-01, budget_usd_micros: 2000, consumed_period_usd_micros: 900, budget_status: ok}
+        - {day_utc: 2026-11-01, period_start: 2026-11-01, budget_usd_micros: 2000, consumed_period_usd_micros: 50, budget_status: ok}
+
+  - name: budget_status_current_is_stale
+    description: "S1/§9 item 2: as_of_ts = max(last_cost_ts) global (não por par); antigo ⇒ is_stale=true e budget_status inalterado (fail-open); só o último dia entra."
+    model: budget_status_current
+    overrides:
+      vars: {budget_stale_hours_daily: 26}
+    given:
+      - input: ref('fct_budget_consumption_daily')
+        format: sql
+        rows: |
+          SELECT toDate(d) AS day_utc, toDate('2000-01-01') AS period_start, scope, scope_key, team, '' AS project, 'a' AS owner_team,
+                 toInt64(1000) AS budget_usd_micros, toInt64(c) AS consumed_period_usd_micros, toInt64(c) AS consumed_milli,
+                 toUInt16(800) AS warn_milli, toUInt16(1000) AS breach_milli, st AS budget_status, 'alert' AS action_on_breach,
+                 toDateTime64(ts, 9, 'UTC') AS last_cost_ts
+          FROM (SELECT arrayJoin([('2000-01-01', 'team', 'a', 'a', 1000, 'breach', '2000-01-01 09:00:00'),
+                                  ('2000-01-02', 'team', 'a', 'a', 1000, 'breach', '2000-01-02 10:00:00'),
+                                  ('2000-01-02', 'team', 'b', 'b', 0, 'ok', '1970-01-01 00:00:00')]) AS t,
+                       t.1 AS d, t.2 AS scope, t.3 AS scope_key, t.4 AS team, t.5 AS c, t.6 AS st, t.7 AS ts)
+    expect:
+      rows:
+        - {scope_key: a, as_of_day: 2000-01-02, as_of_ts: '2000-01-02 10:00:00', budget_status: breach, stale_threshold_hours: 26, is_stale: true}
+        - {scope_key: b, as_of_day: 2000-01-02, as_of_ts: '2000-01-02 10:00:00', budget_status: ok, stale_threshold_hours: 26, is_stale: true}
+
+  - name: budget_status_current_not_stale
+    description: "S1: as_of_ts recente (futuro, para não depender do relógio) ⇒ is_stale=false."
+    model: budget_status_current
+    given:
+      - input: ref('fct_budget_consumption_daily')
+        format: sql
+        rows: |
+          SELECT toDate('2100-01-01') AS day_utc, toDate('2100-01-01') AS period_start, 'global' AS scope, 'global' AS scope_key, '' AS team, '' AS project,
+                 'a' AS owner_team, toInt64(1000) AS budget_usd_micros, toInt64(10) AS consumed_period_usd_micros, toInt64(10) AS consumed_milli,
+                 toUInt16(800) AS warn_milli, toUInt16(1000) AS breach_milli, 'ok' AS budget_status, 'alert' AS action_on_breach,
+                 toDateTime64('2100-01-01 00:00:00', 9, 'UTC') AS last_cost_ts
+    expect:
+      rows:
+        - {scope_key: global, is_stale: false, budget_status: ok}
