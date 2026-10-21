@@ -184,6 +184,65 @@ Complementam CA1–CA8 (dados). São do mecanismo Alicerce + grants + Vigia; nã
 6. **Alert-only sem gateway.** Com `action_on_breach='alert'` (ou gateway ausente), não há recusa; a Vigia ainda lê `audit_budget_runs` no breach.
 7. **Revert.** Override no seed com vigência nova, no próximo run #103, tira o par do `breach` sem `ALTER` manual; virada de `period_start` zera o acumulado (CA3) e encerra o block do mês anterior.
 
+### 7.10 Estimativa de custo e latência do `oteru-budget-enforcer`
+
+Nenhum número abaixo é medido em produção. O que o repo **de fato** implanta hoje: só **Docker Compose** local (`oteru-collector/docker-compose.yml` + overrides). **Não há** k8s, Helm nem Terraform neste monorepo. O collector é imagem local (`oteru-collector:0.155.0`), sem registry. ClickHouse no override é `clickhouse/clickhouse-server:latest` no mesmo compose network. O README do collector documenta um *exemplo* (não commitado como `docker-compose.limits.yml`) de `deploy.resources.limits.memory: 512M` no collector e 2G no ClickHouse, e diz que o sandbox esperado é collector ~50–150 MB — **não** é sizing de deploy compartilhado.
+
+**Comparação alert-only:** se Vinícius escolher só alerta (§9 item 1), **custo de infra nova ≈ 0**. Reusa ClickHouse + dbt do scheduler #103 + consultas Vigia no estilo `ops/alerts/46/`. Sem gateway, sem hop, sem chave de provedor neste componente.
+
+#### Premissas (explícitas)
+
+| Premissa | Valor adotado | Origem |
+|---|---|---|
+| Região de referência | `us-east-1` (N. Virginia) | região mais comum nas tabelas públicas AWS; **não** está no repo |
+| Forma de deploy se houver `block` | 2 processos 24/7 (par para não ter um único PID), no mesmo padrão compose (um serviço, N réplicas) ou 2 VMs equivalentes | compose existe; HA em k8s **não** existe aqui |
+| Tamanho | 2 vCPU / 2–4 GiB por réplica (`t3.small` ou `t3.medium`) | o único teto documentado no repo é 512 MiB de *exemplo* para o collector; o SKU público imediatamente acima de 512 MiB com 2 GiB é `t3.small`; `t3.medium` (4 GiB) é a margem se o proxy + cache + TLS crescer |
+| Disco | 8 GiB gp3 por réplica (boot) | mínimo usual de boot; **não** medido |
+| Horas/mês | 730 (= 24 × 365 / 12) | convenção de fatura mensal; não é 30×24 |
+| Volume de requests | **desconhecido** | o sample commitado tem 523 batches; o fixture de custo tem 10 `claude_code.api_request` (9 visíveis). Nenhum é carga de produção. A faixa de custo **não** escala com QPS neste desenho (cache in-process; compute é 24/7 fixo) |
+| Refresh do cache | a cada **5 min** (`N = 5`) | hipótese: entre o MVP diário e o sinal horário (≤ 1 h); o hot path **não** consulta o warehouse |
+| Tráfego / NAT / load balancer / IPv4 público | fora da conta | preço **a confirmar** (não dimensionado; o compose publica portas no host, sem ELB) |
+| Créditos T3 Unlimited se CPU média > baseline | fora da conta | $0.05 / vCPU-hora na página T3; **a confirmar** se o proxy ficar hot |
+
+#### Custo (lista pública, consultada 2026-10-21)
+
+Fontes: [Amazon EC2 T3](https://aws.amazon.com/ec2/instance-types/t3/) (Linux/Unix, On-Demand, US East N. Virginia: `t3.small` **$0.0209/h**, `t3.medium` **$0.0418/h**); [Amazon EBS Pricing](https://aws.amazon.com/ebs/pricing/) e [EBS volume types](https://aws.amazon.com/ebs/volume-types/) (gp3 **$0.08/GB-mês** “in a region that charges $0.08”; a página de tipos lista $0.08/GB-month). Página geral: [EC2 On-Demand](https://aws.amazon.com/ec2/pricing/on-demand/). Impostos e descontos RI/SP fora.
+
+Derivado (2 réplicas × 730 h):
+
+- Compute: 2 × 730 × $0.0209 = **$30.51/mês** (`t3.small`) até 2 × 730 × $0.0418 = **$61.03/mês** (`t3.medium`).
+- Disco: 2 × 8 GiB × $0.08 = **$1.28/mês**.
+- **Faixa compute+disco: ~$32–$62/mês.** LB, transferência, NAT, observabilidade extra: **a confirmar**.
+- 1 réplica (só sandbox, sem HA): metade do compute+disco (~$16–$31/mês) — **não** recomendado se `block` estiver no caminho.
+
+Se o deploy ficar no mesmo compose local do collector (dev), o custo cloud é **$0**; a faixa acima só vale se alguém promover o enforcer a VM/cloud. Qualquer custo novo vai ao Maestro (§7.8) **antes** de provisionar.
+
+#### Latência adicionada (por request, ordem de grandeza — não há load test neste repo)
+
+Hot path: lookup in-process no cache de `budget_status_current` (mapa `team×project` → status) + **um hop de rede** até o proxy + forward ao provedor.
+
+- Lookup em memória: muito abaixo de 1 ms (estrutura pequena: 1 linha por par; sem ida ao ClickHouse).
+- Hop extra na mesma região / mesmo host compose: tipicamente **1–10 ms p50**; p99 sobe com handshake TLS frio, perda leve e scheduling. Hipótese de trabalho: **p50 2–15 ms**, **p99 15–50 ms** no mesmo AZ/host. Cliente laptop → gateway público → vendor: o hop extra pode ser **10–80 ms p50** e **50–200 ms p99** (RTT WAN). **Não medido.**
+- Refresh a cada 5 min é **fora** do hot path (goroutine/timer). Se o refresh falhar, vale `is_stale` / fail-open (§7.5), não um SELECT síncrono no warehouse.
+- Streaming/SSE: o proxy precisa fazer *pass-through* de stream (não bufferar a completion). Latência de *time-to-first-token* herda o hop acima; bufferar quebraria o cliente. **Não implementado; risco da spec futura.**
+
+#### Riscos deste desenho
+
+- **SPOF:** um gateway único no caminho de todas as chamadas. Outage do gateway ⇒ **fail-open** (alinha §7.5) + alerta Vigia; senão para o org inteiro. Dois processos reduzem o SPOF de PID, não o de “todo mundo aponta para este DNS”.
+- **Streaming/SSE:** sem pass-through, o corte `block` ou o proxy quebram Claude/Cursor em modo stream.
+- **Credencial do provedor no gateway:** a chave (Anthropic etc.) só em secret/env, nunca no repo, nunca em log. Request/response body e prompts **não se logam**. Gateway **não é público** (rede interna / allowlist). Ver §7.11.
+- **Bypass:** quem chama o vendor direto não passa pelo corte — §7.11 item 8.
+
+### 7.11 Condições para a spec futura do gateway (Sentinela)
+
+O `oteru-budget-enforcer` **precisa de spec própria + revisão de segurança da Sentinela antes de qualquer código.** Este §7 só amarra o contrato de dados e as condições abaixo. Não implementar o gateway neste card.
+
+6. **Identidade team × project.** Vem de uma **credencial do gateway por par team×project** (token/mTLS emitido para aquele par), **nunca** de headers declarados pelo cliente (`X-Oteru-Team` etc. são ignorados). Par ausente, malformado, revogado ou que não case com a credencial ⇒ **rejeitar sem forward ao provedor** (proposta: HTTP 401 se a credencial falta/é inválida; HTTP 403 se a credencial é válida mas o par está em `breach`+`block`). A resposta de recusa **não** inclui `consumed_*`, `budget_*` nem status de **outros** pares.
+7. **Segredo e exposição.** Chave do provedor só em secret/env (mesmo padrão `OTERU_PII_HMAC_KEY` / `.env` gitignorado). Nunca logar body de request/response nem prompts. Gateway não publicado na internet. Fail-open também em **outage do gateway** (além de `is_stale`, §7.5), com **SLO de latência** a fixar na spec do gateway (hipótese de trabalho: se o hop extra p99 exceder 50 ms no mesmo host/AZ de forma sustentada, ou healthcheck falhar, fail-open + alerta — número do SLO não é medido aqui). Recusa nunca revela budget/consumo de outro par.
+8. **Bypass.** Quem tem a chave do provedor e chama `api.anthropic.com` (ou equivalente) **direto** — o default do Claude Code e de qualquer SDK sem apontar o proxy — **fura o block**. Documentar na spec do gateway: o corte só vale para tráfego que usa a credencial do par e o endpoint do enforcer. A Vigia alerta sobre esse tráfego: linhas em `fct_cost_chargeback_daily` / `int_cost_attributed` cujo `team×project` não tem request correspondente no enforcer no mesmo lookback (ou `service_name` conhecido de cliente que não passou pelo proxy). Sem gateway no caminho, o default é esse bypass — por isso o MVP é alert-only até a spec+review.
+
+Na fase de implementação dos **dados** (não do gateway), o seed guard (`scripts/check_chargeback_seeds.py`) será estendido para `seeds/budgets.csv`: `@` proibido; slugs de `team`/`project`/`owner_team` no mesmo espírito de `oteru.team`/`oteru.project` (`^[a-z0-9][a-z0-9-]{0,62}$`, salvo `unassigned` e o `*` se a decisão de §9.1 permitir). `hmac:vN` não se aplica (não há `actor_id` no seed de budget).
+
 ## 8. Riscos
 - **Granularidade**: o diário (MVP) detecta um agente em loop só depois; o horário (fase 2, ≤ 1h) é o que de fato atende "runaway".
 - int_cost_attributed é view com actor_id; modelos horários devem agregar antes de materializar para não vazar ator.
