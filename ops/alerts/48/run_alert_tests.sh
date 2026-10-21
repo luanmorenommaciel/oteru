@@ -16,8 +16,8 @@ run() { # $1 nome, $2 fixture sql, $3 query, $4 linhas esperadas
 }
 # br run segundos_atras scope scope_key status count [run_status]
 br() { echo "INSERT INTO otel.audit_budget_runs VALUES ('$1',now64(3,'UTC') - $2,'${7:-success}','$3','$4','','','$5',$6)"; }
-# bs scope scope_key status is_stale [as_of_ts]
-bs() { echo "INSERT INTO otel.budget_status_current VALUES ('$1','$2','a','p','a',toDate(now('UTC')),toDate(now('UTC')),${5:-now64(9,'UTC')},1000000,900000,900,800,1000,'$3','alert',26,$4)"; }
+# bs scope scope_key status is_stale [as_of_ts] [period_start]
+bs() { echo "INSERT INTO otel.budget_status_current VALUES ('$1','$2','a','p','a',${6:-toDate(now('UTC'))},toDate(now('UTC')),${5:-now64(9,'UTC')},1000000,900000,900,800,1000,'$3','alert',26,$4)"; }
 # cr run segundos_atras status dropped
 cr() { echo "INSERT INTO otel.audit_cost_runs VALUES ('$1',now64(9,'UTC') - $2,'$3',$4)"; }
 Y="toDateTime64(toDate(now('UTC')) - 1, 9, 'UTC') + 43200"   # meio-dia UTC de ontem
@@ -29,15 +29,18 @@ run a1_dispara_breach     "$(bs project p breach false)" $A1 1
 run a1_no_budget_ignora   "$(bs team_project a/p no_budget false); $(bs team a ok false)" $A1 0
 run a1_quatro_escopos     "$(bs global global breach false); $(bs team a warn false); $(bs project p warn false); $(bs team_project a/p breach false)" $A1 4
 run a1_stale_ainda_dispara "$(bs team a breach true)" $A1 1
+NOW="now64(9, 'UTC')"; PANT="toStartOfMonth(toDate(now('UTC')) - 31)"; PCUR="toStartOfMonth(toDate(now('UTC')))"
+run a1_periodo_anterior_nao_dispara "$(bs team a warn false "$NOW" "$PANT"); $(bs team b ok false "$NOW" "$PCUR")" $A1 0
 # sequência de avaliações no mesmo período: warn (abre) -> ok (resolve) -> warn (reabre)
 J="toDateTime64('2026-10-15 12:00:00', 9, 'UTC')"
 run a1_seq1_warn          "$(bs team a warn false "$J")" $A1 1
 run a1_seq2_ok_resolve    "$(bs team a ok false "$J")" $A1 0
 run a1_seq3_warn_reabre   "$(bs team a warn false "$J")" $A1 1
 dk() { $CH local --multiquery --query "$DDL $1; $(cat $A1)" </dev/null | cut -f4; }
-k1=$(dk "$(bs team a warn false "$J")"); k2=$(dk "$(bs team a warn false "toDateTime64('2026-10-28 08:00:00',9,'UTC')")")
-k3=$(dk "$(bs team a breach false "$J")"); k4=$(dk "$(bs team a warn false "toDateTime64('2026-11-02 08:00:00',9,'UTC')")")
-if [[ "$k1" == "$k2" && "$k1" != "$k3" && "$k1" != "$k4" ]]; then echo "PASS a1_dedup_key ($k1 = mesmo mês; $k3 = status novo; $k4 = mês novo)"; else echo "FAIL a1_dedup_key $k1 $k2 $k3 $k4"; exit 1; fi
+P1="toDate('2026-10-01')"; P2="toDate('2026-11-01')"
+k1=$(dk "$(bs team a warn false "$J" "$P1")"); k2=$(dk "$(bs team a warn false "toDateTime64('2026-11-02 08:00:00',9,'UTC')" "$P1")")
+k3=$(dk "$(bs team a breach false "$J" "$P1")"); k4=$(dk "$(bs team a warn false "$J" "$P2")")
+if [[ "$k1" == "$k2" && "$k1" != "$k3" && "$k1" != "$k4" ]]; then echo "PASS a1_dedup_key ($k1 = mesmo period_start mesmo com as_of_ts em outro mês; $k3 = status novo; $k4 = period_start novo)"; else echo "FAIL a1_dedup_key $k1 $k2 $k3 $k4"; exit 1; fi
 run a2_ok                 "$(bs team a ok false); $(bs global global warn false)" $A2 0
 run a2_dispara            "$(bs team a ok false); $(bs global global warn true)" $A2 1
 run a3_ok                 "$(br r1 3600 team a ok 1)" $A3 0
