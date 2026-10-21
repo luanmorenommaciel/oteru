@@ -11,6 +11,15 @@ you are working in:
   Forges OTLP telemetry traffic (Phase 1: faithful replay of captured
   OTLP/JSON over HTTP `:4318` or gRPC `:4317`). See
   [`oteru-emitter/CLAUDE.md`](oteru-emitter/CLAUDE.md).
+- **`oteru-ingestor/`** — the POD-of-3 OTLP→ClickHouse ingestor (#3): one
+  `SPEC.md` + `schema.sql`, implementations in `python/` (#24), `go/` (#25),
+  `rust/` (#26), each built in Docker and held to `scripts/check_ingestor.sh`.
+  Never edit the suite to fit one implementation — fix the spec for all three.
+- **`oteru-hooks/`** — `oteru_hook.py`, a stdlib-only hook → OTLP bridge for
+  agent IDEs without native OTel (Antigravity, Windsurf, Cursor hooks; #90).
+  Turns each agent turn into an `invoke_agent` trace with `execute_tool` /
+  `tools/call` children on the integration surface. Must never block the
+  agent: exit 0, neutral stdout per IDE, swallow send errors. `make test-hooks`.
 - **`oteru-collector/`** — OpenTelemetry Collector (contrib) sandbox via Docker
   Compose. Receives OTLP, prints to stdout (`debug`) and persists to
   `telemetry/telemetry.json` (`file`). See
@@ -31,19 +40,25 @@ make lint       # ruff check + ruff format --check
 make format     # ruff format + autofixes
 make dry-run    # validates the sample without network (523 batches)
 make pii-guard  # python scripts/check_pii.py (system python — works before setup)
-make e2e-signals # asserts every --emit combination reaches ClickHouse (needs up-clickhouse)
+python -m pytest oteru-collector/tests/test_policy.py oteru-collector/tests/test_configs.py  # policy contract + topology
+make e2e-signals # HMAC actor_id + every --emit combination in ClickHouse (needs collector+CH)
+make views      # (re)applies oteru-collector/clickhouse/views/*.sql, e.g. otel.mcp_calls (needs up-clickhouse)
 make up/down    # collector via docker compose
 make up-clickstack  # collector + forward to ClickStack (needs CLICKSTACK_ENDPOINT/API_KEY env)
 make up-hyperdx # collector + ClickHouse + the local HyperDX UI on :8080 (no API key)
 make up-direct  # local ClickStack all-in-one + API-key bootstrap; `make ingest` replays into it
 make up-clickstack-local  # collector forwarding to a local ClickStack all-in-one
+make up-archive # dual retention (#44): collector + ClickHouse (hot) + MinIO Object Lock bucket (cold)
+make e2e-archive # asserts a replay lands in hot and cold, and the cold copy cannot be deleted
+make up-ingestor IMPL=python # one POD-of-3 ingestor (oteru-ingestor/, #24-#26) on :14318/:24318/:34318
+make ingestor-check IMPL=python # conformance suite every ingestor must pass (scripts/check_ingestor.sh)
 make demo       # up + 5 batches over HTTP + collector logs
 make clean      # removes build/test caches (keeps .venv)
 ```
 
-CI (`.github/workflows/ci.yml`): lint + tests on ubuntu/windows × Python
-3.10/3.13 + a `pii-guard` job, path-filtered to `oteru-emitter/**`,
-`scripts/**` and the workflow itself.
+CI (`.github/workflows/ci.yml`): emitter lint + tests on ubuntu/windows ×
+Python 3.10/3.13, `pii-guard`, and a Linux Docker E2E privacy job. Changes to
+`oteru-emitter/**`, `oteru-collector/**`, `scripts/**` or the workflow trigger CI.
 
 ## Cross-cutting gotchas
 

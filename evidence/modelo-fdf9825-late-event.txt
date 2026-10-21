@@ -1,0 +1,158 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+clickhouse_version: 26.11.1.333
+dbt --version:
+Core:
+  - installed: 1.12.6
+  - latest:    1.12.6 - Up to date!
+
+Plugins:
+  - clickhouse: 1.10.3 - Up to date!
+
+
+22:54:09  dbt v2 is available, and is the default for new installations. This is dbt Core v1.
+          New project - install v2: https://docs.getdbt.com/docs/local/install-dbt?utm_source=dbt-cli
+          Existing v1 project - upgrade guide: https://docs.getdbt.com/docs/dbt-versions/dbt-upgrade/upgrading-to-v2?utm_source=dbt-cli
+utc_timestamp: 2026-10-20T22:54:09Z
+-----
+Scenario: late event beyond 48h lookback (cost_lookback_hours=48), mirroring docs/intents/proof/late-events-e279c1f.txt approach (copy fixture row, shift event ts, incremental build).
+Server timezone: America/Sao_Paulo (Timestamp values below display in that zone; day_utc uses UTC).
+Note: max-72h (2026-10-17 15:40 local) was attempted first but otel_logs has 'TTL TimestampTime + toIntervalHour(72)', so such rows are dropped on insert (2 attempts, count stayed 10). Chose 2026-10-18 12:00 local (15:00 UTC) = 51.67h before max(event_ts), i.e. beyond 48h, within raw 72h TTL. No within-48h event was added (would change 2026-10-19 and the unchanged-days check).
+
+== 1. Snapshot before (fct FINAL per day):
+### SELECT * FROM (SELECT 'daily' t, day_utc, sum(cost_usd_micros) micros FROM otel.fct_cost_daily FINAL GROUP BY day_utc UNION ALL SELECT 'actor_daily', day_utc, sum(cost_usd_micros) FROM otel.fct_cost_actor_daily FINAL GROUP BY day_utc) ORDER BY t, day_utc
+actor_daily	2026-10-19	531950
+actor_daily	2026-10-20	151000
+daily	2026-10-19	531950
+daily	2026-10-20	151000
+
+== 2. Inserted row (copy of fixture req_008 attributes, new request_id/cost):
+### INSERT INTO otel.otel_logs (Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber, ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl, ScopeName, ScopeVersion, ScopeAttributes, LogAttributes) SELECT toDateTime64('2026-10-18 12:00:00', 9), TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber, ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl, ScopeName, ScopeVersion, ScopeAttributes, mapUpdate(LogAttributes, map('request_id','req_late_beyond','cost_usd','0.07','cost_usd_micros','70000')) FROM otel.otel_logs WHERE LogAttributes['request_id']='req_008'
+Row 1:
+──────
+Timestamp:          2026-10-18 12:00:00.000000000
+ts_utc:             2026-10-18 15:00:00.000000000
+TimestampTime:      2026-10-18 12:00:00
+Body:               claude_code.api_request
+ServiceName:        claude-code
+ResourceAttributes: {'host.arch':'amd64','os.type':'darwin','os.version':'25.5.0','service.name':'claude-code','service.version':'2.1.220'}
+LogAttributes:      {'user.email':'hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14','session.id':'session-007','model':'claude-opus-4-8','input_tokens':'250','output_tokens':'120','cache_read_tokens':'0','cache_creation_tokens':'3000','request_id':'req_late_beyond','cost_usd':'0.07','cost_usd_micros':'70000'}
+hours_before_max:   51.666666666666664
+
+== 3. Incremental dbt build (exit 0):
+22:53:51  Running with dbt=1.12.6
+22:53:51  Registered adapter: clickhouse=1.10.3
+22:53:51  Unable to do partial parsing because saved manifest not found. Starting full parse.
+22:53:53  Found 4 models, 2 analyses, 29 data tests, 1 seed, 1 operation, 1 source, 548 macros
+22:53:53  
+22:53:53  Concurrency: 1 threads (target='dev')
+22:53:53  
+22:53:53  1 of 34 START sql incremental model `otel`.`int_api_request_dedup` ............. [RUN]
+22:53:54  1 of 34 OK created sql incremental model `otel`.`int_api_request_dedup` ........ [OK in 0.19s]
+22:53:54  2 of 34 START seed file `otel`.`model_aliases` ................................. [RUN]
+22:53:54  2 of 34 OK loaded seed file otel.model_aliases ................................. [INSERT 13 in 0.03s]
+22:53:54  3 of 34 START test test_ttl_expiry ............................................. [RUN]
+22:53:54  3 of 34 PASS test_ttl_expiry ................................................... [PASS in 0.02s]
+22:53:54  4 of 34 START test not_null_int_api_request_dedup_actor_id ..................... [RUN]
+22:53:54  4 of 34 PASS not_null_int_api_request_dedup_actor_id ........................... [PASS in 0.02s]
+22:53:54  5 of 34 START test not_null_int_api_request_dedup_cache_creation_tokens ........ [RUN]
+22:53:54  5 of 34 PASS not_null_int_api_request_dedup_cache_creation_tokens .............. [PASS in 0.01s]
+22:53:54  6 of 34 START test not_null_int_api_request_dedup_cache_read_tokens ............ [RUN]
+22:53:54  6 of 34 PASS not_null_int_api_request_dedup_cache_read_tokens .................. [PASS in 0.01s]
+22:53:54  7 of 34 START test not_null_int_api_request_dedup_cost_usd_micros .............. [RUN]
+22:53:54  7 of 34 PASS not_null_int_api_request_dedup_cost_usd_micros .................... [PASS in 0.01s]
+22:53:54  8 of 34 START test not_null_int_api_request_dedup_dedup_key .................... [RUN]
+22:53:54  8 of 34 PASS not_null_int_api_request_dedup_dedup_key .......................... [PASS in 0.01s]
+22:53:54  9 of 34 START test not_null_int_api_request_dedup_event_ts ..................... [RUN]
+22:53:54  9 of 34 PASS not_null_int_api_request_dedup_event_ts ........................... [PASS in 0.01s]
+22:53:54  10 of 34 START test not_null_int_api_request_dedup_input_tokens ................ [RUN]
+22:53:54  10 of 34 PASS not_null_int_api_request_dedup_input_tokens ...................... [PASS in 0.01s]
+22:53:54  11 of 34 START test not_null_int_api_request_dedup_output_tokens ............... [RUN]
+22:53:54  11 of 34 PASS not_null_int_api_request_dedup_output_tokens ..................... [PASS in 0.01s]
+22:53:54  12 of 34 START test test_no_pii ................................................ [RUN]
+22:53:54  12 of 34 PASS test_no_pii ...................................................... [PASS in 0.01s]
+22:53:54  13 of 34 START test unique_int_api_request_dedup_dedup_key ..................... [RUN]
+22:53:54  13 of 34 PASS unique_int_api_request_dedup_dedup_key ........................... [PASS in 0.01s]
+22:53:54  14 of 34 START sql incremental model `otel`.`fct_cost_actor_daily` ............. [RUN]
+22:53:54  14 of 34 OK created sql incremental model `otel`.`fct_cost_actor_daily` ........ [OK in 0.13s]
+22:53:54  15 of 34 START sql incremental model `otel`.`fct_cost_daily` ................... [RUN]
+22:53:54  15 of 34 OK created sql incremental model `otel`.`fct_cost_daily` .............. [OK in 0.07s]
+22:53:54  16 of 34 START test not_null_fct_cost_actor_daily_actor_id ..................... [RUN]
+22:53:54  16 of 34 PASS not_null_fct_cost_actor_daily_actor_id ........................... [PASS in 0.01s]
+22:53:54  17 of 34 START test not_null_fct_cost_actor_daily_cache_creation_tokens ........ [RUN]
+22:53:54  17 of 34 PASS not_null_fct_cost_actor_daily_cache_creation_tokens .............. [PASS in 0.01s]
+22:53:54  18 of 34 START test not_null_fct_cost_actor_daily_cache_read_tokens ............ [RUN]
+22:53:54  18 of 34 PASS not_null_fct_cost_actor_daily_cache_read_tokens .................. [PASS in 0.01s]
+22:53:54  19 of 34 START test not_null_fct_cost_actor_daily_cost_usd_micros .............. [RUN]
+22:53:54  19 of 34 PASS not_null_fct_cost_actor_daily_cost_usd_micros .................... [PASS in 0.01s]
+22:53:54  20 of 34 START test not_null_fct_cost_actor_daily_day_utc ...................... [RUN]
+22:53:54  20 of 34 PASS not_null_fct_cost_actor_daily_day_utc ............................ [PASS in 0.01s]
+22:53:54  21 of 34 START test not_null_fct_cost_actor_daily_input_tokens ................. [RUN]
+22:53:54  21 of 34 PASS not_null_fct_cost_actor_daily_input_tokens ....................... [PASS in 0.01s]
+22:53:54  22 of 34 START test not_null_fct_cost_actor_daily_output_tokens ................ [RUN]
+22:53:54  22 of 34 PASS not_null_fct_cost_actor_daily_output_tokens ...................... [PASS in 0.01s]
+22:53:54  23 of 34 START test not_null_fct_cost_actor_daily_requests ..................... [RUN]
+22:53:54  23 of 34 PASS not_null_fct_cost_actor_daily_requests ........................... [PASS in 0.01s]
+22:53:54  24 of 34 START test not_null_fct_cost_daily_cache_creation_tokens .............. [RUN]
+22:53:54  24 of 34 PASS not_null_fct_cost_daily_cache_creation_tokens .................... [PASS in 0.01s]
+22:53:54  25 of 34 START test not_null_fct_cost_daily_cache_read_tokens .................. [RUN]
+22:53:54  25 of 34 PASS not_null_fct_cost_daily_cache_read_tokens ........................ [PASS in 0.01s]
+22:53:54  26 of 34 START test not_null_fct_cost_daily_cost_usd_micros .................... [RUN]
+22:53:54  26 of 34 PASS not_null_fct_cost_daily_cost_usd_micros .......................... [PASS in 0.01s]
+22:53:54  27 of 34 START test not_null_fct_cost_daily_day_utc ............................ [RUN]
+22:53:54  27 of 34 PASS not_null_fct_cost_daily_day_utc .................................. [PASS in 0.01s]
+22:53:54  28 of 34 START test not_null_fct_cost_daily_input_tokens ....................... [RUN]
+22:53:54  28 of 34 PASS not_null_fct_cost_daily_input_tokens ............................. [PASS in 0.01s]
+22:53:54  29 of 34 START test not_null_fct_cost_daily_model_family ....................... [RUN]
+22:53:54  29 of 34 PASS not_null_fct_cost_daily_model_family ............................. [PASS in 0.01s]
+22:53:54  30 of 34 START test not_null_fct_cost_daily_output_tokens ...................... [RUN]
+22:53:54  30 of 34 PASS not_null_fct_cost_daily_output_tokens ............................ [PASS in 0.01s]
+22:53:54  31 of 34 START test not_null_fct_cost_daily_requests ........................... [RUN]
+22:53:54  31 of 34 PASS not_null_fct_cost_daily_requests ................................. [PASS in 0.01s]
+22:53:54  32 of 34 START test test_actor_daily_equals_daily .............................. [RUN]
+22:53:54  32 of 34 PASS test_actor_daily_equals_daily .................................... [PASS in 0.02s]
+22:53:54  33 of 34 START test test_table_structure ....................................... [RUN]
+22:53:54  33 of 34 PASS test_table_structure ............................................. [PASS in 0.01s]
+22:53:54  34 of 34 START sql view model `otel`.`fct_cost_trend` .......................... [RUN]
+22:53:54  34 of 34 OK created sql view model `otel`.`fct_cost_trend` ..................... [OK in 0.04s]
+22:53:54  
+22:53:54  Run audit recorded in otel.audit_cost_runs
+22:53:54  1 of 1 START hook: oteru_dbt.on-run-end.0 ...................................... [RUN]
+22:53:54  1 of 1 OK hook: oteru_dbt.on-run-end.0 ......................................... [OK in 0.06s]
+22:53:54  
+22:53:54  Finished running 3 incremental models, 1 project hook, 1 seed, 29 data tests, 1 view model in 0 hours 0 minutes and 1.08 seconds (1.08s).
+22:53:54  
+22:53:54  Completed successfully
+22:53:54  
+22:53:54  Done. PASS=35 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=35
+
+== 4. Results
+Snapshot after:
+actor_daily	2026-10-19	531950
+actor_daily	2026-10-20	151000
+daily	2026-10-19	531950
+daily	2026-10-20	151000
+diff before vs after (empty = unchanged; diff exit 0):
+<end diff>
+
+### SELECT 'stg_api_request' t, count() n, sum(cost_usd_micros) FROM otel.stg_api_request WHERE request_id='req_late_beyond' UNION ALL SELECT 'int_api_request_dedup', count(), sum(cost_usd_micros) FROM otel.int_api_request_dedup WHERE dedup_key='req_late_beyond' UNION ALL SELECT 'fct_cost_daily day 2026-10-18', count(), sum(cost_usd_micros) FROM otel.fct_cost_daily FINAL WHERE day_utc='2026-10-18' UNION ALL SELECT 'fct_cost_actor_daily day 2026-10-18', count(), sum(cost_usd_micros) FROM otel.fct_cost_actor_daily FINAL WHERE day_utc='2026-10-18'
+   ┌─t───────────────────────────────────┬─n─┬─sum(cost_usd_micros)─┐
+1. │ int_api_request_dedup               │ 0 │                 ᴺᵁᴸᴸ │
+2. │ stg_api_request                     │ 1 │                70000 │
+3. │ fct_cost_daily day 2026-10-18       │ 0 │                 ᴺᵁᴸᴸ │
+4. │ fct_cost_actor_daily day 2026-10-18 │ 0 │                 ᴺᵁᴸᴸ │
+   └─────────────────────────────────────┴───┴──────────────────────┘
+
+### SELECT * FROM (SELECT 'int_api_request_dedup' t, count() keys, sum(cost_usd_micros) micros FROM otel.int_api_request_dedup UNION ALL SELECT 'fct_cost_daily', count(), sum(cost_usd_micros) FROM otel.fct_cost_daily FINAL UNION ALL SELECT 'fct_cost_actor_daily', count(), sum(cost_usd_micros) FROM otel.fct_cost_actor_daily FINAL) ORDER BY t
+   ┌─t─────────────────────┬─keys─┬─micros─┐
+1. │ fct_cost_actor_daily  │    3 │ 682950 │
+2. │ fct_cost_daily        │    5 │ 682950 │
+3. │ int_api_request_dedup │    8 │ 682950 │
+   └───────────────────────┴──────┴────────┘
+
+### SELECT run_id, run_started_at, run_completed_at, dbt_command, duration_seconds, rows_processed, max_event_ts_read, events_dropped_late, rows_empty_request_id, run_status FROM otel.audit_cost_runs ORDER BY run_completed_at DESC LIMIT 1
+   ┌─run_id───────────────────────────────┬─run_started_at──────┬──────────────run_completed_at─┬─dbt_command─┬─duration_seconds─┬─rows_processed─┬─────────────max_event_ts_read─┬─events_dropped_late─┬─rows_empty_request_id─┬─run_status─┐
+1. │ 429511a6-51a7-4b3f-b8c2-23b8a159f733 │ 2026-10-20 22:53:51 │ 2026-10-20 19:53:54.796474985 │ build       │                3 │              8 │ 2026-10-20 15:40:00.000000000 │                   1 │                     1 │ success    │
+   └──────────────────────────────────────┴─────────────────────┴───────────────────────────────┴─────────────┴──────────────────┴────────────────┴───────────────────────────────┴─────────────────────┴───────────────────────┴────────────┘
+
+VERDICT: PASS. req_late_beyond (70000 micros, day_utc 2026-10-18) is visible in stg_api_request but absent from int_api_request_dedup, fct_cost_daily and fct_cost_actor_daily (no 2026-10-18 row); per-day totals 2026-10-19=531950, 2026-10-20=151000 unchanged; overall 8 keys / 682950 in all three; latest audit_cost_runs: events_dropped_late=1, dbt_command=build, duration_seconds=3, run_status=success.
+Post-state note: otel.otel_logs now holds 11 rows (req_late_beyond remains); it will expire via raw TTL at 2026-10-21 12:00 local.

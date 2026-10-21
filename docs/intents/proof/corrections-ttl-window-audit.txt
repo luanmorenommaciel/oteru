@@ -1,0 +1,31 @@
+Corrections on top of 409ce08 (not pushed until confirmed).
+
+TTL key (already in models):
+  ttl='day_utc + INTERVAL ' ~ var('actor_cost_ttl_days', 90) ~ ' DAY'
+Empty-table guard (already in both facts):
+  WHERE (SELECT count() FROM {{ this }}) = 0 OR ...
+
+Default 90 (SHOW CREATE TABLE, captured before the 1000-day rebuild):
+  TTL day_utc + toIntervalDay(90)
+
+Equality proof run: dbt build --full-refresh --vars '{"actor_cost_ttl_days": 1000}'
+  Fixture: original July 2025 timestamps (file not edited; collector-style sha256:v1 actor_id)
+  int_api_request_dedup: 8 rows / 682950 micros
+  in-window actor==daily:
+    2025-07-15  531950 == 531950  diff 0
+    2025-07-16  151000 == 151000  diff 0
+  this run's physical TTL: toIntervalDay(1000)
+
+test_table_structure order (depends_on both facts):
+  fct_cost_actor_daily  14/34
+  fct_cost_daily        15/34
+  test_table_structure  33/34  (after models; missing table is FAIL)
+
+audit_cost_runs (UTC both sides, command from invocation_args_dict):
+  dbt_command:      build
+  duration_seconds: 2   (non-negative)
+  rows_processed:   8
+
+dbt build: exit 0, PASS=35, hook OK
+test_no_pii: PASS
+docs: collector (#94) hashes actor_id; the view passes it through

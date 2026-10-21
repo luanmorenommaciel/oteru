@@ -17,8 +17,8 @@ end-to-end without depending on live AI sessions:
 oteru-emitter / Claude Code CLI / future emitters
         │  OTLP (gRPC :4317 │ HTTP :4318)
         ▼
-oteru-collector ──► debug (stdout)
-                └─► file  (telemetry/telemetry.json)
+oteru-collector ──► privacy policy ──► debug (stdout)
+                                  └─► file  (telemetry/telemetry.json)
 ```
 
 ## Quickstart
@@ -67,7 +67,8 @@ See [`oteru-emitter/README.md`](oteru-emitter/README.md#choosing-which-signals-t
 
 To land everything in a **local ClickStack** (ClickHouse + HyperDX) with a
 searchable UI at http://localhost:8080, use `make up-direct` + `make ingest`
-(direct, simplest) or `make up-clickstack-local` (through the collector) — see
+(direct, without Collector privacy processing) or `make up-clickstack-local`
+(through the collector) — see
 [`docs/clickstack.md`](docs/clickstack.md). For a remote/cloud ClickStack, set
 `CLICKSTACK_ENDPOINT` + `CLICKSTACK_API_KEY` and use `make up-clickstack` —
 see [`oteru-collector/README.md`](oteru-collector/README.md). Credentials go
@@ -77,6 +78,20 @@ To browse the telemetry in a **local** HyperDX UI instead — no external backen
 no API key, nothing leaving the machine — use `make up-hyperdx`. It adds the
 HyperDX UI on `:8080` on top of the ClickHouse this repo already runs, so the
 collector keeps writing exactly where `make up-clickhouse` puts it.
+
+## Integration surface
+
+What an agent must emit to be observable by Oteru, whatever its stack — OTLP
+plus the OTel GenAI/MCP attribute names — is the **Minimum Integration
+Surface** ([`docs/integration-surface.md`](docs/integration-surface.md),
+proposal v0). Check a capture against it with
+`oteru-emitter check <capture.json>`.
+## Which agent tools can Oteru observe?
+
+[`docs/emitter-coverage.md`](docs/emitter-coverage.md) maps ~40 coding agents,
+IDEs, agent frameworks and the Microsoft Copilot family to how each reaches
+Oteru: natively on the integration surface, via a mapping, an emitter profile,
+a hook bridge — or not at all (research snapshot 2026-10-06, sources inline).
 
 ## Development
 
@@ -93,6 +108,9 @@ CI (GitHub Actions) runs lint + tests on Ubuntu and Windows × Python 3.10 and
 `scripts/` or the workflow itself.
 
 ### PII guard
+
+The Collector also has a runtime privacy policy for known identity and content fields. By default it replaces six cataloged identity fields with stable HMAC-SHA256 pseudonyms (`hmac:v1:`) before export, retaining safe metric series by pseudonym; known prompt/completion fields are removed. See [Collector privacy policy](docs/privacy.md) for the exact catalog, data-loss decisions, activation procedure and limitations. `python -m pytest oteru-collector/tests/test_policy.py oteru-collector/tests/test_configs.py` validates the policy and every pipeline; `scripts/check_signals_e2e.sh` (`make e2e-signals`) checks HMAC `actor_id` shape, fail-closed startup, and cost-fixture staging against a running Collector+ClickHouse. The PII guard below protects committed fixtures and is a separate check.
+Run `make demo-privacy` for a reproducible proof with synthetic identity and the 934-datapoint metric reference across the Collector's output paths.
 
 The #1 documented risk here is committing an un-redacted capture.
 `scripts/check_pii.py` (stdlib-only) scans `oteru-emitter/samples/` and

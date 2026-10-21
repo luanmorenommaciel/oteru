@@ -1,0 +1,70 @@
+sample audit_cost_runs
+Row 1:
+──────
+run_id:                844160da-222e-4015-8911-732d7e94d841
+run_started_at:        2026-10-20 20:51:22
+run_completed_at:      2026-10-20 20:51:22.000000000
+target_name:           dev
+dbt_command:           
+duration_seconds:      0
+rows_processed:        11
+max_event_ts_read:     2026-10-20 18:40:00.000000000
+events_dropped_late:   1
+rows_empty_request_id: 1
+run_status:            success
+
+Row 2:
+──────
+run_id:                68842dd4-1989-425f-b381-001492f7a9a2
+run_started_at:        2026-10-20 20:51:19
+run_completed_at:      2026-10-20 20:51:20.000000000
+target_name:           dev
+dbt_command:           
+duration_seconds:      1
+rows_processed:        11
+max_event_ts_read:     2026-10-20 18:40:00.000000000
+events_dropped_late:   1
+rows_empty_request_id: 1
+run_status:            success
+
+Row 3:
+──────
+run_id:                40751dec-c662-41bc-adc6-06bff4d2f4f6
+run_started_at:        2026-10-20 20:51:02
+run_completed_at:      2026-10-20 20:51:03.000000000
+target_name:           dev
+dbt_command:           
+duration_seconds:      1
+rows_processed:        11
+max_event_ts_read:     2026-10-20 18:40:00.000000000
+events_dropped_late:   1
+rows_empty_request_id: 1
+run_status:            success
+
+Row 4:
+──────
+run_id:                cfe639b8-e98d-4d6f-b746-d819691a1f25
+run_started_at:        2026-10-20 20:50:48
+run_completed_at:      2026-10-20 20:50:50.000000000
+target_name:           dev
+dbt_command:           
+duration_seconds:      2
+rows_processed:        10
+max_event_ts_read:     2026-10-20 18:40:00.000000000
+events_dropped_late:   0
+rows_empty_request_id: 1
+run_status:            success
+
+Row 5:
+──────
+run_id:                245209ab-d005-4726-9999-0137160e2ac3
+run_started_at:        2026-10-20 20:50:33
+run_completed_at:      2026-10-20 20:50:34.000000000
+target_name:           dev
+dbt_command:           
+duration_seconds:      1
+rows_processed:        8
+max_event_ts_read:     2026-10-20 18:40:00.000000000
+events_dropped_late:   0
+rows_empty_request_id: 1
+run_status:            success

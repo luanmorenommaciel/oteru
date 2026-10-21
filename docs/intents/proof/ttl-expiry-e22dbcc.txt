@@ -1,0 +1,3 @@
+ttl-expiry: truncate actor (simulates 90d TTL) leaves permanent daily unchanged
+daily before=688950 after=688950 actor_after=0
+PASS: permanent fct_cost_daily unchanged

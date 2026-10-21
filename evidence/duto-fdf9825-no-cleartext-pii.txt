@@ -1,0 +1,31 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+image_id: d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+image_tag: oteru-collector:0.155.0
+clickhouse_version: 26.11.1.323
+buildah_version: 1.33.7
+captured_at_utc: 2026-10-20T22:59:01Z
+loader: /workspace/clickhouse client --host 127.0.0.1 --user otel --password otel --query ... </dev/null
+
+== stg_api_request: '@' in any column (toJSONString(tuple(*))) ==
+rows_with_at=0
+
+== stg_api_request per-column '@' ==
+   ┌─actor_id_at─┬─request_id_at─┬─session_id_at─┬─model_raw_at─┬─service_name_at─┬─dedup_key_at─┬─resource_attrs_at─┐
+1. │           0 │             0 │             0 │            0 │               0 │            0 │                 0 │
+   └─────────────┴───────────────┴───────────────┴──────────────┴─────────────────┴──────────────┴───────────────────┘
+
+== otel_logs attributes ==
+   ┌─logs─┬─log_attrs_at─┬─resource_attrs_at─┬─scope_attrs_at─┬─body_at─┐
+1. │   88 │            0 │                 0 │              0 │       0 │
+   └──────┴──────────────┴───────────────────┴────────────────┴─────────┘
+
+== otel_logs email-like LogAttributes ==
+   ┌─email_like─┐
+1. │          0 │
+   └────────────┘
+
+== verdict ==
+stg_api_request_rows_with_at=0 otel_logs_attr_or_body_at=0
+PASS: 0 '@' / cleartext PII in every column of stg_api_request and in otel_logs attributes

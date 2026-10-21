@@ -1,0 +1,94 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+clickhouse_version: 26.11.1.333
+dbt --version:
+Core:
+  - installed: 1.12.6
+  - latest:    1.12.6 - Up to date!
+
+Plugins:
+  - clickhouse: 1.10.3 - Up to date!
+
+
+22:50:48  dbt v2 is available, and is the default for new installations. This is dbt Core v1.
+          New project - install v2: https://docs.getdbt.com/docs/local/install-dbt?utm_source=dbt-cli
+          Existing v1 project - upgrade guide: https://docs.getdbt.com/docs/dbt-versions/dbt-upgrade/upgrading-to-v2?utm_source=dbt-cli
+utc_timestamp: 2026-10-20T22:50:48Z
+-----
+(state after incremental build; snapshot scripts keynums.sh run1 = after full-refresh, run2 = after incremental)
+### SELECT d, sum(raw) raw_stg_pre_dedup, sum(raw_rows) raw_rows, sum(dd) dedup_total, sum(dk) dedup_keys, sum(fd) daily_final, sum(fa) actor_daily_final, (sum(dd)=sum(fd) AND sum(fd)=sum(fa)) equal FROM (
+ SELECT toString(toDate(event_ts,'UTC')) d, sum(cost_usd_micros) raw, count() raw_rows, 0 dd,0 dk,0 fd,0 fa FROM otel.stg_api_request GROUP BY d
+ UNION ALL SELECT toString(toDate(event_ts,'UTC')),0,0,sum(cost_usd_micros),count(),0,0 FROM otel.int_api_request_dedup GROUP BY 1
+ UNION ALL SELECT toString(day_utc),0,0,0,0,sum(cost_usd_micros),0 FROM otel.fct_cost_daily FINAL GROUP BY 1
+ UNION ALL SELECT toString(day_utc),0,0,0,0,0,sum(cost_usd_micros) FROM otel.fct_cost_actor_daily FINAL GROUP BY 1) GROUP BY ROLLUP(d) ORDER BY d='' , d
+   ┌─d──────────┬─raw_stg_pre_dedup─┬─raw_rows─┬─dedup_total─┬─dedup_keys─┬─daily_final─┬─actor_daily_final─┬─equal─┐
+1. │ 2026-10-19 │            655400 │        7 │      531950 │          6 │      531950 │            531950 │     1 │
+2. │ 2026-10-20 │            151000 │        2 │      151000 │          2 │      151000 │            151000 │     1 │
+3. │            │            806400 │        9 │      682950 │          8 │      682950 │            682950 │     1 │
+   └────────────┴───────────────────┴──────────┴─────────────┴────────────┴─────────────┴───────────────────┴───────┘
+### SELECT if((SELECT sum(cost_usd_micros) FROM otel.int_api_request_dedup)=(SELECT sum(cost_usd_micros) FROM otel.fct_cost_daily FINAL) AND (SELECT sum(cost_usd_micros) FROM otel.fct_cost_daily FINAL)=(SELECT sum(cost_usd_micros) FROM otel.fct_cost_actor_daily FINAL),'PASS: source dedup = daily = actor_daily','FAIL') verdict
+   ┌─verdict──────────────────────────────────┐
+1. │ PASS: source dedup = daily = actor_daily │
+   └──────────────────────────────────────────┘
+
+== keynums after full-refresh
+### SELECT * FROM (SELECT 'int_api_request_dedup' t, count() keys, sum(cost_usd_micros) micros FROM otel.int_api_request_dedup UNION ALL SELECT 'fct_cost_daily', count(), sum(cost_usd_micros) FROM otel.fct_cost_daily FINAL UNION ALL SELECT 'fct_cost_actor_daily', count(), sum(cost_usd_micros) FROM otel.fct_cost_actor_daily FINAL) ORDER BY t
+t	keys	micros
+fct_cost_actor_daily	3	682950
+fct_cost_daily	5	682950
+int_api_request_dedup	8	682950
+### SELECT * FROM (SELECT 'fct_cost_daily' t, count() physical_rows FROM otel.fct_cost_daily UNION ALL SELECT 'fct_cost_actor_daily', count() FROM otel.fct_cost_actor_daily) ORDER BY t
+t	physical_rows
+fct_cost_actor_daily	3
+fct_cost_daily	5
+== keynums after incremental
+### SELECT * FROM (SELECT 'int_api_request_dedup' t, count() keys, sum(cost_usd_micros) micros FROM otel.int_api_request_dedup UNION ALL SELECT 'fct_cost_daily', count(), sum(cost_usd_micros) FROM otel.fct_cost_daily FINAL UNION ALL SELECT 'fct_cost_actor_daily', count(), sum(cost_usd_micros) FROM otel.fct_cost_actor_daily FINAL) ORDER BY t
+t	keys	micros
+fct_cost_actor_daily	3	682950
+fct_cost_daily	5	682950
+int_api_request_dedup	8	682950
+### SELECT * FROM (SELECT 'fct_cost_daily' t, count() physical_rows FROM otel.fct_cost_daily UNION ALL SELECT 'fct_cost_actor_daily', count() FROM otel.fct_cost_actor_daily) ORDER BY t
+t	physical_rows
+fct_cost_actor_daily	3
+fct_cost_daily	5
+== diff run1 vs run2 (empty = unchanged, diff exit 0)
+<end diff>
+
+======================================================================
+== Late-event drop (10 -> 9)
+== appended 2026-10-20T22:52:14Z; DB state verified unchanged since builds (keynums identical to run2), no rebuild
+======================================================================
+FINDING: the expected premise (1 event dropped as >48h late) is NOT supported by the data.
+The 10->9 difference is the synthetic-traffic exclusion in the stg_api_request view, not a late-event drop.
+audit_cost_runs shows events_dropped_late = 0 for both runs of this procedure.
+
+### SELECT Timestamp, Body, LogAttributes['request_id'] rid, LogAttributes['cost_usd'] cost, ResourceAttributes['oteru.traffic'] traffic, (rid,Timestamp) IN (SELECT request_id,event_ts FROM otel.stg_api_request) in_stg FROM otel.otel_logs ORDER BY Timestamp
+    ┌─────────────────────Timestamp─┬─Body────────────────────┬─rid───────────┬─cost────┬─traffic───┬─in_stg─┐
+ 1. │ 2026-10-19 19:53:20.000000000 │ claude_code.api_request │ req_001       │ 0.12345 │           │      1 │
+ 2. │ 2026-10-19 19:53:21.000000000 │ claude_code.api_request │ req_001       │ 0.12345 │           │      1 │
+ 3. │ 2026-10-19 19:53:22.000000000 │ claude_code.api_request │ req_synthetic │ 0.05    │ synthetic │      0 │
+ 4. │ 2026-10-19 19:53:23.000000000 │ claude_code.api_request │               │ 0.002   │           │      1 │
+ 5. │ 2026-10-19 19:53:24.000000000 │ claude_code.api_request │ req_005       │ 0.25    │           │      1 │
+ 6. │ 2026-10-19 19:53:25.000000000 │ claude_code.api_request │ req_006       │ 0.075   │           │      1 │
+ 7. │ 2026-10-19 19:53:26.000000000 │ claude_code.api_request │ req_009       │ 0.08    │           │      1 │
+ 8. │ 2026-10-19 19:53:27.000000000 │ claude_code.api_request │ req_010       │ 0.0015  │           │      1 │
+ 9. │ 2026-10-20 15:39:59.000000000 │ claude_code.api_request │ req_007       │ 0.001   │           │      1 │
+10. │ 2026-10-20 15:40:00.000000000 │ claude_code.api_request │ req_008       │ 0.15    │           │      1 │
+    └───────────────────────────────┴─────────────────────────┴───────────────┴─────────┴───────────┴────────┘
+
+### SELECT Timestamp, LogAttributes['request_id'] request_id, LogAttributes['cost_usd'] cost_usd, toInt64(round(toFloat64OrNull(LogAttributes['cost_usd'])*1e6)) cost_usd_micros, ResourceAttributes['oteru.traffic'] traffic FROM otel.otel_logs WHERE (LogAttributes['request_id'],Timestamp) NOT IN (SELECT request_id,event_ts FROM otel.stg_api_request)
+   ┌─────────────────────Timestamp─┬─request_id────┬─cost_usd─┬─cost_usd_micros─┬─traffic───┐
+1. │ 2026-10-19 19:53:22.000000000 │ req_synthetic │ 0.05     │           50000 │ synthetic │
+   └───────────────────────────────┴───────────────┴──────────┴─────────────────┴───────────┘
+
+### view filter (oteru-collector/clickhouse/views/stg_api_request.sql @ fdf9825):
+42:WHERE Body = 'claude_code.api_request'
+43-  AND ResourceAttributes['oteru.traffic'] != 'synthetic';
+(the view has no lateness predicate; the late window lives in dbt's 48h incremental lookback, counted by macros/log_run_audit.sql)
+
+### SELECT run_id, run_started_at, run_completed_at, dbt_command, duration_seconds, rows_processed, max_event_ts_read, events_dropped_late, rows_empty_request_id, run_status FROM otel.audit_cost_runs ORDER BY run_completed_at
+   ┌─run_id───────────────────────────────┬─run_started_at──────┬──────────────run_completed_at─┬─dbt_command─┬─duration_seconds─┬─rows_processed─┬─────────────max_event_ts_read─┬─events_dropped_late─┬─rows_empty_request_id─┬─run_status─┐
+1. │ 6a269984-1413-444a-b7ab-ad0c8b3f8371 │ 2026-10-20 22:50:18 │ 2026-10-20 19:50:21.420798389 │ build       │                3 │              8 │ 2026-10-20 15:40:00.000000000 │                   0 │                     1 │ success    │
+2. │ 553fac71-2af1-481e-b67b-6a27f37912ef │ 2026-10-20 22:50:24 │ 2026-10-20 19:50:27.348502441 │ build       │                3 │              8 │ 2026-10-20 15:40:00.000000000 │                   0 │                     1 │ success    │
+   └──────────────────────────────────────┴─────────────────────┴───────────────────────────────┴─────────────┴──────────────────┴────────────────┴───────────────────────────────┴─────────────────────┴───────────────────────┴────────────┘
+
+Arithmetic: raw 10 rows, 806400+50000 = 856400 micros loaded; synthetic req_synthetic (50000 micros) excluded -> 9 rows / 806400 micros in stg; dedup of req_001 duplicate (123450) -> 8 keys / 682950.

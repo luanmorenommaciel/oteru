@@ -1,0 +1,30 @@
+{
+  "oteru": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "python3 /path/to/oteru-hooks/oteru_hook.py antigravity PreInvocation",
+        "timeout": 5
+      }
+    ],
+    "PostInvocation": [
+      {
+        "type": "command",
+        "command": "python3 /path/to/oteru-hooks/oteru_hook.py antigravity PostInvocation",
+        "timeout": 5
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /path/to/oteru-hooks/oteru_hook.py antigravity PostToolUse",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

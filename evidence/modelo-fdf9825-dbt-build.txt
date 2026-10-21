@@ -1,0 +1,189 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+clickhouse_version: 26.11.1.333
+dbt --version:
+Core:
+  - installed: 1.12.6
+  - latest:    1.12.6 - Up to date!
+
+Plugins:
+  - clickhouse: 1.10.3 - Up to date!
+
+
+22:50:46  dbt v2 is available, and is the default for new installations. This is dbt Core v1.
+          New project - install v2: https://docs.getdbt.com/docs/local/install-dbt?utm_source=dbt-cli
+          Existing v1 project - upgrade guide: https://docs.getdbt.com/docs/dbt-versions/dbt-upgrade/upgrading-to-v2?utm_source=dbt-cli
+utc_timestamp: 2026-10-20T22:50:46Z
+-----
+== dbt build --full-refresh (exit 0)
+22:50:18  Running with dbt=1.12.6
+22:50:18  Registered adapter: clickhouse=1.10.3
+22:50:18  Unable to do partial parsing because saved manifest not found. Starting full parse.
+22:50:20  Found 4 models, 2 analyses, 29 data tests, 1 seed, 1 operation, 1 source, 548 macros
+22:50:20  
+22:50:20  Concurrency: 1 threads (target='dev')
+22:50:20  
+22:50:20  1 of 34 START sql incremental model `otel`.`int_api_request_dedup` ............. [RUN]
+22:50:20  1 of 34 OK created sql incremental model `otel`.`int_api_request_dedup` ........ [OK in 0.13s]
+22:50:20  2 of 34 START seed file `otel`.`model_aliases` ................................. [RUN]
+22:50:20  2 of 34 OK loaded seed file otel.model_aliases ................................. [CREATE 13 in 0.04s]
+22:50:20  3 of 34 START test test_ttl_expiry ............................................. [RUN]
+22:50:20  3 of 34 PASS test_ttl_expiry ................................................... [PASS in 0.02s]
+22:50:20  4 of 34 START test not_null_int_api_request_dedup_actor_id ..................... [RUN]
+22:50:20  4 of 34 PASS not_null_int_api_request_dedup_actor_id ........................... [PASS in 0.02s]
+22:50:20  5 of 34 START test not_null_int_api_request_dedup_cache_creation_tokens ........ [RUN]
+22:50:20  5 of 34 PASS not_null_int_api_request_dedup_cache_creation_tokens .............. [PASS in 0.01s]
+22:50:21  6 of 34 START test not_null_int_api_request_dedup_cache_read_tokens ............ [RUN]
+22:50:21  6 of 34 PASS not_null_int_api_request_dedup_cache_read_tokens .................. [PASS in 0.01s]
+22:50:21  7 of 34 START test not_null_int_api_request_dedup_cost_usd_micros .............. [RUN]
+22:50:21  7 of 34 PASS not_null_int_api_request_dedup_cost_usd_micros .................... [PASS in 0.01s]
+22:50:21  8 of 34 START test not_null_int_api_request_dedup_dedup_key .................... [RUN]
+22:50:21  8 of 34 PASS not_null_int_api_request_dedup_dedup_key .......................... [PASS in 0.01s]
+22:50:21  9 of 34 START test not_null_int_api_request_dedup_event_ts ..................... [RUN]
+22:50:21  9 of 34 PASS not_null_int_api_request_dedup_event_ts ........................... [PASS in 0.01s]
+22:50:21  10 of 34 START test not_null_int_api_request_dedup_input_tokens ................ [RUN]
+22:50:21  10 of 34 PASS not_null_int_api_request_dedup_input_tokens ...................... [PASS in 0.01s]
+22:50:21  11 of 34 START test not_null_int_api_request_dedup_output_tokens ............... [RUN]
+22:50:21  11 of 34 PASS not_null_int_api_request_dedup_output_tokens ..................... [PASS in 0.01s]
+22:50:21  12 of 34 START test test_no_pii ................................................ [RUN]
+22:50:21  12 of 34 PASS test_no_pii ...................................................... [PASS in 0.01s]
+22:50:21  13 of 34 START test unique_int_api_request_dedup_dedup_key ..................... [RUN]
+22:50:21  13 of 34 PASS unique_int_api_request_dedup_dedup_key ........................... [PASS in 0.01s]
+22:50:21  14 of 34 START sql incremental model `otel`.`fct_cost_actor_daily` ............. [RUN]
+22:50:21  14 of 34 OK created sql incremental model `otel`.`fct_cost_actor_daily` ........ [OK in 0.03s]
+22:50:21  15 of 34 START sql incremental model `otel`.`fct_cost_daily` ................... [RUN]
+22:50:21  15 of 34 OK created sql incremental model `otel`.`fct_cost_daily` .............. [OK in 0.03s]
+22:50:21  16 of 34 START test not_null_fct_cost_actor_daily_actor_id ..................... [RUN]
+22:50:21  16 of 34 PASS not_null_fct_cost_actor_daily_actor_id ........................... [PASS in 0.01s]
+22:50:21  17 of 34 START test not_null_fct_cost_actor_daily_cache_creation_tokens ........ [RUN]
+22:50:21  17 of 34 PASS not_null_fct_cost_actor_daily_cache_creation_tokens .............. [PASS in 0.01s]
+22:50:21  18 of 34 START test not_null_fct_cost_actor_daily_cache_read_tokens ............ [RUN]
+22:50:21  18 of 34 PASS not_null_fct_cost_actor_daily_cache_read_tokens .................. [PASS in 0.01s]
+22:50:21  19 of 34 START test not_null_fct_cost_actor_daily_cost_usd_micros .............. [RUN]
+22:50:21  19 of 34 PASS not_null_fct_cost_actor_daily_cost_usd_micros .................... [PASS in 0.01s]
+22:50:21  20 of 34 START test not_null_fct_cost_actor_daily_day_utc ...................... [RUN]
+22:50:21  20 of 34 PASS not_null_fct_cost_actor_daily_day_utc ............................ [PASS in 0.01s]
+22:50:21  21 of 34 START test not_null_fct_cost_actor_daily_input_tokens ................. [RUN]
+22:50:21  21 of 34 PASS not_null_fct_cost_actor_daily_input_tokens ....................... [PASS in 0.01s]
+22:50:21  22 of 34 START test not_null_fct_cost_actor_daily_output_tokens ................ [RUN]
+22:50:21  22 of 34 PASS not_null_fct_cost_actor_daily_output_tokens ...................... [PASS in 0.01s]
+22:50:21  23 of 34 START test not_null_fct_cost_actor_daily_requests ..................... [RUN]
+22:50:21  23 of 34 PASS not_null_fct_cost_actor_daily_requests ........................... [PASS in 0.01s]
+22:50:21  24 of 34 START test not_null_fct_cost_daily_cache_creation_tokens .............. [RUN]
+22:50:21  24 of 34 PASS not_null_fct_cost_daily_cache_creation_tokens .................... [PASS in 0.01s]
+22:50:21  25 of 34 START test not_null_fct_cost_daily_cache_read_tokens .................. [RUN]
+22:50:21  25 of 34 PASS not_null_fct_cost_daily_cache_read_tokens ........................ [PASS in 0.01s]
+22:50:21  26 of 34 START test not_null_fct_cost_daily_cost_usd_micros .................... [RUN]
+22:50:21  26 of 34 PASS not_null_fct_cost_daily_cost_usd_micros .......................... [PASS in 0.01s]
+22:50:21  27 of 34 START test not_null_fct_cost_daily_day_utc ............................ [RUN]
+22:50:21  27 of 34 PASS not_null_fct_cost_daily_day_utc .................................. [PASS in 0.01s]
+22:50:21  28 of 34 START test not_null_fct_cost_daily_input_tokens ....................... [RUN]
+22:50:21  28 of 34 PASS not_null_fct_cost_daily_input_tokens ............................. [PASS in 0.01s]
+22:50:21  29 of 34 START test not_null_fct_cost_daily_model_family ....................... [RUN]
+22:50:21  29 of 34 PASS not_null_fct_cost_daily_model_family ............................. [PASS in 0.01s]
+22:50:21  30 of 34 START test not_null_fct_cost_daily_output_tokens ...................... [RUN]
+22:50:21  30 of 34 PASS not_null_fct_cost_daily_output_tokens ............................ [PASS in 0.01s]
+22:50:21  31 of 34 START test not_null_fct_cost_daily_requests ........................... [RUN]
+22:50:21  31 of 34 PASS not_null_fct_cost_daily_requests ................................. [PASS in 0.01s]
+22:50:21  32 of 34 START test test_actor_daily_equals_daily .............................. [RUN]
+22:50:21  32 of 34 PASS test_actor_daily_equals_daily .................................... [PASS in 0.02s]
+22:50:21  33 of 34 START test test_table_structure ....................................... [RUN]
+22:50:21  33 of 34 PASS test_table_structure ............................................. [PASS in 0.01s]
+22:50:21  34 of 34 START sql view model `otel`.`fct_cost_trend` .......................... [RUN]
+22:50:21  34 of 34 OK created sql view model `otel`.`fct_cost_trend` ..................... [OK in 0.02s]
+22:50:21  
+22:50:21  Run audit recorded in otel.audit_cost_runs
+22:50:21  1 of 1 START hook: oteru_dbt.on-run-end.0 ...................................... [RUN]
+22:50:21  1 of 1 OK hook: oteru_dbt.on-run-end.0 ......................................... [OK in 0.11s]
+22:50:21  
+22:50:21  Finished running 3 incremental models, 1 project hook, 1 seed, 29 data tests, 1 view model in 0 hours 0 minutes and 0.90 seconds (0.90s).
+22:50:21  
+22:50:21  Completed successfully
+22:50:21  
+22:50:21  Done. PASS=35 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=35
+
+== dbt build (incremental, exit 0)
+22:50:24  Running with dbt=1.12.6
+22:50:24  Registered adapter: clickhouse=1.10.3
+22:50:24  Unable to do partial parsing because saved manifest not found. Starting full parse.
+22:50:26  Found 4 models, 2 analyses, 29 data tests, 1 seed, 1 operation, 1 source, 548 macros
+22:50:26  
+22:50:26  Concurrency: 1 threads (target='dev')
+22:50:26  
+22:50:26  1 of 34 START sql incremental model `otel`.`int_api_request_dedup` ............. [RUN]
+22:50:26  1 of 34 OK created sql incremental model `otel`.`int_api_request_dedup` ........ [OK in 0.19s]
+22:50:26  2 of 34 START seed file `otel`.`model_aliases` ................................. [RUN]
+22:50:26  2 of 34 OK loaded seed file otel.model_aliases ................................. [INSERT 13 in 0.03s]
+22:50:26  3 of 34 START test test_ttl_expiry ............................................. [RUN]
+22:50:26  3 of 34 PASS test_ttl_expiry ................................................... [PASS in 0.02s]
+22:50:26  4 of 34 START test not_null_int_api_request_dedup_actor_id ..................... [RUN]
+22:50:26  4 of 34 PASS not_null_int_api_request_dedup_actor_id ........................... [PASS in 0.02s]
+22:50:26  5 of 34 START test not_null_int_api_request_dedup_cache_creation_tokens ........ [RUN]
+22:50:26  5 of 34 PASS not_null_int_api_request_dedup_cache_creation_tokens .............. [PASS in 0.01s]
+22:50:26  6 of 34 START test not_null_int_api_request_dedup_cache_read_tokens ............ [RUN]
+22:50:26  6 of 34 PASS not_null_int_api_request_dedup_cache_read_tokens .................. [PASS in 0.01s]
+22:50:26  7 of 34 START test not_null_int_api_request_dedup_cost_usd_micros .............. [RUN]
+22:50:26  7 of 34 PASS not_null_int_api_request_dedup_cost_usd_micros .................... [PASS in 0.01s]
+22:50:26  8 of 34 START test not_null_int_api_request_dedup_dedup_key .................... [RUN]
+22:50:26  8 of 34 PASS not_null_int_api_request_dedup_dedup_key .......................... [PASS in 0.01s]
+22:50:26  9 of 34 START test not_null_int_api_request_dedup_event_ts ..................... [RUN]
+22:50:26  9 of 34 PASS not_null_int_api_request_dedup_event_ts ........................... [PASS in 0.01s]
+22:50:26  10 of 34 START test not_null_int_api_request_dedup_input_tokens ................ [RUN]
+22:50:26  10 of 34 PASS not_null_int_api_request_dedup_input_tokens ...................... [PASS in 0.01s]
+22:50:26  11 of 34 START test not_null_int_api_request_dedup_output_tokens ............... [RUN]
+22:50:26  11 of 34 PASS not_null_int_api_request_dedup_output_tokens ..................... [PASS in 0.01s]
+22:50:26  12 of 34 START test test_no_pii ................................................ [RUN]
+22:50:26  12 of 34 PASS test_no_pii ...................................................... [PASS in 0.01s]
+22:50:26  13 of 34 START test unique_int_api_request_dedup_dedup_key ..................... [RUN]
+22:50:26  13 of 34 PASS unique_int_api_request_dedup_dedup_key ........................... [PASS in 0.01s]
+22:50:26  14 of 34 START sql incremental model `otel`.`fct_cost_actor_daily` ............. [RUN]
+22:50:26  14 of 34 OK created sql incremental model `otel`.`fct_cost_actor_daily` ........ [OK in 0.08s]
+22:50:26  15 of 34 START sql incremental model `otel`.`fct_cost_daily` ................... [RUN]
+22:50:27  15 of 34 OK created sql incremental model `otel`.`fct_cost_daily` .............. [OK in 0.13s]
+22:50:27  16 of 34 START test not_null_fct_cost_actor_daily_actor_id ..................... [RUN]
+22:50:27  16 of 34 PASS not_null_fct_cost_actor_daily_actor_id ........................... [PASS in 0.01s]
+22:50:27  17 of 34 START test not_null_fct_cost_actor_daily_cache_creation_tokens ........ [RUN]
+22:50:27  17 of 34 PASS not_null_fct_cost_actor_daily_cache_creation_tokens .............. [PASS in 0.01s]
+22:50:27  18 of 34 START test not_null_fct_cost_actor_daily_cache_read_tokens ............ [RUN]
+22:50:27  18 of 34 PASS not_null_fct_cost_actor_daily_cache_read_tokens .................. [PASS in 0.01s]
+22:50:27  19 of 34 START test not_null_fct_cost_actor_daily_cost_usd_micros .............. [RUN]
+22:50:27  19 of 34 PASS not_null_fct_cost_actor_daily_cost_usd_micros .................... [PASS in 0.01s]
+22:50:27  20 of 34 START test not_null_fct_cost_actor_daily_day_utc ...................... [RUN]
+22:50:27  20 of 34 PASS not_null_fct_cost_actor_daily_day_utc ............................ [PASS in 0.01s]
+22:50:27  21 of 34 START test not_null_fct_cost_actor_daily_input_tokens ................. [RUN]
+22:50:27  21 of 34 PASS not_null_fct_cost_actor_daily_input_tokens ....................... [PASS in 0.01s]
+22:50:27  22 of 34 START test not_null_fct_cost_actor_daily_output_tokens ................ [RUN]
+22:50:27  22 of 34 PASS not_null_fct_cost_actor_daily_output_tokens ...................... [PASS in 0.01s]
+22:50:27  23 of 34 START test not_null_fct_cost_actor_daily_requests ..................... [RUN]
+22:50:27  23 of 34 PASS not_null_fct_cost_actor_daily_requests ........................... [PASS in 0.01s]
+22:50:27  24 of 34 START test not_null_fct_cost_daily_cache_creation_tokens .............. [RUN]
+22:50:27  24 of 34 PASS not_null_fct_cost_daily_cache_creation_tokens .................... [PASS in 0.01s]
+22:50:27  25 of 34 START test not_null_fct_cost_daily_cache_read_tokens .................. [RUN]
+22:50:27  25 of 34 PASS not_null_fct_cost_daily_cache_read_tokens ........................ [PASS in 0.01s]
+22:50:27  26 of 34 START test not_null_fct_cost_daily_cost_usd_micros .................... [RUN]
+22:50:27  26 of 34 PASS not_null_fct_cost_daily_cost_usd_micros .......................... [PASS in 0.01s]
+22:50:27  27 of 34 START test not_null_fct_cost_daily_day_utc ............................ [RUN]
+22:50:27  27 of 34 PASS not_null_fct_cost_daily_day_utc .................................. [PASS in 0.01s]
+22:50:27  28 of 34 START test not_null_fct_cost_daily_input_tokens ....................... [RUN]
+22:50:27  28 of 34 PASS not_null_fct_cost_daily_input_tokens ............................. [PASS in 0.01s]
+22:50:27  29 of 34 START test not_null_fct_cost_daily_model_family ....................... [RUN]
+22:50:27  29 of 34 PASS not_null_fct_cost_daily_model_family ............................. [PASS in 0.01s]
+22:50:27  30 of 34 START test not_null_fct_cost_daily_output_tokens ...................... [RUN]
+22:50:27  30 of 34 PASS not_null_fct_cost_daily_output_tokens ............................ [PASS in 0.01s]
+22:50:27  31 of 34 START test not_null_fct_cost_daily_requests ........................... [RUN]
+22:50:27  31 of 34 PASS not_null_fct_cost_daily_requests ................................. [PASS in 0.01s]
+22:50:27  32 of 34 START test test_actor_daily_equals_daily .............................. [RUN]
+22:50:27  32 of 34 PASS test_actor_daily_equals_daily .................................... [PASS in 0.02s]
+22:50:27  33 of 34 START test test_table_structure ....................................... [RUN]
+22:50:27  33 of 34 PASS test_table_structure ............................................. [PASS in 0.01s]
+22:50:27  34 of 34 START sql view model `otel`.`fct_cost_trend` .......................... [RUN]
+22:50:27  34 of 34 OK created sql view model `otel`.`fct_cost_trend` ..................... [OK in 0.06s]
+22:50:27  
+22:50:27  Run audit recorded in otel.audit_cost_runs
+22:50:27  1 of 1 START hook: oteru_dbt.on-run-end.0 ...................................... [RUN]
+22:50:27  1 of 1 OK hook: oteru_dbt.on-run-end.0 ......................................... [OK in 0.05s]
+22:50:27  
+22:50:27  Finished running 3 incremental models, 1 project hook, 1 seed, 29 data tests, 1 view model in 0 hours 0 minutes and 1.07 seconds (1.07s).
+22:50:27  
+22:50:27  Completed successfully
+22:50:27  
+22:50:27  Done. PASS=35 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=35

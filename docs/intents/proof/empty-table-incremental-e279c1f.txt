@@ -1,0 +1,7 @@
+empty-table incremental regression (local ClickHouse only)
+  int_api_request_dedup baseline: 682950 micros
+  truncating fct_cost_daily and fct_cost_actor_daily...
+  after truncate: daily=0 actor=0
+  dbt run --select fct_cost_daily fct_cost_actor_daily (no --full-refresh)...
+  after incremental: daily=682950 actor=682950 int=682950
+  PASS: empty-table incremental reproduced int_api_request_dedup (682950 micros)

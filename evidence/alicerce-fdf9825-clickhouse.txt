@@ -1,0 +1,10 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+utc: 2026-10-20T22:58:45Z
+command: curl -s 'http://localhost:8123/?user=otel&password=otel' --data-binary 'SELECT version()'; recreate otel_* with TTL 72h on wiped /tmp/ch-clean-publish
+
+ClickHouse client/server 26.11.1.323 (official build)
+clean data dir /tmp/ch-clean-publish/data
+views: stg_api_request OK; mcp_calls FAIL (missing table, expected)
+tables: otel_logs, otel_traces, otel_metrics_sum, stg_api_request
