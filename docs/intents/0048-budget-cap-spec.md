@@ -172,7 +172,7 @@ Claude Code / Cursor / outros agentes  →  API do provedor (Anthropic etc., for
 
 ### 7.3 Chave do limite
 
-**Padrão (decisão do Vinícius):** caps em quatro `scope`: `global` (inclui `unassigned`), `team`, `project`, `team_project`. Nunca por `actor_id`. Corte por ator só via `actor_map` (#46), fora de escopo. Bloqueio por par sai para #108.
+**Padrão (decisão do Vinícius):** caps no grão `scope × scope_key`. `scope` ∈ {`global`, `team`, `project`, `team_project`}. `scope_key` = `'global'` (scope `global`), o slug do time (scope `team`), o slug do projeto (scope `project`), ou `'team/project'` (scope `team_project`). O `global` inclui `unassigned`. Nunca por `actor_id`. Corte por ator só via `actor_map` (#46), fora de escopo. Bloqueio por par sai para #108.
 
 ### 7.4 Ownership
 
@@ -182,9 +182,9 @@ Claude Code / Cursor / outros agentes  →  API do provedor (Anthropic etc., for
 | `block` (mecanismo do gateway) | **fora desta entrega** | https://github.com/luanmorenommaciel/oteru/issues/108 | decisão do Vinícius: só alertar |
 | `action_on_breach` no seed | **só `alert` nesta entrega** | validação do seed **rejeita** `block`; muda só por PR depois de #108 | decisão do Vinícius |
 
-**Testes allowed/denied de `oteru_budget_alerts_reader`** (conectar só com esse role; **exatamente** a lista do §7.12 v3):
+**Testes allowed/denied de `oteru_budget_alerts_reader`** (conectar só com esse role; lista do §7.12 v3 **mais** `scope_key` — a Vigia atualiza o §7.12 em patch próprio):
 
-- **Allowed:** `SELECT` de **todas** as colunas de `audit_budget_runs` (incluindo `scope`); de `budget_status_current` só `scope`, `team`, `project`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`; de `audit_cost_runs` só `run_id`, `run_completed_at`, `run_status`, `events_dropped_late`.
+- **Allowed:** `SELECT` de **todas** as colunas de `audit_budget_runs` (incluindo `scope` e `scope_key`); de `budget_status_current` só `scope`, `scope_key`, `team`, `project`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`; de `audit_cost_runs` só `run_id`, `run_completed_at`, `run_status`, `events_dropped_late`.
 - **Denied:** `SELECT` de qualquer outra coluna de `budget_status_current` ou de `audit_cost_runs`; `SELECT` em qualquer `fct_*`, seeds ou `otel_*`; `INSERT`/`ALTER`/`DROP` em qualquer relação.
 
 Valores dos budgets são configuráveis (warn 80% / breach 100% = `warn_milli=800` / `breach_milli=1000` até o Vinícius fixar os números do seed).
