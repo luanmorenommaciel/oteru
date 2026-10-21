@@ -1,6 +1,11 @@
 {#-
-  #48: o que o alerta lê (spec §4). 1 linha por scope × scope_key, no último dia
-  processado (max(day_utc) de fct_budget_consumption_daily).
+  #48: o que o alerta lê (spec §4). 1 linha por scope × scope_key, cada uma no
+  SEU último dia processado (max(day_utc) daquele scope_key na fct): um
+  scope_key sem linha no dia mais recente continua visível com o próprio dia
+  (as_of_day < max global), em vez de sumir.
+  Budget expirado: aparece com o último dia em que esteve vigente enquanto esse
+  dia estiver no período (mês UTC) do último dia processado do pipeline; depois
+  da virada do mês ele sai (o acumulado dele zerou e não há cap vigente).
   - as_of_ts (S1) = high-water mark GLOBAL de custo: max(last_cost_ts) da fct,
     que vem de max(event_ts) de int_cost_attributed. Nunca now()/loaded_at.
   - is_stale = as_of_ts mais velho que budget_stale_hours_daily (avaliado na
@@ -27,6 +32,10 @@ WITH fct AS (
 
 wm AS (
   SELECT max(day_utc) AS last_day, max(last_cost_ts) AS as_of_ts FROM fct
+),
+
+key_last AS (
+  SELECT scope, scope_key, max(day_utc) AS key_last_day FROM fct GROUP BY scope, scope_key
 )
 
 SELECT
@@ -48,5 +57,6 @@ SELECT
   CAST({{ var('budget_stale_hours_daily', 26) }} AS UInt16) AS stale_threshold_hours,
   CAST(w.as_of_ts < now64(9, 'UTC') - toIntervalHour({{ var('budget_stale_hours_daily', 26) }}) AS Bool) AS is_stale
 FROM fct AS f
+INNER JOIN key_last AS k ON f.scope = k.scope AND f.scope_key = k.scope_key AND f.day_utc = k.key_last_day
 CROSS JOIN wm AS w
-WHERE f.day_utc = w.last_day
+WHERE toStartOfMonth(f.day_utc) = toStartOfMonth(w.last_day)

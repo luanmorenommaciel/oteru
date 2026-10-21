@@ -83,13 +83,21 @@ models:
       - {name: is_stale, data_type: Bool, data_tests: [not_null]}
 
   - name: audit_budget_runs
-    description: "#48: contagem por run × scope × scope_key × status (dias do período corrente). Só agregados; não altera audit_cost_runs."
+    description: "#48: contagem por run × scope × scope_key × status (dias do período corrente), gravada no on-run-end com run_status do run. Só agregados; não altera audit_cost_runs."
     config:
       contract: {enforced: true}
       on_schema_change: fail
     columns:
       - {name: run_id, data_type: String, description: "invocation_id do dbt", data_tests: [not_null]}
-      - {name: run_completed_at, data_type: DateTime64(3), data_tests: [not_null]}
+      - {name: run_completed_at, data_type: "DateTime64(3, 'UTC')", data_tests: [not_null]}
+      - name: run_status
+        data_type: LowCardinality(String)
+        description: "Status final do run inteiro (on-run-end): 'success' ou 'error'. Alertas devem filtrar run_status = 'success'."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['success', 'error']
       - {name: scope, data_type: LowCardinality(String), data_tests: [not_null, *scope_values]}
       - {name: scope_key, data_type: String, data_tests: [not_null]}
       - {name: team, data_type: String, data_tests: [not_null]}

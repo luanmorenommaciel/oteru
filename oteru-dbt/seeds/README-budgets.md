@@ -45,3 +45,18 @@ outra com `valid_from` no dia seguinte, por PR. O acumulado é por mês UTC e ze
 breach_milli`, `warn` se `>= budget × warn_milli`, senão `ok` (só inteiros, Int128).
 
 As linhas atuais são exemplos; os valores reais saem por PR.
+
+## Leitura pelo alerta e definer da view
+
+- `budget_status_current` mostra 1 linha por scope × scope_key, cada uma no **último dia
+  processado daquele scope_key** (`as_of_day`). Um scope_key sem linha no dia mais recente
+  continua visível com o próprio dia. Um budget expirado continua visível com o último dia
+  em que esteve vigente até a virada do mês UTC do último dia processado; depois sai.
+  `as_of_ts` é o high-water mark global de custo; `is_stale` não muda `budget_status`
+  (fail-open).
+- A view é `SQL SECURITY DEFINER` com `DEFINER = oteru_budget_view_definer` (var
+  `budget_view_definer`). Esse usuário é criado **fora do dbt**, pelo script de bootstrap
+  do Alicerce, que roda no CI antes do build. Nenhuma senha ou credencial dele fica no
+  repositório. Sem esse usuário o build da view falha (não há fallback).
+- `audit_budget_runs` é gravado no fim do run (on-run-end) com `run_status` = `success`
+  ou `error` (status final do run inteiro). Alertas devem considerar só `run_status = 'success'`.

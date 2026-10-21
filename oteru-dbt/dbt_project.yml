@@ -42,3 +42,4 @@ seeds:
     
 on-run-end:
   - "{{ log_run_audit() }}"
+  - "{{ log_budget_audit(results) }}"

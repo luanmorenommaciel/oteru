@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # #48: gera as provas da camada de budget (ClickHouse LOCAL descartável apenas).
 # Uso (raiz do repo): bash oteru-dbt/tests/run_budget_48_evidence.sh <out_dir>
-# Env: CLICKHOUSE_URL (http, default http://localhost:8123/), CLICKHOUSE_PORT (dbt),
-#      DBT_BIN. Pré-requisito LOCAL (fora do dbt; em ambiente real é do Alicerce, §7.1):
+# Env: CLICKHOUSE_URL (http, default http://localhost:8123/), CLICKHOUSE_PORT (dbt), DBT_BIN;
+#      STALE_CLICKHOUSE_URL/STALE_CLICKHOUSE_PORT: 2º CH local vazio para a prova de stale.
+#      Pré-requisito LOCAL (fora do dbt; em ambiente real é do Alicerce, §7.1):
 #      usuário oteru_budget_view_definer com SELECT só em fct_budget_consumption_daily.
 # Nada de --full-refresh, DROP ou TRUNCATE (o usuário local de teste fica no CH descartável). Nenhum secret: a senha do leitor de
 # teste é gerada na hora e só existe na memória deste processo.
@@ -140,33 +141,37 @@ qr() { curl -sS "$CH" -H "X-ClickHouse-User: oteru_budget_reader_localtest" -H "
   [ "$f1" = "$f2" ] && [ "$v1" = "$v2" ] && echo "IDEMPOTENTE: PASS" || echo "IDEMPOTENTE: FAIL"
 } > "$OUT/budget-idempotency-$SHA.txt"
 
-# 7. stale: run sem custo novo (por último: insere um evento sintético no fim)
+# 7. stale (S1): CH LOCAL SEPARADO e vazio (STALE_CLICKHOUSE_URL / STALE_CLICKHOUSE_PORT), fixture com
+#    último event_ts = T = agora - 28h; build com o limite PADRÃO (26h), sem esperar.
+if [ -n "${STALE_CLICKHOUSE_URL:-}" ]; then
+  qs() { curl -sS "$STALE_CLICKHOUSE_URL" --data-binary "$1"; }
+  sb() { CLICKHOUSE_PORT="${STALE_CLICKHOUSE_PORT:?}" "$DBT_BIN" build --profiles-dir . 2>&1 | grep -E 'Done\.|Budget audit'; }
+  sv() { qs "SELECT scope, scope_key, as_of_day, as_of_ts, stale_threshold_hours, is_stale, budget_status FROM otel.budget_status_current ORDER BY 1,2 FORMAT PrettyCompactMonoBlock"; }
+  { echo "tested_sha: $(git -C "$ROOT" rev-parse HEAD)"; echo "utc: $(date -u +%FT%TZ)"; echo "clickhouse (stale): $(qs 'SELECT version()') tz=$(qs 'SELECT timezone()')"; echo "-----"
+    echo "linhas de custo antes do load (esperado 0): $(qs 'SELECT count() FROM otel.stg_api_request')"
+    python3 tests/load_budget_stale_fixture.py "$STALE_CLICKHOUSE_URL" 28
+    T="$(qs "SELECT max(event_ts) FROM otel.stg_api_request")"; echo "T = max(event_ts) da fixture: $T | now: $(qs "SELECT now64(3,'UTC')")"
+    echo "vars: budget_stale_hours_daily = $(grep -E '^  budget_stale_hours_daily:' dbt_project.yml | awk '{print $2}') (padrão, não alterado)"
+    echo "== build 1 (T+28h, primeiro processamento do custo)"; sb; sv
+    A1="$(qs 'SELECT max(as_of_ts) FROM otel.budget_status_current')"
+    echo "== build 2 (T+28h, run bem-sucedido SEM custo novo)"; sb; sv
+    A2="$(qs 'SELECT max(as_of_ts) FROM otel.budget_status_current')"
+    echo "as_of_ts build1=$A1 build2=$A2 T=$T"
+    [ "$A1" = "$T" ] && [ "$A2" = "$T" ] && echo "as_of_ts = T antes e depois: PASS" || echo "as_of_ts = T: FAIL"
+    [ "$(qs 'SELECT min(is_stale) FROM otel.budget_status_current')" = "true" ] && echo "is_stale=true em todas as linhas (limite 26h): PASS" || echo "is_stale=true: FAIL"
+    echo "audit_budget_runs: $(qs "SELECT groupArray((run_status, n)) FROM (SELECT run_id, any(run_status) run_status, count() n FROM otel.audit_budget_runs GROUP BY run_id ORDER BY min(run_completed_at))")"
+  } > "$OUT/budget-stale-$SHA.txt"
+fi
+
+# 8. audit_budget_runs: run que falha é marcado run_status='error' (definer inexistente => view falha)
 { hdr
-  T0="$(q 'SELECT max(as_of_ts) FROM otel.budget_status_current')"
-  echo "as_of_ts antes: $T0 | now: $(q "SELECT now64(3,'UTC')")"
-  AGE_H="$(q "SELECT intDiv(dateDiff('second', max(as_of_ts), now64(9,'UTC')), 3600) FROM otel.budget_status_current")"
-  echo "idade do último custo: ${AGE_H}h"
-  echo "== run bem-sucedido SEM custo novo, padrão budget_stale_hours_daily=26"
-  "$DBT_BIN" build --profiles-dir . -s +budget_status_current audit_budget_runs 2>&1 | grep 'Done\.'
-  qp "SELECT scope, scope_key, as_of_ts, stale_threshold_hours, is_stale, budget_status FROM otel.budget_status_current ORDER BY 1,2"
-  TH=$((AGE_H > 1 ? AGE_H - 1 : 0))
-  echo "== simulação de T+Δ > limite: run bem-sucedido SEM custo novo com budget_stale_hours_daily=$TH (< idade ${AGE_H}h)"
-  echo "   (equivale ao cenário T+27h com limite 26h sem esperar 27h; o limite é a única variável)"
-  "$DBT_BIN" build --profiles-dir . -s +budget_status_current audit_budget_runs --vars "{budget_stale_hours_daily: $TH}" 2>&1 | grep 'Done\.'
-  T1="$(q 'SELECT max(as_of_ts) FROM otel.budget_status_current')"
-  qp "SELECT scope, scope_key, as_of_ts, stale_threshold_hours, is_stale, budget_status FROM otel.budget_status_current ORDER BY 1,2"
-  echo "as_of_ts depois: $T1"
-  [ "$T0" = "$T1" ] && echo "as_of_ts inalterado: PASS" || echo "as_of_ts inalterado: FAIL"
-  [ "$(q 'SELECT min(is_stale) FROM otel.budget_status_current')" = "true" ] && echo "is_stale=true em todas as linhas: PASS" || echo "is_stale=true: FAIL"
-  echo "== variante: insere 1 evento sintético novo (request_id novo, agora), build completo, limite 1h (evento tem < 1h)"
-  q "INSERT INTO otel.otel_logs (Timestamp, Body, ServiceName, ResourceAttributes, LogAttributes)
-     SELECT now64(9,'UTC'), Body, ServiceName, ResourceAttributes, mapUpdate(LogAttributes, map('request_id', 'req_budget48_stale_probe'))
-     FROM otel.otel_logs WHERE Body='claude_code.api_request' ORDER BY Timestamp DESC LIMIT 1"
-  "$DBT_BIN" build --profiles-dir . --vars "{budget_stale_hours_daily: 1}" 2>&1 | grep 'Done\.'
-  qp "SELECT scope, scope_key, as_of_ts, stale_threshold_hours, is_stale, budget_status FROM otel.budget_status_current ORDER BY 1,2"
-  T2="$(q 'SELECT max(as_of_ts) FROM otel.budget_status_current')"
-  [ "$T2" \> "$T1" ] && echo "as_of_ts avançou ($T1 -> $T2): PASS" || echo "as_of_ts avançou: FAIL"
-  [ "$(q 'SELECT max(is_stale) FROM otel.budget_status_current')" = "false" ] && echo "custo novo => is_stale=false: PASS" || echo "custo novo => is_stale=false: FAIL"
-  echo "== volta ao limite padrão (26)"; "$DBT_BIN" build --profiles-dir . 2>&1 | grep 'Done\.'
-} > "$OUT/budget-stale-$SHA.txt"
+  echo "== run com falha forçada (budget_view_definer inexistente)"
+  "$DBT_BIN" build --profiles-dir . --vars '{budget_view_definer: oteru_budget_definer_inexistente}' 2>&1 | grep -E ' ERROR creating|Done\.|Budget audit'
+  echo "== run normal"
+  "$DBT_BIN" build --profiles-dir . 2>&1 | grep -E 'Done\.|Budget audit'
+  qp "SELECT run_id, any(run_status) AS run_status, uniqExact(run_status) AS n_status, count() AS rows, min(run_completed_at) AS at FROM otel.audit_budget_runs GROUP BY run_id ORDER BY at"
+  echo "último run: $(q "SELECT any(run_status) FROM otel.audit_budget_runs WHERE run_id = (SELECT argMax(run_id, run_completed_at) FROM otel.audit_budget_runs)")"
+  echo "penúltimo run: $(q "SELECT run_status FROM (SELECT run_id, any(run_status) run_status, max(run_completed_at) t FROM otel.audit_budget_runs GROUP BY run_id ORDER BY t DESC LIMIT 1 OFFSET 1)")"
+  "$DBT_BIN" test --profiles-dir . -s audit_budget_runs 2>&1 | grep -E ' PASS | FAIL | ERROR |Done\.'
+} > "$OUT/budget-audit-run-status-$SHA.txt"
 echo "provas em $OUT"
