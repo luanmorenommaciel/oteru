@@ -48,6 +48,12 @@ _COMPOSE_CLIENT = (
 
 
 _RUNTIME_HMAC_KEY = secrets.token_bytes(32)
+CLIENT_NOT_FOUND = (
+    "ClickHouse client was not found on the host (clickhouse-client) nor via "
+    "docker compose exec. Install clickhouse-client, or start the stack with "
+    "`make up-clickhouse` so `docker compose exec -T clickhouse clickhouse-client` "
+    "works."
+)
 
 
 def clickhouse_cmd() -> tuple[list[str], Path | None]:
@@ -66,7 +72,7 @@ def clickhouse_cmd() -> tuple[list[str], Path | None]:
         return ["docker", *_COMPOSE_CLIENT], COLLECTOR
     if shutil.which("podman"):
         return ["podman", *_COMPOSE_CLIENT], COLLECTOR
-    return ["clickhouse-client"], None
+    raise SystemExit(CLIENT_NOT_FOUND)
 
 
 def pseudonymize(email: str, key: bytes | None = None) -> str:
@@ -162,7 +168,10 @@ def insert(rec: dict) -> None:
         f"{esc_map(rec['res'])}, {esc_map(rec['log'])})"
     )
     cmd, cwd = clickhouse_cmd()
-    r = subprocess.run(cmd + ["--query", q], capture_output=True, text=True, cwd=cwd)
+    try:
+        r = subprocess.run(cmd + ["--query", q], capture_output=True, text=True, cwd=cwd)
+    except FileNotFoundError:
+        raise SystemExit(CLIENT_NOT_FOUND) from None
     if r.returncode != 0:
         raise SystemExit(r.stderr or r.stdout or "clickhouse insert failed")
 

@@ -8,6 +8,8 @@ import importlib.util
 import logging
 import re
 import secrets
+import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -82,11 +84,49 @@ def test_falls_back_to_podman_compose_when_docker_absent(isolated_root, monkeypa
     assert cwd == isolated_root / "oteru-collector"
 
 
-def test_last_resort_is_clickhouse_client_name(isolated_root, monkeypatch):
+def test_systemexit_when_host_client_and_docker_compose_missing(isolated_root, monkeypatch):
+    """New coverage: both host clickhouse-client and docker compose are absent."""
     monkeypatch.setattr(mod.shutil, "which", lambda _name: None)
-    cmd, cwd = mod.clickhouse_cmd()
-    assert cmd == ["clickhouse-client"]
-    assert cwd is None
+    with pytest.raises(SystemExit, match="ClickHouse client was not found") as raised:
+        mod.clickhouse_cmd()
+    msg = str(raised.value)
+    assert "ClickHouse client was not found on the host" in msg
+    assert "docker compose exec" in msg
+    assert "make up-clickhouse" in msg
+    assert "FileNotFoundError" not in msg
+    assert "otel" not in msg
+    assert "password" not in msg.lower()
+    assert mod._RUNTIME_HMAC_KEY.hex() not in msg
+
+
+def test_missing_host_client_and_compose_raises_clear_error(isolated_root, monkeypatch):
+    monkeypatch.setattr(mod.shutil, "which", lambda _name: None)
+    with pytest.raises(SystemExit, match="ClickHouse client was not found") as raised:
+        mod.clickhouse_cmd()
+    msg = str(raised.value)
+    assert "host" in msg
+    assert "docker compose" in msg
+    assert "clickhouse-client" in msg
+    assert "otel" not in msg
+    assert "password" not in msg.lower()
+    rec = {
+        "ts": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "body": "x",
+        "svc": "svc",
+        "res": {},
+        "log": {"user.email": "user@example.com"},
+    }
+    with pytest.raises(SystemExit, match="ClickHouse client was not found") as insert_raised:
+        mod.insert(rec)
+    insert_msg = str(insert_raised.value)
+    formatted = "".join(
+        traceback.format_exception_only(insert_raised.type, insert_raised.value)
+    )
+    for blob in (insert_msg, formatted):
+        assert "otel" not in blob
+        assert "password" not in blob.lower()
+        assert mod._RUNTIME_HMAC_KEY.hex() not in blob
+        assert "FileNotFoundError" not in blob
 
 
 def _expected_actor_id(email: str, key: bytes) -> str:
