@@ -134,3 +134,10 @@ Em aberto:
 
 - Decisões do Vinícius (2026-10-21): (a) **Fase 2 aprovada**, incluindo a mudança aditiva em `int_api_request_dedup` (novas colunas para `oteru.team`/`oteru.project`); (b) o comando admin self-hmac só pode ser executado **pelo Vinícius e pelos administradores do collector**.
 - Status: plano concluído; em construção. Fase 1 → Modelo; fase 2 + comando self-hmac → Duto; regra gitleaks → Alicerce; alertas → Vigia; Sentinela revisa o PR quando a feature estiver pronta.
+
+## Adendo fase 1 (Modelo, 2026-10-21) — condições da Sentinela
+
+- **Mudança de seed e histórico:** os fatos de chargeback são incrementais (`delete+insert` por `day_utc`) e só reprocessam a janela de `cost_lookback_hours` (48h). Mudar `chargeback_service_map`/`chargeback_actor_map` reatribui apenas os dias dessa janela; **dias anteriores mantêm o mapeamento antigo**. Reescrever o histórico exige `--full-refresh`/backfill, que **precisa do OK do Vinícius**. A reconciliação de custo por dia com `fct_cost_daily` segue exata (só muda o time).
+- **Fixtures:** seeds de fixture em `oteru-dbt/seeds/chargeback_fixtures/`, desligados por padrão; `test_chargeback_default_no_fixture_rows` garante zero linhas de fixture no build padrão. Pseudônimos de fixture vêm do loader de teste (SHA-256 sem chave sobre e-mail sintético `example.com`) ou são placeholders (`hmac:v2:` com zeros); nenhuma chave no repo.
+- **Regex de seed:** exatamente `^hmac:v[0-9]+:[0-9a-f]{64}$` (macro `chargeback_seed_actor_regex`), com casos negativos em `test_chargeback_seed_regex_cases`.
+- **Métricas de auditoria:** gravadas em `otel.audit_cost_runs_chargeback` (join por `run_id`), sem coluna de ator/HMAC, porque o INSERT de `audit_cost_runs` é posicional e não aceita colunas novas sem alterar a macro existente.

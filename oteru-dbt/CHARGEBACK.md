@@ -47,3 +47,37 @@ Script de prova: `bash oteru-dbt/tests/run_chargeback_46_evidence.sh` (ClickHous
 
 Chaves só `service_name` ou `actor_id` HMAC. Nunca e-mail, nome ou login, nem em comentários.
 `test_chargeback_no_pii` falha com qualquer `@` e com `actor_id` fora do formato HMAC.
+
+## Mudança de mapeamento e reprocessamento (condição Sentinela 1)
+
+Os fatos `fct_cost_chargeback_daily` e `fct_cost_chargeback_actor_daily` são incrementais
+(`delete+insert` por `day_utc`) e só reprocessam a janela de `cost_lookback_hours` (48h).
+Ao mudar `chargeback_service_map` / `chargeback_actor_map`:
+
+- dias dentro da janela de 48h são recalculados com o mapeamento novo (linhas antigas do dia são substituídas, sem duplicar);
+- **dias anteriores mantêm o mapeamento antigo** (ficam congelados);
+- reescrever o histórico exige `dbt build --full-refresh` (ou backfill dirigido). Isso é um **backfill e precisa do OK do Vinícius** antes de rodar fora do ambiente local.
+
+`int_cost_attributed` é view e sempre reflete o mapeamento atual; a divergência
+histórica fica só nos fatos materializados. A reconciliação total por dia com
+`fct_cost_daily` continua exata nos dois casos (só muda o time, não o custo).
+
+## Fixtures e build padrão (condições Sentinela 2 e 3)
+
+- Seeds de fixture ficam em `seeds/chargeback_fixtures/` com `enabled: false` por padrão:
+  o build padrão não cria essas tabelas nem lê esses dados.
+  `test_chargeback_default_no_fixture_rows` falha se aparecer qualquer marcador de fixture
+  (`time-fixture`, `projeto-fixture`, `hmac:v2:`, `attribution_source='actor_map'`, pseudônimo de teste nos seeds).
+- Origem dos pseudônimos de fixture: ver `tests/fixtures/chargeback_46/README.md`. Nenhuma chave
+  real nem e-mail real; nenhum material de chave está no repositório.
+
+## Regex de PII (condição Sentinela 4)
+
+Fonte única em `macros/chargeback_regex.sql`: seeds `^hmac:v[0-9]+:[0-9a-f]{64}$`,
+modelos `^hmac:v1:[0-9a-f]{64}$`. `test_chargeback_seed_regex_cases` cobre casos
+positivos e negativos (63/65 hex, maiúsculas, `vx`, prefixo/sufixo extra, e-mail, vazio).
+
+## Auditoria sem ator (condição Sentinela 5)
+
+`audit_cost_runs_chargeback` não tem `actor_id` nem coluna HMAC;
+`test_audit_cost_runs_chargeback_no_actor` checa `system.columns` e os valores.

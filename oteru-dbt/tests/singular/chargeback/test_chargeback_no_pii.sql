@@ -39,7 +39,7 @@ seed_actors AS (
 SELECT obj, 'contém @' AS issue, v AS value FROM strings WHERE position(v, '@') > 0
 UNION ALL
 SELECT obj, 'actor_id fora de ^hmac:v1:[0-9a-f]{64}$', actor_id FROM model_actors
-WHERE NOT match(actor_id, '^hmac:v1:[0-9a-f]{64}$')
+WHERE NOT match(actor_id, '{{ chargeback_model_actor_regex() }}')
 UNION ALL
 SELECT obj, 'actor_id de seed fora de ^hmac:v[0-9]+:[0-9a-f]{64}$', actor_id FROM seed_actors
-WHERE NOT match(actor_id, '^hmac:v[0-9]+:[0-9a-f]{64}$')
+WHERE NOT match(actor_id, '{{ chargeback_seed_actor_regex() }}')
