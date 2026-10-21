@@ -1,0 +1,60 @@
+tested_sha: b0eadb85f929644211be169ffd35faa2f7f37821
+utc: 2026-10-21T15:22:50Z
+clickhouse: 26.11.1.333
+-----
+### Cond. 2: remove tabelas de fixture (local) e roda build padrão (sem chargeback_fixtures)
+[0m15:22:54  104 of 108 START test test_chargeback_default_no_fixture_rows .................. [RUN]
+[0m15:22:54  104 of 108 PASS test_chargeback_default_no_fixture_rows ........................ [[32mPASS[0m in 0.03s]
+[0m15:22:55  Done. PASS=109 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=109
+tabelas de fixture em system.tables (esperado 0):
+0
+marcadores de fixture por tabela (esperado 0 em todas):
+   ┌─o───────────────────────────────┬─n─┐
+1. │ fct_cost_chargeback_daily       │ 0 │
+2. │ chargeback_actor_map            │ 0 │
+3. │ chargeback_service_map          │ 0 │
+4. │ fct_cost_chargeback_actor_daily │ 0 │
+5. │ int_cost_attributed             │ 0 │
+   └─────────────────────────────────┴───┘
+
+### Cond. 4: regex de seed exato + casos negativos
+2:{% macro chargeback_seed_actor_regex() %}^hmac:v[0-9]+:[0-9a-f]{64}${% endmacro %}
+3:{% macro chargeback_model_actor_regex() %}^hmac:v1:[0-9a-f]{64}${% endmacro %}
+[0m15:22:59  1 of 2 PASS test_chargeback_no_pii ............................................. [[32mPASS[0m in 0.07s]
+[0m15:22:59  2 of 2 PASS test_chargeback_seed_regex_cases ................................... [[32mPASS[0m in 0.02s]
+[0m15:22:59  Done. PASS=3 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=3
+
+### Cond. 5: colunas de audit_cost_runs_chargeback (system.columns) — sem actor/hmac
+   ┌─name───────────────┬─type───────────────────┐
+1. │ run_id             │ String                 │
+2. │ run_completed_at   │ DateTime64(9, 'UTC')   │
+3. │ metric_name        │ LowCardinality(String) │
+4. │ day_utc            │ Date                   │
+5. │ attribution_source │ LowCardinality(String) │
+6. │ metric_value       │ Float64                │
+   └────────────────────┴────────────────────────┘
+Row 1:
+──────
+name:               audit_cost_runs_chargeback
+create_table_query: CREATE TABLE otel.audit_cost_runs_chargeback (`run_id` String, `run_completed_at` DateTime64(9, 'UTC'), `metric_name` LowCardinality(String), `day_utc` Date, `attribution_source` LowCardinality(String), `metric_value` Float64) ENGINE = MergeTree ORDER BY ((run_id, metric_name, day_utc, attribution_source)) SETTINGS replicated_deduplication_window = '0', index_granularity = 8192
+colunas proibidas (esperado 0): 0
+[0m15:23:03  1 of 1 PASS test_audit_cost_runs_chargeback_no_actor ........................... [[32mPASS[0m in 0.05s]
+[0m15:23:03  Done. PASS=2 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=2
+
+### Cond. 3: valores tipo-chave/pseudônimo nos arquivos de fixture
+/workspace/ot-fdf9825/oteru-dbt/seeds/chargeback_fixtures/chargeback_actor_map_fixture.csv:2:hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14,time-fixture,projeto-fixture
+/workspace/ot-fdf9825/oteru-dbt/seeds/chargeback_fixtures/chargeback_actor_map_fixture_v2.csv:2:hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14,time-fixture,projeto-fixture
+/workspace/ot-fdf9825/oteru-dbt/seeds/chargeback_fixtures/chargeback_actor_map_fixture_v2.csv:3:hmac:v2:0000000000000000000000000000000000000000000000000000000000000000,time-fixture,projeto-fixture
+sha256 sem chave do e-mail sintético da fixture (loader existente):
+hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14
+gitleaks não instalado no box: não executado (regra/CI é do Alicerce)
+
+### Controle negativo: o teste de cond. 2 FALHA quando há fixture ativa
+[0m15:23:12  Done. PASS=116 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=116
+(agora dbt test sem a var, sobre as relações ainda geradas pela fixture; esperado FAIL)
+[0m15:23:17  1 of 1 FAIL 2 test_chargeback_default_no_fixture_rows .......................... [[31mFAIL 2[0m in 0.05s]
+[0m15:23:18  Done. PASS=1 WARN=0 ERROR=1 SKIP=0 NO-OP=0 REUSED=0 TOTAL=2
+### Restaurando padrão
+[0m15:23:25  104 of 108 START test test_chargeback_default_no_fixture_rows .................. [RUN]
+[0m15:23:25  104 of 108 PASS test_chargeback_default_no_fixture_rows ........................ [[32mPASS[0m in 0.03s]
+[0m15:23:25  Done. PASS=109 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=109
