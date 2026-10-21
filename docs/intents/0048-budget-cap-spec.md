@@ -1,49 +1,66 @@
 # SPEC — #48 Budget cap e circuit breaker (dados/dbt) — RASCUNHO
 
-Status: rascunho (Modelo). Base: origin/feat/46-cost-chargeback @ e1b4f54. Condições da Sentinela (S1–S5) aplicadas nas seções de dados; §7 inalterado.
+Status: rascunho (Modelo). Base: origin/feat/46-cost-chargeback @ e1b4f54. Condições da Sentinela (S1–S5) aplicadas nas seções de dados; Política decidida pelo Vinícius em 21/10/2026 (§9): só alerta, fail-open, caps multi-grão, valores no seed. §7 inalterado.
 
 ## 1. Objetivo
-Entregar, em dbt/ClickHouse, (a) budgets por team × project × período, (b) consumo diário e acumulado no período vs. budget, (c) status por threshold e (d) sinal de runaway, num contrato enforced que o enforcement (Alicerce) lê.
+Entregar, em dbt/ClickHouse, (a) budgets por scope (global, team, project, team_project) × período, (b) consumo diário e acumulado no período vs. budget, (c) status por threshold e (d) sinal de runaway, num contrato enforced lido pelo Vigia para **alertar**. Nesta entrega não há bloqueio; o gateway fica como follow-up (§9 item 1).
 
 ## 2. Critérios de aceite
-- CA1: seed `budgets` validado (unicidade, vigência sem sobreposição, `budget_usd_micros >= 0`, `0 < warn_milli < breach_milli`, `action_on_breach` ∈ {alert, block}, team/project no slug da #46, nenhum `@`) — S4.
-- CA2: `fct_budget_consumption_daily` tem 1 linha por day_utc × team × project com budget vigente; `consumed_usd_micros` do dia = soma de fct_cost_chargeback_daily do mesmo dia/team/project (reconciliação exata, teste).
+- CA1: seed `budgets` validado (unicidade por (scope, team, project, valid_from), no máximo uma linha `global` vigente por dia, vigência sem sobreposição, `budget_usd_micros >= 0`, `0 < warn_milli < breach_milli`, `action_on_breach` = 'alert' (único valor aceito nesta entrega), `scope` ∈ {global, team, project, team_project} com coerência scope × campos, slug da #46 só em campo preenchido, nenhum `@`, vigência sem sobreposição por (scope, team, project)) — S4 + §9.
+- CA2: `fct_budget_consumption_daily` tem 1 linha por day_utc × scope × scope_key com budget vigente. `consumed_usd_micros` do dia = soma de `fct_cost_chargeback_daily` no grão do scope (reconciliação exata, teste). Para `global`, a soma bate **exatamente** com o total diário de `fct_cost_chargeback_daily`, incluindo `unassigned`.
 - CA3: acumulado do período (mês UTC, por padrão) é monotônico não-decrescente dentro do período e zera na virada.
 - CA4: `budget_status` ∈ {ok, warn, breach, no_budget}; thresholds vêm do seed como inteiros (`warn_milli` default 800, `breach_milli` default 1000) e o status é calculado só com aritmética inteira; unit tests nas bordas exatas 79,9% ok, 80,0% warn, 100,0% breach — S2.
 - CA5: nenhum modelo de budget contém actor_id nem coluna derivada de ator (teste de contrato + grep no manifest).
-- CA6: `budget_status_current` dá exatamente 1 linha por team × project com o último dia processado e `as_of_ts` = último timestamp de custo efetivamente processado (não a hora do run); um run bem-sucedido sem custo novo deixa `is_stale = true` — S1.
+- CA6: `budget_status_current` dá exatamente 1 linha por scope × scope_key com o último dia processado e `as_of_ts` = último timestamp de custo efetivamente processado (não a hora do run); um run bem-sucedido sem custo novo deixa `is_stale = true` — S1.
 - CA7: runs incrementais com lookback 48h são idempotentes (rodar 2× não muda resultado).
 - CA8: nenhum contrato de #46 muda (non-breaking).
 - CA9: nenhum `Float64` no seed nem nos contratos de budget — S2.
 - CA10: `budget_usd_micros >= 0` sempre e `> 0` quando `budget_status != 'no_budget'` — S3.
+- CA12: `action_on_breach` só aceita 'alert'; nenhum modelo de dados assume bloqueio. Com `is_stale = true` a política é fail-open (libera e alerta) — §9 itens 1 e 2.
 - CA11: `budget_status_current` é `SQL SECURITY DEFINER` com definer de privilégio mínimo; o role leitor lê a view e recebe erro de acesso no SELECT direto em `fct_*` — S5.
 
 ## 3. Modelos propostos
 | Modelo | Tipo | Grão | Notas |
 |---|---|---|---|
-| `seeds/budgets.csv` | seed (contrato via yml) | team × project × valid_from | fonte inicial; pode virar source depois |
+| `seeds/budgets.csv` | seed (contrato via yml) | scope × team × project × valid_from | valores configuráveis, documentados em `seeds/budgets.yml` + `seeds/README-budgets.md` |
 | `stg_budgets` | view | idem | tipagem, normaliza vigência (valid_to nulo = aberto) |
-| `fct_budget_consumption_daily` | incremental (ReplacingMergeTree ou delete+insert por partição de dia), lookback 48h + recomputo do período corrente | day_utc × team × project | permanente, sem actor_id |
-| `budget_status_current` | view `SQL SECURITY DEFINER` (S5) | team × project | o que o enforcement lê; view obrigatória (`is_stale` avaliado na leitura) |
-| `fct_budget_consumption_hourly` (fase 2, requisito) | incremental | hour_utc × team × project | latência ≤ 1h; agrega int_cost_attributed antes de materializar (sem actor_id) |
-| `audit_budget_runs` | incremental (append por run) | run_id × team × project × status | pedido do Vigia; só agregados; **não altera** `audit_cost_runs` (contrato #45/#47) |
+| `fct_budget_consumption_daily` | incremental (ReplacingMergeTree ou delete+insert por partição de dia), lookback 48h + recomputo do período corrente | day_utc × scope × scope_key | permanente, sem actor_id |
+| `budget_status_current` | view `SQL SECURITY DEFINER` (S5) | scope × scope_key | o que o enforcement lê; view obrigatória (`is_stale` avaliado na leitura) |
+| `fct_budget_consumption_hourly` (fase 2, requisito) | incremental | hour_utc × scope × scope_key | latência ≤ 1h; agrega int_cost_attributed antes de materializar (sem actor_id) |
+| `audit_budget_runs` | incremental (append por run) | run_id × scope × scope_key × status | pedido do Vigia; só agregados; **não altera** `audit_cost_runs` (contrato #45/#47) |
 
-Observação: o acumulado do período depende de dias anteriores; com lookback 48h, recalcular o acumulado como window sobre o período corrente inteiro (no máx. 31 dias por team/project — barato) em vez de somar incrementalmente.
+Observação: o acumulado do período depende de dias anteriores; com lookback 48h, recalcular o acumulado como window sobre o período corrente inteiro (no máx. 31 dias por scope_key — barato) em vez de somar incrementalmente.
 
 ### 3.1 Seed `budgets`
-Colunas: team String, project String ('*' = todo o time? — em aberto), period LowCardinality(String) ('month'), budget_usd_micros Int64 (>= 0), warn_milli UInt16 (default 800), breach_milli UInt16 (default 1000), action_on_breach LowCardinality(String) ('alert' → Vigia, 'block' → Alicerce; política muda por PR), valid_from Date, valid_to Nullable(Date), owner_team String.
+Colunas: scope LowCardinality(String) ∈ ('global','team','project','team_project'), team String ('' quando não se aplica), project String ('' quando não se aplica), period LowCardinality(String) ('month'), budget_usd_micros Int64 (>= 0), warn_milli UInt16 (default 800), breach_milli UInt16 (default 1000), action_on_breach LowCardinality(String) (só 'alert' nesta entrega → Vigia; 'block' volta só com o follow-up do gateway, por PR), valid_from Date, valid_to Nullable(Date), owner_team String.
 Sem nenhuma coluna Float (S2).
+
+**Grãos (§9 item 3):**
+| scope | team | project | scope_key | soma de custo |
+|---|---|---|---|---|
+| global | '' | '' | 'global' | total do dia em `fct_cost_chargeback_daily`, **incluindo** `unassigned` |
+| team | slug | '' | team | por `team` (inclui `team='unassigned'` se houver linha de budget para ele) |
+| project | '' | slug | project | por `project`, somando todos os times |
+| team_project | slug | slug | team + '/' + project | por `team × project` |
+`scope_key` não é ambíguo porque o slug não contém '/'. Um mesmo custo conta em todos os caps cujo grão o contém; os caps são independentes e não há rateio.
+
+**Valores (§9 item 4):** configuráveis no seed e documentados no yml e no README. Padrão `warn_milli=800` e `breach_milli=1000`. O seed inicial traz linhas de exemplo; os valores reais saem por PR.
 
 **Validação do seed (S4)** — testes dbt em `seeds/budgets.yml`:
 - `0 < warn_milli < breach_milli` (teste singular `assert_budgets_threshold_order`).
-- `action_on_breach` em ('alert','block') (`accepted_values`).
-- `team` e `project` casam com o slug da #46, `^[a-z0-9][a-z0-9-]{0,62}$`. Fonte: `CHARGEBACK_SLUG` em `oteru-collector/privacy/compile.py`, que é espelhado no OTTL `IsMatch` do mesmo arquivo. Não há macro dbt com essa regex hoje, então a proposta é criar a macro `chargeback_slug_regex()` com o mesmo literal mais um teste genérico `matches_chargeback_slug` (`match(col, regex)` no ClickHouse). O literal deve ser idêntico ao do collector, e um teste do Alicerce/CI pode comparar os dois.
+- `action_on_breach` em ('alert') (`accepted_values`; §9 item 1).
+- `scope` em ('global','team','project','team_project') (`accepted_values`).
+- **Coerência scope × campos** (`assert_budgets_scope_fields`): global ⇒ team = '' e project = ''; team ⇒ team != '' e project = ''; project ⇒ team = '' e project != ''; team_project ⇒ os dois != ''.
+- `team` e `project`, **só quando preenchidos** (`!= ''`), casam com o slug da #46, `^[a-z0-9][a-z0-9-]{0,62}$`. Fonte: `CHARGEBACK_SLUG` em `oteru-collector/privacy/compile.py`, que é espelhado no OTTL `IsMatch` do mesmo arquivo. Não há macro dbt com essa regex hoje, então a proposta é criar a macro `chargeback_slug_regex()` com o mesmo literal mais um teste genérico `matches_chargeback_slug` (`match(col, regex)` no ClickHouse). O literal deve ser idêntico ao do collector, e um teste do Alicerce/CI pode comparar os dois.
 - Nenhum `@` em nenhuma coluna (`position(col,'@') = 0`).
 - `budget_usd_micros >= 0` (S3).
-- Consequência: `project='*'` (§9.1) **não** casa com o slug; se o cap por time for aprovado, ele precisa de outra representação (ex.: coluna `scope` ∈ {team, project}).
+- Vigência sem sobreposição por (scope, team, project).
+- **Unicidade do seed:** (scope, team, project, valid_from), ou seja, uma linha por (scope, team, project, vigência).
+- **No máximo uma linha `global` por vigência:** em qualquer dia, no máximo uma linha `scope='global'` vigente (`assert_budgets_single_global_per_validity`).
+- O cap por time é `scope='team'`, sem curinga em `project`.
 - **Guard pré-commit/CI que cobre `seeds/budgets.csv`: fica com o Alicerce** (extensão de `scripts/check_chargeback_seeds.py` / `.github/workflows/ci.yml`). O Modelo entrega só os testes dbt acima.
 
-Override: linha com vigência própria (valid_from/valid_to) no seed; também expira na virada do mês. Reversão de bloqueio = override ou virada do mês.
+Override: linha com vigência própria (valid_from/valid_to) no seed; também expira na virada do mês. Silenciar ou ajustar um alerta = override ou virada do mês (não há bloqueio nesta entrega).
 
 ## 4. Contratos de colunas (enforced)
 ### fct_budget_consumption_daily
@@ -51,8 +68,10 @@ Override: linha com vigência própria (valid_from/valid_to) no seed; também ex
 |---|---|---|
 | day_utc | Date | not_null |
 | period_start | Date | not_null; = toStartOfMonth(day_utc) |
-| team | String | not_null |
-| project | String | not_null |
+| scope | LowCardinality(String) | accepted_values global/team/project/team_project |
+| scope_key | String | not_null; derivado conforme §3.1 |
+| team | String | not_null; '' quando o scope não usa team |
+| project | String | not_null; '' quando o scope não usa project |
 | owner_team | String | not_null |
 | budget_usd_micros | Int64 | not_null, `>= 0`; `> 0` sempre que `budget_status != 'no_budget'` (S3); 0 em no_budget |
 | consumed_usd_micros | Int64 | not_null, >= 0 (dia) |
@@ -61,10 +80,10 @@ Override: linha com vigência própria (valid_from/valid_to) no seed; também ex
 | warn_milli | UInt16 | do seed |
 | breach_milli | UInt16 | do seed |
 | budget_status | LowCardinality(String) | accepted_values ok/warn/breach/no_budget; regra inteira abaixo |
-| last_cost_ts | DateTime64(9) | max(event_ts) do custo processado para o par/dia (S1) |
+| last_cost_ts | DateTime64(9) | max(event_ts) do custo processado para o scope_key/dia (S1) |
 | projected_period_usd_micros | Int64 | projeção linear até o fim do período (informativa) |
 | loaded_at | DateTime64(3) | |
-Unicidade: (day_utc, team, project).
+Unicidade: (day_utc, scope, scope_key).
 
 **Regra de status (S2, só inteiros, sem divisão):**
 ```sql
@@ -77,9 +96,10 @@ multiIf(
 O cast para Int128 evita overflow (Int64 micros × 1000). `consumed_milli` não entra na decisão.
 
 ### budget_status_current
-team, project, owner_team, period_start, as_of_day, as_of_ts DateTime64(9), budget_usd_micros, consumed_period_usd_micros, consumed_milli Int64, warn_milli UInt16, breach_milli UInt16, budget_status, action_on_breach, stale_threshold_hours UInt16, is_stale Bool. Unicidade: (team, project).
+scope LowCardinality(String), scope_key String, team, project, owner_team, period_start, as_of_day, as_of_ts DateTime64(9), budget_usd_micros, consumed_period_usd_micros, consumed_milli Int64, warn_milli UInt16, breach_milli UInt16, budget_status, action_on_breach, stale_threshold_hours UInt16, is_stale Bool. Unicidade: (scope, scope_key).
+- **Fail-open (§9 item 2):** `is_stale` não muda `budget_status`. O dado stale é exposto e o Vigia alerta (§7.12). Nada é bloqueado.
 - Lido pelo enforcement **somente** por um role somente-leitura dedicado (grant criado pelo Alicerce).
-- **`as_of_ts` (S1)** = último timestamp de custo efetivamente processado: no MVP diário, `max(last_cost_ts)` de `fct_budget_consumption_daily`, que vem de `max(event_ts)` de `int_cost_attributed` sobre o mesmo recorte que alimentou `fct_cost_chargeback_daily`. Na fase 2, é o fim da última hora fechada em `fct_budget_consumption_hourly`. É **global**, não por par: é o "high-water mark" do pipeline. Um par sem custo no dia não fica stale por isso. **Nunca** `now()`, `run_started_at` nem `loaded_at`. Assim, um run que termina bem mas não processa custo novo não "refresca" o sinal.
+- **`as_of_ts` (S1)** = último timestamp de custo efetivamente processado: no MVP diário, `max(last_cost_ts)` de `fct_budget_consumption_daily`, que vem de `max(event_ts)` de `int_cost_attributed` sobre o mesmo recorte que alimentou `fct_cost_chargeback_daily`. Na fase 2, é o fim da última hora fechada em `fct_budget_consumption_hourly`. É **global**, não por par: é o "high-water mark" do pipeline. Um scope_key sem custo no dia não fica stale por isso. **Nunca** `now()`, `run_started_at` nem `loaded_at`. Assim, um run que termina bem mas não processa custo novo não "refresca" o sinal.
 - `is_stale = now64() - as_of_ts > toIntervalHour(stale_threshold_hours)`; o limite vem das vars dbt `budget_stale_hours_daily` (default 26) e `budget_stale_hours_hourly` (default 2, fase 2).
 - Como `is_stale` depende de `now()`, o modelo é **view** (não table), para o valor ser avaliado na leitura.
 - **Segurança (S5):** `CREATE VIEW ... DEFINER = oteru_budget_view_definer SQL SECURITY DEFINER AS ...` (ClickHouse ≥ 24.4; confirmar a versão local na prova). O definer é um usuário/role sem login interativo, com **apenas** `SELECT` em `fct_budget_consumption_daily` (e, na fase 2, `fct_budget_consumption_hourly`) e nas colunas que a view lê. Não tem `SELECT` em `int_cost_attributed`, `fct_cost_*actor*`, `otel_logs` nem seeds com ator, e não tem INSERT/ALTER/DROP. O leitor `oteru_budget_reader` (§7.1) tem só `SELECT` na view. O role de alertas `oteru_budget_alerts_reader`, definido pelo Alicerce no §7.4 e usado pelo Vigia, tem `SELECT` **só** em `budget_status_current` e `audit_budget_runs`. Do lado de dados, isso exige que `audit_budget_runs` continue só com agregados (sem `actor_id`) e que nenhum dos dois roles tenha `SELECT` em `fct_*`/`int_*`. Implementação no dbt: `sql_header`/`post-hook` ou materialização custom; o adapter clickhouse não emite `DEFINER` nativamente, o que deve ser validado no plan (passo 5). A criação dos usuários e grants é coordenada com o Alicerce (§7.1) e roda fora do dbt, sem secrets no repo.
@@ -89,33 +109,41 @@ team, project, owner_team, period_start, as_of_day, as_of_ts DateTime64(9), budg
 |---|---|---|
 | run_id | String | not_null (invocation_id do dbt) |
 | run_completed_at | DateTime64(3) | not_null |
-| team | String | not_null |
-| project | String | not_null |
+| scope | LowCardinality(String) | accepted_values global/team/project/team_project |
+| scope_key | String | not_null |
+| team | String | not_null ('' conforme scope) |
+| project | String | not_null ('' conforme scope) |
 | status | LowCardinality(String) | accepted_values ok/warn/breach/no_budget |
 | count | UInt64 | not_null; nº de dias no período com esse status |
-Unicidade: (run_id, team, project, status). Sem actor_id. `audit_cost_runs`/`audit_cost_runs_chargeback` não mudam.
+Unicidade: (run_id, scope, scope_key, status). Sem actor_id. `audit_cost_runs`/`audit_cost_runs_chargeback` não mudam.
 
 ## 5. Testes dbt planejados
-- Genéricos: not_null, accepted_values (budget_status, period, action_on_breach), unique combinado (dbt_utils.unique_combination_of_columns ou teste singular).
+- Genéricos: not_null, accepted_values (budget_status, period, action_on_breach = só 'alert', scope), unique combinado (dbt_utils.unique_combination_of_columns ou teste singular).
 - Singulares:
-  - `assert_budget_consumption_reconciles_chargeback`: soma diária = fct_cost_chargeback_daily por dia × team × project (diferença 0 micros).
+  - `assert_budget_consumption_reconciles_chargeback`: para cada scope, a soma diária = `fct_cost_chargeback_daily` agregada no grão do scope (diferença 0 micros).
+  - `assert_budget_global_reconciles_total` (§9 item 3): `consumed_usd_micros` do scope `global` = `sum(cost_usd_micros)` de `fct_cost_chargeback_daily` no dia, **incluindo** `unassigned`, com diferença exatamente 0.
+  - `assert_budgets_scope_fields` (§9 item 3): 0 linhas com campo incoerente com o scope.
+  - `assert_scope_key_derivation`: `scope_key` = regra do §3.1 em seed, fct, view e audit.
+  - `unit_tests: budget_multi_grain`: um evento de custo de `team=a, project=x` conta em global, team `a`, project `x` e team_project `a/x`; custo `unassigned` conta só no global (e em `team='unassigned'` se houver cap).
   - `assert_budget_period_cumulative_monotonic`.
-  - `assert_budgets_no_overlapping_validity`.
+  - `assert_budgets_no_overlapping_validity`: por (scope, team, project).
+  - `unique_combination_of_columns` no seed: (scope, team, project, valid_from).
+  - `assert_budgets_single_global_per_validity`: 0 dias com mais de uma linha `scope='global'` vigente (redundante com o teste de sobreposição, mas explícito).
   - `assert_budgets_threshold_order` (S4): `0 < warn_milli < breach_milli`.
-  - `assert_budgets_slug_and_no_at` (S4): team/project no slug `^[a-z0-9][a-z0-9-]{0,62}$` e nenhum `@` em nenhuma coluna.
+  - `assert_budgets_slug_and_no_at` (S4): team/project preenchidos no slug `^[a-z0-9][a-z0-9-]{0,62}$` e nenhum `@` em nenhuma coluna.
   - `assert_budget_micros_positive_when_budgeted` (S3): 0 linhas com `budget_usd_micros < 0` ou com `budget_usd_micros = 0 AND budget_status != 'no_budget'`.
   - `assert_no_float_in_budget_contracts` (S2): `system.columns` dos modelos/seed de budget sem tipo `Float%`.
   - `assert_as_of_ts_is_cost_watermark` (S1): `as_of_ts = max(event_ts)` do recorte processado e `as_of_ts <= max(loaded_at)`.
   - `unit_tests: budget_status_thresholds` (S2), com `budget_usd_micros = 1_000_000` e warn/breach = 800/1000: consumido 799_000 → ok; 799_999 → ok; 800_000 → warn; 999_999 → warn; 1_000_000 → breach; budget 0 → no_budget. Mais um caso com micros grandes (≈ 9e15) para provar que não há overflow.
   - `assert_no_actor_columns_in_budget_models` (consulta system.columns por nome ILIKE '%actor%'), incluindo `audit_budget_runs`.
-  - `assert_budget_status_current_is_stale` (unit test com as_of_ts antigo/recente vs. var).
+  - `assert_budget_status_current_is_stale` (unit test com as_of_ts antigo/recente vs. var); com stale, `budget_status` fica inalterado (fail-open).
   - **Teste de run sem custo novo (S1):** fixture com último evento em T; rodar `dbt build` com sucesso em T+27h sem inserir custo. Esperado: `as_of_ts = T` (não muda) e `is_stale = true` com `budget_stale_hours_daily = 26`. Variante: inserir um evento novo, rodar e ver `is_stale = false`.
   - `assert_audit_budget_runs_matches_status` (contagens = group by do status no run).
 - Unit tests dbt (`unit_tests:`) para a lógica de status e para a virada de mês.
 - **Teste de privilégio da view (S5)**, script de prova fora do dbt test, com credenciais só via env:
   1. Como `oteru_budget_reader`: `SELECT count() FROM budget_status_current` → ok.
   2. Como `oteru_budget_reader`: `SELECT * FROM fct_budget_consumption_daily LIMIT 1` e `SELECT * FROM fct_cost_chargeback_daily LIMIT 1` → erro `ACCESS_DENIED` (código 497).
-  2b. Como `oteru_budget_alerts_reader` (§7.4): `SELECT` em `budget_status_current` e em `audit_budget_runs` → ok; `SELECT` em `fct_budget_consumption_daily` / `fct_cost_chargeback_daily` → `ACCESS_DENIED` (497).
+  2b. Como `oteru_budget_alerts_reader`: as listas de colunas allowed/denied são **exatamente as do §7.12**, sem cópia aqui, para não divergir. Do lado de dados, o contrato fornece `scope` e `scope_key` em `budget_status_current` e `audit_budget_runs`, e o §7.12 precisa listá-los como allowed (pendente no patch v3 do Vigia). `SELECT` em `fct_budget_consumption_daily` / `fct_cost_chargeback_daily` → `ACCESS_DENIED` (497).
   3. `SHOW CREATE VIEW budget_status_current` contém `SQL SECURITY DEFINER` e `DEFINER = oteru_budget_view_definer`.
   4. `SHOW GRANTS FOR oteru_budget_view_definer` lista só SELECT nas bases da view.
   - **Coordenação com §7.9 teste 3 (Alicerce):** os itens 1 e 2 são o lado "dados" do mesmo teste. O §7.9.3 cobre INSERT/ALTER/DROP do leitor. Os dois devem usar o mesmo nome de role e o mesmo script, sem duplicar. O §7 não é editado aqui; o Alicerce referencia este item em commit próprio.
@@ -308,20 +336,21 @@ Entrega em `ops/alerts/48/`: SQL + `run_alert_tests.sh` (clickhouse-local, casos
 - int_cost_attributed é view com actor_id; modelos horários devem agregar antes de materializar para não vazar ator.
 - Lookback 48h: custo que chegar com > 48h de atraso não entra no consumo (subestima). Precisa de monitor de atraso.
 - Mudança retroativa de atribuição (service_map/actor_map) move custo entre times dentro do período e pode trocar status sem novo gasto.
+- Multi-grão: o mesmo custo dispara vários alertas (global, team, project, team_project). É intencional, e a deduplicação fica com o Vigia.
+- Só alerta: um agente em loop não é contido, só sinalizado. A contenção depende do follow-up do gateway.
 - Seed como fonte de budgets: mudança exige PR/deploy; ok para início, pode não servir a donos de budget não-técnicos.
 - Ponto flutuante eliminado (S2). Risco residual: overflow em `micros*1000`, mitigado com Int128 e unit test.
 - `SQL SECURITY DEFINER` depende da versão do ClickHouse e de hook/materialização custom no dbt-clickhouse (S5). Se não for suportado localmente, a prova falha e isso bloqueia o merge, sem fallback para grant direto em `fct_*`.
 - `as_of_ts` global (S1): um par sem tráfego não é stale, mas uma fonte parcial (um único serviço ainda emitindo) mascara a falha das outras. Proposta futura: watermark por service_name no Vigia.
 
-## 9. Decisões de política pendentes (Vinícius)
-1. O breaker bloqueia ou só alerta?
-2. Fail-open ou fail-closed quando `is_stale = true`?
-3. O `unassigned` entra em algum cap?
-4. Valor dos budgets (o seed sai com valores placeholder até a decisão).
+## 9. Decisões de política — **decidido pelo Vinícius em 21/10/2026**
+1. **Só alerta.** `action_on_breach` aceita só 'alert' nesta entrega. O gateway de bloqueio fica fora do escopo, como follow-up.
+2. **Fail-open.** Com dado atrasado, libera e alerta via `is_stale`.
+3. **Caps multi-grão.** Seed com `scope` ∈ ('global','team','project','team_project'). Global sem team/project, team só com team, project só com project, team_project com os dois. O slug vale só para campo preenchido, e há testes de coerência scope × campos. `global` soma o total, incluindo `unassigned`; os demais somam pelo grão. `budget_status_current` e `audit_budget_runs` têm `scope`/`scope_key`. A reconciliação do global é exata com `fct_cost_chargeback_daily`. Vigência sem sobreposição por (scope, team, project).
+4. **Valores configuráveis no seed**, documentados no README/yml, com `warn_milli=800` e `breach_milli=1000` por padrão.
 
 ## 9.1 Questões em aberto
 - Período: mês UTC calendário ou configurável (semana/dia)? Fuso UTC para o corte?
-- Budget por projeto, por time (project='*') ou ambos (hierárquico)?
 - Relação com #23 (não lida em detalhe aqui).
 - Moeda: só USD?
 - Dono dos budgets (FinOps? cada owner_team?).
@@ -330,7 +359,8 @@ Entrega em `ops/alerts/48/`: SQL + `run_alert_tests.sh` (clickhouse-local, casos
 ## 9.2 Já decidido
 - Scheduler: o mesmo da #103.
 - Corte por team × project; corte por ator fora do escopo.
-- `alert` → Vigia; `block` → Alicerce; mudança de política por PR.
+- `alert` → Vigia; `block` (follow-up do gateway) → Alicerce; mudança de política por PR.
+- Política da §9 decidida em 21/10/2026.
 
 ## 10. Breaking changes
-Nenhuma prevista: só modelos/seed novos; contratos de #45/#46/#47 (incl. `audit_cost_runs`) inalterados.
+Nenhuma prevista: só modelos/seed novos; contratos de #45/#46/#47 (incl. `audit_cost_runs`) inalterados. O contrato proposto dos modelos novos muda de grão (team × project → scope × scope_key), mas eles ainda não foram implementados, então não é breaking para consumidores. Os docs do Vigia/Alicerce que citam `team × project` (§7.12) precisam alinhar.
