@@ -28,6 +28,11 @@ Não existe nenhuma dimensão de **time / owner / projeto**. Finanças e lídere
 - Guardrail 5 de `check_cost_retention.sh`: toda tabela `fct_cost*` com coluna `actor_id` precisa de TTL ≤ 90 dias; tabela permanente não pode ter `actor_id`.
 - `actor_id` vem de `LogAttributes['user.email']` já substituído pelo `hmacconverter` do collector (chave `OTERU_PII_HMAC_KEY`).
 
-Fase 2 (atributos `oteru.team`/`oteru.project` via `OTEL_RESOURCE_ATTRIBUTES`, owner Duto) depende de OK do Vinícius para a mudança aditiva em `int_api_request_dedup`.
+Fase 2 (atributos `oteru.team`/`oteru.project` via `OTEL_RESOURCE_ATTRIBUTES`, owner Duto) **aprovada pelo Vinícius em 2026-10-21**, incluindo a mudança aditiva em `int_api_request_dedup`. O comando admin self-hmac só pode ser executado pelo Vinícius e pelos administradores do collector.
+
+## Status e decisões (2026-10-21)
+
+- Decisões do Vinícius (2026-10-21): (a) **Fase 2 aprovada**, incluindo a mudança aditiva em `int_api_request_dedup` (novas colunas para `oteru.team`/`oteru.project`); (b) o comando admin self-hmac só pode ser executado **pelo Vinícius e pelos administradores do collector**.
+- Status: plano concluído; em construção. Fase 1 → Modelo; fase 2 + comando self-hmac → Duto; regra gitleaks → Alicerce; alertas → Vigia; Sentinela revisa o PR quando a feature estiver pronta.
 
 Detalhes: `0046-cost-chargeback-spec.md`; execução: `0046-cost-chargeback-plan.md`.

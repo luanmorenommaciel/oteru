@@ -14,7 +14,7 @@ Base: `origin/feat/45-47-cost-aggregates` @ `27ba4c36b5a1aa572ef36996e80d083a560
 **Decisão: ambos, com precedência explícita, mapeamento declarado como caminho principal na fase 1.**
 
 Ordem de precedência (primeira não vazia vence), por request deduplicado:
-1. `ResourceAttributes['oteru.team']` / `['oteru.project']` vindos de `OTEL_RESOURCE_ATTRIBUTES` (fase 2; depende de Duto — ver Open questions).
+1. `ResourceAttributes['oteru.team']` / `['oteru.project']` vindos de `OTEL_RESOURCE_ATTRIBUTES` (fase 2, owner Duto; aprovada 2026-10-21).
 2. Seed `chargeback_service_map` keyed por `service_name` (não-PII).
 3. Seed `chargeback_actor_map` keyed por `actor_id` HMAC (opcional, exceção).
 4. `unassigned` (literal exato) para `team`, `project` e `owner`.
@@ -34,7 +34,7 @@ Alternativas consideradas:
 ## 2. Reconciliação com `actor_id` HMAC sem re-identificação
 - Chaves permitidas em mapeamentos: `service_name`, atributos de recurso não-PII (`oteru.team`, `oteru.project`) e `actor_id` no formato `^hmac:v1:[0-9a-f]{64}$`. **Nunca** e-mail, nome, login, ou qualquer identificador em claro; o arquivo de mapeamento **nunca** armazena originais (nem em comentários).
 - Caminho preferido: `service_name` ou atributos `oteru.team`/`oteru.project` em `OTEL_RESOURCE_ATTRIBUTES`. `chargeback_actor_map` é exceção.
-- **Ferramenta self-hmac (owner: Duto, comando administrativo da fase 2):** script local que lê a chave **somente** da env `OTERU_PII_HMAC_KEY` e o e-mail **somente** do stdin (nunca argv, para não ir ao histórico do shell). Falha fechada (exit ≠ 0, stdout vazio) se a chave estiver ausente ou curta (< 32 bytes). Em sucesso imprime **apenas** `hmac:v1:<64hex>` e nada mais; não loga nada (nem e-mail, nem chave, nem hash) em stderr, arquivo ou syslog. A chave **nunca** fica no repo nem em CI (testes usam chave de teste gerada no próprio teste). Quem pode executá-la é **decisão em aberto do Vinícius** (Open questions). Até a ferramenta existir, `chargeback_actor_map` entra vazio (só header).
+- **Ferramenta self-hmac (owner: Duto, comando administrativo da fase 2):** script local que lê a chave **somente** da env `OTERU_PII_HMAC_KEY` e o e-mail **somente** do stdin (nunca argv, para não ir ao histórico do shell). Falha fechada (exit ≠ 0, stdout vazio) se a chave estiver ausente ou curta (< 32 bytes). Em sucesso imprime **apenas** `hmac:v1:<64hex>` e nada mais; não loga nada (nem e-mail, nem chave, nem hash) em stderr, arquivo ou syslog. A chave **nunca** fica no repo nem em CI (testes usam chave de teste gerada no próprio teste). **Execução restrita ao Vinícius e aos administradores do collector** (decisão do Vinícius, 2026-10-21); a restrição é documentada no comando e a chave nunca fica no repo/CI. Até a ferramenta existir, `chargeback_actor_map` entra vazio (só header).
 - **Rotação de chave (`v1`→`v2`) não pode falhar em silêncio:** linhas do `chargeback_actor_map` com prefixo de versão diferente do corrente (`hmac:v1:`) continuam caindo em `unassigned` no join, mas são detectadas: (i) teste dbt `test_chargeback_actor_map_hmac_version` no seed, `severity: warn` por padrão e `error` via `var('chargeback_strict_hmac_version', false)`; (ii) métrica em `audit_cost_runs` (ver §4) com alerta da Vigia quando > 0.
 - **TTL:** toda tabela por ator herda `day_utc + INTERVAL {{ var('actor_cost_ttl_days') }} DAY` (90). Agregados por team/projeto **sem** `actor_id` podem ser permanentes como `fct_cost_daily`. Motivo: minimização de dados (guardrail 5 já exige isso) e chargeback histórico precisa de série longa por time, não por pessoa. Um seed `chargeback_actor_map` é dado de referência (não fato), mas por conter pseudônimos também deve ser revisado por Sentinela.
 - **Decisão: `actor_map` nunca entra na tabela permanente.** Linhas com `attribution_source='actor_map'` existem apenas em `int_cost_attributed` e `fct_cost_chargeback_actor_daily` (TTL 90d). Em `fct_cost_chargeback_daily` esse custo é somado em `team='unassigned'`, `project='unassigned'`, `owner_team='unassigned'`, `attribution_source='unassigned'`. Assim nenhum agregado permanente pode equivaler a dado individual (ex.: time unipessoal), e a reconciliação exata com `fct_cost_daily` se mantém.
@@ -43,9 +43,9 @@ Alternativas consideradas:
 **Nenhuma mudança em contratos existentes** (`fct_cost_daily`, `fct_cost_actor_daily`, `int_api_request_dedup`, `stg_api_request`): mesmas colunas, grão, engine e TTL. Fase 1 é 100% aditiva.
 
 Fase 2 (atributos OTel) exige propagar `ResourceAttributes['oteru.team'|'oteru.project']`. Opções:
-- (a) adicionar colunas `team_attr`, `project_attr` em `int_api_request_dedup` — aditivo, não quebra consumidores, mas altera modelo existente → **requer OK de Vinícius**;
+- (a) adicionar colunas `team_attr`, `project_attr` em `int_api_request_dedup` — aditivo, não quebra consumidores, mas altera modelo existente → **aprovado pelo Vinícius em 2026-10-21**;
 - (b) novo modelo `int_api_request_attrs` (`dedup_key → team_attr, project_attr`) lendo do source com o mesmo lookback — sem tocar no existente, mas duplica lógica de dedup.
-Recomendação: (a), marcado **aditivo, requer OK do Vinícius** (fase 2 não começa sem esse OK). Nada é `breaking`.
+Recomendação: (a), marcado **aditivo, aprovado pelo Vinícius em 2026-10-21**. Nada é `breaking`.
 
 ### Fase 2 — atributos OTel (owner: Duto)
 - O emitter lê `oteru.team` / `oteru.project` de `OTEL_RESOURCE_ATTRIBUTES` como **resource attributes** (mecanismo padrão do SDK). **Nenhuma mudança nos hooks** (`oteru-hooks/oteru_hook.py`); o collector apenas repassa (pass-through).
@@ -108,7 +108,8 @@ Grão: `day_utc × team × project × actor_id`. Mesmas métricas + `actor_id St
 11. Seed com linha `hmac:v2:…` (fixture): teste de versão dispara (warn; error em modo estrito) e `audit_cost_runs.actor_map_hmac_version_mismatch_rows` > 0.
 12. `audit_cost_runs` registra `unassigned_share_by_source` por dia em todo run.
 13. Self-hmac (Duto): testes provam (a) vetor estilo RFC 4231 (HMAC-SHA256 com chave/mensagem conhecidas → hex esperado) e saída exatamente `hmac:v1:<64hex>`; (b) chave ausente ou curta → exit ≠ 0 e stdout/stderr vazios; (c) e-mail e chave não aparecem em stdout além do hash, stderr, logs ou histórico do shell (entrada só por stdin/env).
-14. Fase 2 (Duto, após OK do Vinícius): os 4 testes de §3 PASS.
+14. Fase 2 (Duto; aprovada 2026-10-21): os 4 testes de §3 PASS.
+15. Self-hmac: documentação do comando declara que só o Vinícius e os administradores do collector podem executá-lo; nenhuma chave (`OTERU_PII_HMAC_KEY`) no repo nem em CI (gitleaks PASS).
 
 ## 7. Provas esperadas (em `docs/intents/proof/`, sufixo = SHA curto do commit testado)
 - `dbt-build-46-<sha>.txt` (saída completa, linha final com `PASS=… WARN=0 ERROR=0 SKIP=0`).
@@ -119,8 +120,17 @@ Grão: `day_utc × team × project × actor_id`. Mesmas métricas + `actor_id St
 ## 8. Open questions para Duto (e outros)
 Resolvidas nesta revisão: convenção/transporte de `oteru.team`/`oteru.project` e política de privacidade (§3 Fase 2); obtenção do próprio `hmac:v1:` (ferramenta self-hmac, §2); `actor_map` no permanente (proibido, §2).
 
-1. **Vinícius:** OK para adicionar colunas (aditivas) em `int_api_request_dedup` na fase 2? (Fase 2 bloqueada até o OK.)
-2. **Vinícius:** quem pode executar a ferramenta self-hmac (só admins com acesso à chave do collector? o próprio usuário em sessão assistida?).
-3. **Duto:** incluir também `oteru.repo` no futuro?
-4. **Vinícius/Finanças:** `owner` = time (não pessoa) é suficiente? Precisa de histórico de mudanças de mapeamento (SCD) ou o mapeamento atual reaplicado no lookback de 48h basta? (Hoje: mudança de seed só afeta as últimas 48h; dias antigos ficam congelados.)
-5. Valor de `service.name` é estável o suficiente (`cursor-hooks`, `claude-code-hooks` etc.) para ser chave?
+Resolvidas pelo Vinícius em 2026-10-21:
+- ~~OK para colunas aditivas em `int_api_request_dedup` na fase 2?~~ **Aprovado** (fase 2 aprovada).
+- ~~Quem pode executar a ferramenta self-hmac?~~ **Somente o Vinícius e os administradores do collector.**
+
+Em aberto:
+
+1. **Duto:** incluir também `oteru.repo` no futuro?
+2. **Vinícius/Finanças:** `owner` = time (não pessoa) é suficiente? Precisa de histórico de mudanças de mapeamento (SCD) ou o mapeamento atual reaplicado no lookback de 48h basta? (Hoje: mudança de seed só afeta as últimas 48h; dias antigos ficam congelados.)
+3. Valor de `service.name` é estável o suficiente (`cursor-hooks`, `claude-code-hooks` etc.) para ser chave?
+
+## Status e decisões (2026-10-21)
+
+- Decisões do Vinícius (2026-10-21): (a) **Fase 2 aprovada**, incluindo a mudança aditiva em `int_api_request_dedup` (novas colunas para `oteru.team`/`oteru.project`); (b) o comando admin self-hmac só pode ser executado **pelo Vinícius e pelos administradores do collector**.
+- Status: plano concluído; em construção. Fase 1 → Modelo; fase 2 + comando self-hmac → Duto; regra gitleaks → Alicerce; alertas → Vigia; Sentinela revisa o PR quando a feature estiver pronta.
