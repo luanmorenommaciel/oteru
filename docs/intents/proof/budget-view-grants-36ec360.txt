@@ -1,0 +1,224 @@
+tested_sha: 36ec3608c7eed47d4330f617579ea5af7d9ede99
+utc: 2026-10-21T21:37:26Z
+clickhouse: 26.11.1.333 tz=UTC
+-----
+role real: oteru_budget_alerts_reader (scripts/bootstrap_budget_roles.sql, Alicerce), concedido ao usuário local oteru_budget_alerts_proof (sem senha, HOST LOCAL)
+== allowed: cada coluna de audit_budget_runs
+  SELECT run_id FROM audit_budget_runs -> ok
+    allowed audit_budget_runs.run_id: PASS
+  SELECT run_completed_at FROM audit_budget_runs -> ok
+    allowed audit_budget_runs.run_completed_at: PASS
+  SELECT run_status FROM audit_budget_runs -> ok
+    allowed audit_budget_runs.run_status: PASS
+  SELECT scope FROM audit_budget_runs -> ok
+    allowed audit_budget_runs.scope: PASS
+  SELECT scope_key FROM audit_budget_runs -> ok
+    allowed audit_budget_runs.scope_key: PASS
+  SELECT team FROM audit_budget_runs -> ok
+    allowed audit_budget_runs.team: PASS
+  SELECT project FROM audit_budget_runs -> ok
+    allowed audit_budget_runs.project: PASS
+  SELECT status FROM audit_budget_runs -> ok
+    allowed audit_budget_runs.status: PASS
+  SELECT count FROM audit_budget_runs -> ok
+    allowed audit_budget_runs.count: PASS
+== allowed: colunas permitidas de budget_status_current
+  SELECT scope FROM budget_status_current -> ok
+    allowed budget_status_current.scope: PASS
+  SELECT scope_key FROM budget_status_current -> ok
+    allowed budget_status_current.scope_key: PASS
+  SELECT team FROM budget_status_current -> ok
+    allowed budget_status_current.team: PASS
+  SELECT project FROM budget_status_current -> ok
+    allowed budget_status_current.project: PASS
+  SELECT period_start FROM budget_status_current -> ok
+    allowed budget_status_current.period_start: PASS
+  SELECT as_of_ts FROM budget_status_current -> ok
+    allowed budget_status_current.as_of_ts: PASS
+  SELECT is_stale FROM budget_status_current -> ok
+    allowed budget_status_current.is_stale: PASS
+  SELECT budget_status FROM budget_status_current -> ok
+    allowed budget_status_current.budget_status: PASS
+  SELECT action_on_breach FROM budget_status_current -> ok
+    allowed budget_status_current.action_on_breach: PASS
+== allowed: colunas permitidas de audit_cost_runs
+  SELECT run_id FROM audit_cost_runs -> ok
+    allowed audit_cost_runs.run_id: PASS
+  SELECT run_completed_at FROM audit_cost_runs -> ok
+    allowed audit_cost_runs.run_completed_at: PASS
+  SELECT run_status FROM audit_cost_runs -> ok
+    allowed audit_cost_runs.run_status: PASS
+  SELECT events_dropped_late FROM audit_cost_runs -> ok
+    allowed audit_cost_runs.events_dropped_late: PASS
+== denied
+  SELECT owner_team FROM otel.budget_status_current LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.budget_status
+    denied (497): PASS
+  SELECT budget_usd_micros FROM otel.budget_status_current LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.budget_status
+    denied (497): PASS
+  SELECT consumed_period_usd_micros FROM otel.budget_status_current LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.budget_status
+    denied (497): PASS
+  SELECT consumed_milli FROM otel.budget_status_current LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.budget_status
+    denied (497): PASS
+  SELECT warn_milli FROM otel.budget_status_current LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.budget_status
+    denied (497): PASS
+  SELECT breach_milli FROM otel.budget_status_current LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.budget_status
+    denied (497): PASS
+  SELECT as_of_day FROM otel.budget_status_current LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.budget_status
+    denied (497): PASS
+  SELECT stale_threshold_hours FROM otel.budget_status_current LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.budget_status
+    denied (497): PASS
+  SELECT rows_processed FROM otel.audit_cost_runs LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.audit_cost_ru
+    denied (497): PASS
+  SELECT * FROM otel.fct_budget_consumption_daily LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.fct_budget_co
+    denied (497): PASS
+  SELECT * FROM otel.fct_cost_chargeback_daily LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.fct_cost_char
+    denied (497): PASS
+  SELECT * FROM otel.fct_cost_daily LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.fct_cost_dail
+    denied (497): PASS
+  SELECT * FROM otel.int_cost_attributed LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.int_cost_attr
+    denied (497): PASS
+  SELECT * FROM otel.budgets LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.budgets. (ACC
+    denied (497): PASS
+  SELECT * FROM otel.otel_logs LIMIT 1 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON otel.otel_logs. (A
+    denied (497): PASS
+  INSERT INTO otel.audit_budget_runs SELECT * FROM otel.audit_budget_runs LIMIT 0 -> Code: 497. DB::Exception: oteru_budget_alerts_proof: Not enough privileges. To execute this query, it's necessary to have the grant INSERT(run_id, run_completed
+    denied (497): PASS
+== SHOW GRANTS FOR oteru_budget_alerts_reader
+GRANT SELECT ON otel.audit_budget_runs TO oteru_budget_alerts_reader
+GRANT SELECT(events_dropped_late, run_completed_at, run_id, run_status) ON otel.audit_cost_runs TO oteru_budget_alerts_reader
+GRANT SELECT(action_on_breach, as_of_ts, budget_status, is_stale, period_start, project, scope, scope_key, team) ON otel.budget_status_current TO oteru_budget_alerts_reader
+alerts_reader inclui period_start: PASS
+alerts_reader inclui run_status (audit_cost_runs): PASS
+== SHOW GRANTS FOR oteru_budget_alerts_proof
+GRANT oteru_budget_alerts_reader TO oteru_budget_alerts_proof
+== SHOW GRANTS FOR oteru_budget_view_definer
+GRANT SELECT(action_on_breach, breach_milli, budget_status, budget_usd_micros, consumed_milli, consumed_period_usd_micros, day_utc, last_cost_ts, owner_team, period_start, project, scope, scope_key, team, warn_milli) ON otel.fct_budget_consumption_daily TO oteru_budget_view_definer
+definer só SELECT em fct_budget_consumption_daily: PASS
+== SHOW CREATE VIEW budget_status_current
+CREATE VIEW otel.budget_status_current
+(
+    `scope` LowCardinality(String),
+    `scope_key` String,
+    `team` String,
+    `project` String,
+    `owner_team` String,
+    `period_start` Date,
+    `as_of_day` Date,
+    `as_of_ts` DateTime64(9),
+    `budget_usd_micros` Int64,
+    `consumed_period_usd_micros` Int64,
+    `consumed_milli` Int64,
+    `warn_milli` UInt16,
+    `breach_milli` UInt16,
+    `budget_status` LowCardinality(String),
+    `action_on_breach` LowCardinality(String),
+    `stale_threshold_hours` UInt16,
+    `is_stale` Bool
+)
+DEFINER = oteru_budget_view_definer SQL SECURITY DEFINER
+AS WITH
+    fct AS
+    (
+        SELECT
+            day_utc,
+            period_start,
+            scope,
+            scope_key,
+            team,
+            project,
+            owner_team,
+            budget_usd_micros,
+            consumed_period_usd_micros,
+            consumed_milli,
+            warn_milli,
+            breach_milli,
+            budget_status,
+            action_on_breach,
+            last_cost_ts
+        FROM otel.fct_budget_consumption_daily
+    ),
+    wm AS
+    (
+        SELECT
+            max(day_utc) AS last_day,
+            max(last_cost_ts) AS as_of_ts
+        FROM fct
+    ),
+    key_last AS
+    (
+        SELECT
+            scope,
+            scope_key,
+            max(day_utc) AS key_last_day
+        FROM fct
+        GROUP BY
+            scope,
+            scope_key
+    )
+SELECT
+    CAST(f.scope, 'LowCardinality(String)') AS scope,
+    CAST(f.scope_key, 'String') AS scope_key,
+    CAST(f.team, 'String') AS team,
+    CAST(f.project, 'String') AS project,
+    CAST(f.owner_team, 'String') AS owner_team,
+    CAST(f.period_start, 'Date') AS period_start,
+    CAST(f.day_utc, 'Date') AS as_of_day,
+    CAST(w.as_of_ts, 'DateTime64(9)') AS as_of_ts,
+    CAST(f.budget_usd_micros, 'Int64') AS budget_usd_micros,
+    CAST(f.consumed_period_usd_micros, 'Int64') AS consumed_period_usd_micros,
+    CAST(f.consumed_milli, 'Int64') AS consumed_milli,
+    CAST(f.warn_milli, 'UInt16') AS warn_milli,
+    CAST(f.breach_milli, 'UInt16') AS breach_milli,
+    CAST(f.budget_status, 'LowCardinality(String)') AS budget_status,
+    CAST(f.action_on_breach, 'LowCardinality(String)') AS action_on_breach,
+    CAST(26, 'UInt16') AS stale_threshold_hours,
+    CAST(w.as_of_ts < (now64(9, 'UTC') - toIntervalHour(26)), 'Bool') AS is_stale
+FROM fct AS f
+INNER JOIN key_last AS k ON (f.scope = k.scope) AND (f.scope_key = k.scope_key) AND (f.day_utc = k.key_last_day)
+CROSS JOIN wm AS w
+WHERE toStartOfMonth(f.day_utc) = toStartOfMonth(w.last_day)
+view SQL SECURITY DEFINER: PASS
+
+== scripts/prove_budget_view_grants.sh (Alicerce, live 2b)
+bootstrap_budget_roles: OK
+PASS allowed: audit_budget_runs all columns
+PASS allowed: budget_status_current allowed columns
+PASS allowed: audit_cost_runs allowed columns
+PASS denied: budget_usd_micros
+PASS denied: fct_budget_consumption_daily
+PASS denied: fct_cost_chargeback_daily
+PASS denied: seeds budgets
+PASS denied: otel_logs
+PASS denied: INSERT audit_budget_runs
+PASS definer SHOW GRANTS (fct columns only, no INSERT)
+prove_budget_view_grants: OK
+
+== pytest tests/test_budget_grants.py (live, sem skip)
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.7.0 -- /workspace/venv-pytest/bin/python
+cachedir: .pytest_cache
+rootdir: /workspace/ot-48
+collecting ... collected 19 items
+
+tests/test_budget_grants.py::BudgetGrantContractTests::test_alerts_reader_is_role_not_budget_reader PASSED [  5%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_bootstrap_sql_has_no_password_literal PASSED [ 10%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_definer_select_is_fct_columns_only PASSED [ 15%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_no_write_grants PASSED [ 21%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_prove_script_sends_one_statement_per_request PASSED [ 26%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_redact_hides_password_and_url_userinfo PASSED [ 31%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_split_committed_sql_is_single_statements PASSED [ 36%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_split_drops_blank_pieces PASSED [ 42%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_split_keeps_trailing_statement_without_semicolon PASSED [ 47%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_split_semicolon_inside_block_comment PASSED [ 52%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_split_semicolon_inside_escaped_quotes PASSED [ 57%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_split_semicolon_inside_line_comment PASSED [ 63%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_split_semicolon_inside_single_quoted_string PASSED [ 68%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_syntax_flag_checks_split PASSED [ 73%]
+tests/test_budget_grants.py::BudgetGrantContractTests::test_syntax_rejects_unsplit_file PASSED [ 78%]
+tests/test_budget_grants.py::BudgetGrantLiveTests::test_bootstrap_twice_is_idempotent_and_roles_exist PASSED [ 84%]
+tests/test_budget_grants.py::BudgetGrantLiveTests::test_http_rejects_whole_file_as_one_request PASSED [ 89%]
+tests/test_budget_grants.py::BudgetGrantLiveTests::test_show_grants_alerts_reader_columns PASSED [ 94%]
+tests/test_budget_grants.py::BudgetGrantLiveTests::test_show_grants_definer_has_no_extra PASSED [100%]
+
+============================== 19 passed in 0.50s ==============================
+pytest sem skip: PASS

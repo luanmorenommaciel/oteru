@@ -1,0 +1,11 @@
+tested_sha: 36ec3608c7eed47d4330f617579ea5af7d9ede99
+comando: CLICKHOUSE_URL=http://127.0.0.1:1/ CLICKHOUSE_PORT=1 bash oteru-dbt/tests/run_budget_48_evidence.sh /tmp/abort48
+tested_sha: 36ec3608c7eed47d4330f617579ea5af7d9ede99
+utc: 2026-10-21T21:38:53Z
+OTERU_BUDGET_DEFINER_PASSWORD definida no ambiente: sim (valor nunca impresso)
+== bootstrap_budget_roles.sh --require (http://127.0.0.1:1/)
+bootstrap_budget_roles: ClickHouse unreachable
+ABORT run_budget_48_evidence: bootstrap de roles (Alicerce) falhou em http://127.0.0.1:1/
+ABORT run_budget_48_evidence: passo falhou (linha 1, exit 1)
+exit=1
+arquivos gerados em /tmp/abort48: bootstrap-36ec360.txt

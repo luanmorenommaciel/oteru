@@ -1,0 +1,100 @@
+tested_sha: 36ec3608c7eed47d4330f617579ea5af7d9ede99
+utc: 2026-10-21T21:36:26Z
+clickhouse: 26.11.1.333 tz=UTC
+-----
+== unit tests (bordas 79,9/80/100%, overflow ~9e15, multi-grão, virada de mês, troca no mês, stale)
+21:36:28  1 of 7 START unit_test budget_status_current::budget_status_current_is_stale ... [RUN]
+21:36:28  1 of 7 PASS budget_status_current::budget_status_current_is_stale .............. [PASS in 0.16s]
+21:36:28  2 of 7 START unit_test budget_status_current::budget_status_current_not_stale .. [RUN]
+21:36:28  2 of 7 PASS budget_status_current::budget_status_current_not_stale ............. [PASS in 0.08s]
+21:36:28  3 of 7 START unit_test budget_status_current::budget_status_current_own_last_day  [RUN]
+21:36:28  3 of 7 PASS budget_status_current::budget_status_current_own_last_day .......... [PASS in 0.29s]
+21:36:28  4 of 7 START unit_test fct_budget_consumption_daily::budget_mid_month_change ... [RUN]
+21:36:28  [CacheMiss]: Unable to parse logging event dictionary. Failed to parse schema field: expected string or bytes-like object, got 'Undefined'.. Dictionary: {'conn_name': 'unit_test.oteru_dbt.fct_budget_consumption_daily.budget_mid_month_change', 'database': '', 'schema': Undefined}
+21:36:30  4 of 7 PASS fct_budget_consumption_daily::budget_mid_month_change .............. [PASS in 1.65s]
+21:36:30  5 of 7 START unit_test fct_budget_consumption_daily::budget_month_rollover ..... [RUN]
+21:36:31  5 of 7 PASS fct_budget_consumption_daily::budget_month_rollover ................ [PASS in 0.74s]
+21:36:31  6 of 7 START unit_test fct_budget_consumption_daily::budget_multi_grain ........ [RUN]
+21:36:31  6 of 7 PASS fct_budget_consumption_daily::budget_multi_grain ................... [PASS in 0.22s]
+21:36:31  7 of 7 START unit_test fct_budget_consumption_daily::budget_status_thresholds .. [RUN]
+21:36:31  7 of 7 PASS fct_budget_consumption_daily::budget_status_thresholds ............. [PASS in 0.25s]
+21:36:31  Done. PASS=9 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=9
+== testes de contrato S2/S3/CA5
+21:36:35  1 of 4 PASS assert_budget_micros_positive_when_budgeted ........................ [PASS in 0.04s]
+21:36:35  2 of 4 PASS assert_budget_status_rule .......................................... [PASS in 0.01s]
+21:36:35  3 of 4 PASS assert_no_actor_columns_in_budget_models ........................... [PASS in 0.01s]
+21:36:35  4 of 4 PASS assert_no_float_in_budget_contracts ................................ [PASS in 0.01s]
+21:36:35  Done. PASS=6 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=6
+== system.columns dos objetos de budget
+    ┌─table────────────────────────┬─name────────────────────────┬─type───────────────────┐
+ 1. │ audit_budget_runs            │ run_id                      │ String                 │
+ 2. │ audit_budget_runs            │ run_completed_at            │ DateTime64(3, 'UTC')   │
+ 3. │ audit_budget_runs            │ run_status                  │ LowCardinality(String) │
+ 4. │ audit_budget_runs            │ scope                       │ LowCardinality(String) │
+ 5. │ audit_budget_runs            │ scope_key                   │ String                 │
+ 6. │ audit_budget_runs            │ team                        │ String                 │
+ 7. │ audit_budget_runs            │ project                     │ String                 │
+ 8. │ audit_budget_runs            │ status                      │ LowCardinality(String) │
+ 9. │ audit_budget_runs            │ count                       │ UInt64                 │
+10. │ budget_status_current        │ scope                       │ LowCardinality(String) │
+11. │ budget_status_current        │ scope_key                   │ String                 │
+12. │ budget_status_current        │ team                        │ String                 │
+13. │ budget_status_current        │ project                     │ String                 │
+14. │ budget_status_current        │ owner_team                  │ String                 │
+15. │ budget_status_current        │ period_start                │ Date                   │
+16. │ budget_status_current        │ as_of_day                   │ Date                   │
+17. │ budget_status_current        │ as_of_ts                    │ DateTime64(9)          │
+18. │ budget_status_current        │ budget_usd_micros           │ Int64                  │
+19. │ budget_status_current        │ consumed_period_usd_micros  │ Int64                  │
+20. │ budget_status_current        │ consumed_milli              │ Int64                  │
+21. │ budget_status_current        │ warn_milli                  │ UInt16                 │
+22. │ budget_status_current        │ breach_milli                │ UInt16                 │
+23. │ budget_status_current        │ budget_status               │ LowCardinality(String) │
+24. │ budget_status_current        │ action_on_breach            │ LowCardinality(String) │
+25. │ budget_status_current        │ stale_threshold_hours       │ UInt16                 │
+26. │ budget_status_current        │ is_stale                    │ Bool                   │
+27. │ budgets                      │ scope                       │ LowCardinality(String) │
+28. │ budgets                      │ team                        │ String                 │
+29. │ budgets                      │ project                     │ String                 │
+30. │ budgets                      │ period                      │ LowCardinality(String) │
+31. │ budgets                      │ budget_usd_micros           │ Int64                  │
+32. │ budgets                      │ warn_milli                  │ UInt16                 │
+33. │ budgets                      │ breach_milli                │ UInt16                 │
+34. │ budgets                      │ action_on_breach            │ LowCardinality(String) │
+35. │ budgets                      │ valid_from                  │ Date                   │
+36. │ budgets                      │ valid_to                    │ Nullable(Date)         │
+37. │ budgets                      │ owner_team                  │ String                 │
+38. │ fct_budget_consumption_daily │ day_utc                     │ Date                   │
+39. │ fct_budget_consumption_daily │ period_start                │ Date                   │
+40. │ fct_budget_consumption_daily │ scope                       │ LowCardinality(String) │
+41. │ fct_budget_consumption_daily │ scope_key                   │ String                 │
+42. │ fct_budget_consumption_daily │ team                        │ String                 │
+43. │ fct_budget_consumption_daily │ project                     │ String                 │
+44. │ fct_budget_consumption_daily │ owner_team                  │ String                 │
+45. │ fct_budget_consumption_daily │ budget_usd_micros           │ Int64                  │
+46. │ fct_budget_consumption_daily │ consumed_usd_micros         │ Int64                  │
+47. │ fct_budget_consumption_daily │ consumed_period_usd_micros  │ Int64                  │
+48. │ fct_budget_consumption_daily │ consumed_milli              │ Int64                  │
+49. │ fct_budget_consumption_daily │ warn_milli                  │ UInt16                 │
+50. │ fct_budget_consumption_daily │ breach_milli                │ UInt16                 │
+51. │ fct_budget_consumption_daily │ budget_status               │ LowCardinality(String) │
+52. │ fct_budget_consumption_daily │ action_on_breach            │ LowCardinality(String) │
+53. │ fct_budget_consumption_daily │ last_cost_ts                │ DateTime64(9)          │
+54. │ fct_budget_consumption_daily │ projected_period_usd_micros │ Int64                  │
+55. │ fct_budget_consumption_daily │ loaded_at                   │ DateTime64(3)          │
+56. │ stg_budgets                  │ scope                       │ LowCardinality(String) │
+57. │ stg_budgets                  │ scope_key                   │ String                 │
+58. │ stg_budgets                  │ team                        │ String                 │
+59. │ stg_budgets                  │ project                     │ String                 │
+60. │ stg_budgets                  │ period                      │ LowCardinality(String) │
+61. │ stg_budgets                  │ budget_usd_micros           │ Int64                  │
+62. │ stg_budgets                  │ warn_milli                  │ UInt16                 │
+63. │ stg_budgets                  │ breach_milli                │ UInt16                 │
+64. │ stg_budgets                  │ action_on_breach            │ LowCardinality(String) │
+65. │ stg_budgets                  │ valid_from                  │ Date                   │
+66. │ stg_budgets                  │ valid_to                    │ Nullable(Date)         │
+67. │ stg_budgets                  │ valid_to_effective          │ Date                   │
+68. │ stg_budgets                  │ owner_team                  │ String                 │
+    └─table────────────────────────┴─name────────────────────────┴─type───────────────────┘
+colunas Float: 0
+sem Float: PASS

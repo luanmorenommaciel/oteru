@@ -1,0 +1,51 @@
+tested_sha: 36ec3608c7eed47d4330f617579ea5af7d9ede99
+utc: 2026-10-21T21:35:56Z
+clickhouse: 26.11.1.333 tz=UTC
+-----
+== cenário padrão: testes dbt de reconciliação por scope e global exato
+21:35:58  1 of 2 PASS assert_budget_consumption_reconciles_chargeback .................... [PASS in 0.05s]
+21:35:58  2 of 2 PASS assert_budget_global_reconciles_total .............................. [PASS in 0.03s]
+21:35:58  Done. PASS=4 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=4
+== global vs total diário de fct_cost_chargeback_daily
+   ┌────day_utc─┬─chargeback_total─┬─global_consumed─┬─diff─┬─of_which_unassigned─┐
+1. │ 2026-10-20 │           531950 │          531950 │    0 │                   0 │
+2. │ 2026-10-21 │           151000 │          151000 │    0 │                   0 │
+   └────────────┴──────────────────┴─────────────────┴──────┴─────────────────────┘
+global = total (padrão), dias com diferença = 0: PASS
+
+== cenário 'unassigned': service_map vazio (fixture #46) => todo custo vira 'unassigned'
+21:36:09  Budget audit recorded in audit_budget_runs (run_status=success)
+21:36:09  Done. PASS=217 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=217
+   ┌────day_utc─┬─chargeback_total─┬─global_consumed─┬─diff─┬─of_which_unassigned─┐
+1. │ 2026-10-20 │           531950 │          531950 │    0 │              531950 │
+2. │ 2026-10-21 │           151000 │          151000 │    0 │              151000 │
+   └────────────┴──────────────────┴─────────────────┴──────┴─────────────────────┘
+há custo unassigned no chargeback: PASS
+global inclui unassigned: global = total exato: PASS
+cap team plataforma não sobe com unassigned (consumo do dia = 0): PASS
+21:36:15  1 of 2 PASS assert_budget_consumption_reconciles_chargeback .................... [PASS in 0.05s]
+21:36:15  2 of 2 PASS assert_budget_global_reconciles_total .............................. [PASS in 0.03s]
+21:36:15  Done. PASS=4 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=4
+
+== volta ao cenário padrão
+21:36:24  Budget audit recorded in audit_budget_runs (run_status=success)
+21:36:24  Done. PASS=210 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=210
+== fct_budget_consumption_daily
+   ┌────day_utc─┬─scope────────┬─scope_key────────┬─budget_usd_micros─┬─consumed_usd_micros─┬─consumed_period_usd_micros─┬─consumed_milli─┬─budget_status─┬──────────────────last_cost_ts─┐
+1. │ 2026-10-20 │ global       │ global           │           5000000 │              531950 │                     531950 │            106 │ ok            │ 2026-10-20 22:53:27.000000000 │
+2. │ 2026-10-20 │ project      │ oteru            │           2000000 │              531950 │                     531950 │            265 │ ok            │ 2026-10-20 22:53:27.000000000 │
+3. │ 2026-10-20 │ team         │ plataforma       │            600000 │              531950 │                     531950 │            886 │ warn          │ 2026-10-20 22:53:27.000000000 │
+4. │ 2026-10-20 │ team_project │ plataforma/oteru │            800000 │              531950 │                     531950 │            664 │ ok            │ 2026-10-20 22:53:27.000000000 │
+5. │ 2026-10-21 │ global       │ global           │           5000000 │              151000 │                     682950 │            136 │ ok            │ 2026-10-21 18:40:00.000000000 │
+6. │ 2026-10-21 │ project      │ oteru            │           2000000 │              151000 │                     682950 │            341 │ ok            │ 2026-10-21 18:40:00.000000000 │
+7. │ 2026-10-21 │ team         │ plataforma       │            600000 │              151000 │                     682950 │           1138 │ breach        │ 2026-10-21 18:40:00.000000000 │
+8. │ 2026-10-21 │ team_project │ plataforma/oteru │            800000 │              151000 │                     682950 │            853 │ warn          │ 2026-10-21 18:40:00.000000000 │
+   └────────────┴──────────────┴──────────────────┴───────────────────┴─────────────────────┴────────────────────────────┴────────────────┴───────────────┴───────────────────────────────┘
+== budget_status_current (fixture: team plataforma em breach)
+   ┌─scope────────┬─scope_key────────┬─team───────┬─project─┬─owner_team─┬─period_start─┬──as_of_day─┬──────────────────────as_of_ts─┬─budget_usd_micros─┬─consumed_period_usd_micros─┬─consumed_milli─┬─warn_milli─┬─breach_milli─┬─budget_status─┬─action_on_breach─┬─stale_threshold_hours─┬─is_stale─┐
+1. │ global       │ global           │            │         │ plataforma │   2026-10-01 │ 2026-10-21 │ 2026-10-21 18:40:00.000000000 │           5000000 │                     682950 │            136 │        800 │         1000 │ ok            │ alert            │                    26 │ false    │
+2. │ project      │ oteru            │            │ oteru   │ plataforma │   2026-10-01 │ 2026-10-21 │ 2026-10-21 18:40:00.000000000 │           2000000 │                     682950 │            341 │        800 │         1000 │ ok            │ alert            │                    26 │ false    │
+3. │ team         │ plataforma       │ plataforma │         │ plataforma │   2026-10-01 │ 2026-10-21 │ 2026-10-21 18:40:00.000000000 │            600000 │                     682950 │           1138 │        800 │         1000 │ breach        │ alert            │                    26 │ false    │
+4. │ team_project │ plataforma/oteru │ plataforma │ oteru   │ plataforma │   2026-10-01 │ 2026-10-21 │ 2026-10-21 18:40:00.000000000 │            800000 │                     682950 │            853 │        800 │         1000 │ warn          │ alert            │                    26 │ false    │
+   └──────────────┴──────────────────┴────────────┴─────────┴────────────┴──────────────┴────────────┴───────────────────────────────┴───────────────────┴────────────────────────────┴────────────────┴────────────┴──────────────┴───────────────┴──────────────────┴───────────────────────┴──────────┘
+team plataforma em breach: PASS

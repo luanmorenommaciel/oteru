@@ -1,0 +1,49 @@
+tested_sha: 36ec3608c7eed47d4330f617579ea5af7d9ede99
+utc: 2026-10-21T21:37:43Z
+clickhouse: 26.11.1.333 tz=UTC
+-----
+== run normal (success)
+21:37:50  Budget audit recorded in audit_budget_runs (run_status=success)
+21:37:50  Done. PASS=210 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=210
+== run com falha forçada (budget_view_definer inexistente => view falha)
+21:38:00  Budget audit recorded in audit_budget_runs (run_status=error)
+21:38:00  Done. PASS=194 WARN=0 ERROR=1 SKIP=15 NO-OP=0 REUSED=0 TOTAL=210
+exit=1 (esperado != 0)
+   ┌─run_id───────────────────────────────┬─rs──────┬─n_status─┬─rows─┬──────────────────────at─┐
+1. │ aa70518a-e92f-41d1-b18f-add8969fc747 │ success │        1 │    6 │ 2026-10-21 21:35:42.820 │
+2. │ 7dbd37ef-eacd-4aa6-a51a-447a02732c70 │ success │        1 │    6 │ 2026-10-21 21:35:51.103 │
+3. │ f2cc62fb-1e9c-4d52-b8b0-ea786a066171 │ success │        1 │    4 │ 2026-10-21 21:36:09.173 │
+4. │ 24a081cf-f9a4-4f08-ba42-31b8eef286c6 │ success │        1 │    6 │ 2026-10-21 21:36:24.479 │
+5. │ b36018b8-a0a2-40aa-bdc2-601b5180d75b │ success │        1 │    6 │ 2026-10-21 21:37:33.696 │
+6. │ df6152b3-1906-4f94-bb09-ff5ca19a35b9 │ success │        1 │    6 │ 2026-10-21 21:37:41.634 │
+7. │ 5c441037-28fd-4e16-8bb7-e968d2b71ed0 │ success │        1 │    6 │ 2026-10-21 21:37:50.357 │
+8. │ 9fbaa78a-4f3c-4be9-8f68-162bc0a31cb9 │ error   │        1 │    6 │ 2026-10-21 21:38:00.753 │
+   └──────────────────────────────────────┴─────────┴──────────┴──────┴─────────────────────────┘
+último run gravado com run_status='error': PASS
+== A3 (ops/alerts/48/budget_run_missing.sql, Vigia) — controle: success recente
+A3 linhas: 0 []
+A3 NÃO dispara (success < 26h): PASS
+== volta: run normal
+21:38:11  Budget audit recorded in audit_budget_runs (run_status=success)
+21:38:12  Done. PASS=210 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=210
+21:38:15  1 of 20 PASS accepted_values_audit_budget_runs_run_status__success__error ...... [PASS in 0.04s]
+21:38:15  2 of 20 PASS accepted_values_audit_budget_runs_scope__global__team__project__team_project  [PASS in 0.02s]
+21:38:15  3 of 20 PASS accepted_values_audit_budget_runs_status__ok__warn__breach__no_budget  [PASS in 0.02s]
+21:38:15  4 of 20 PASS assert_audit_budget_runs_matches_status ........................... [PASS in 0.03s]
+21:38:15  5 of 20 PASS assert_audit_budget_runs_status_consistent ........................ [PASS in 0.02s]
+21:38:15  6 of 20 PASS assert_audit_budget_runs_unique ................................... [PASS in 0.01s]
+21:38:15  7 of 20 PASS assert_audit_budget_runs_utc_type ................................. [PASS in 0.01s]
+21:38:15  8 of 20 PASS assert_budget_models_no_at_or_hmac ................................ [PASS in 0.01s]
+21:38:15  9 of 20 PASS assert_no_actor_columns_in_budget_models .......................... [PASS in 0.01s]
+21:38:15  10 of 20 PASS assert_no_float_in_budget_contracts .............................. [PASS in 0.01s]
+21:38:15  11 of 20 PASS assert_scope_key_derivation ...................................... [PASS in 0.03s]
+21:38:15  12 of 20 PASS not_null_audit_budget_runs_count ................................. [PASS in 0.01s]
+21:38:15  13 of 20 PASS not_null_audit_budget_runs_project ............................... [PASS in 0.01s]
+21:38:15  14 of 20 PASS not_null_audit_budget_runs_run_completed_at ...................... [PASS in 0.01s]
+21:38:15  15 of 20 PASS not_null_audit_budget_runs_run_id ................................ [PASS in 0.01s]
+21:38:15  16 of 20 PASS not_null_audit_budget_runs_run_status ............................ [PASS in 0.01s]
+21:38:15  17 of 20 PASS not_null_audit_budget_runs_scope ................................. [PASS in 0.01s]
+21:38:15  18 of 20 PASS not_null_audit_budget_runs_scope_key ............................. [PASS in 0.01s]
+21:38:15  19 of 20 PASS not_null_audit_budget_runs_status ................................ [PASS in 0.01s]
+21:38:15  20 of 20 PASS not_null_audit_budget_runs_team .................................. [PASS in 0.01s]
+21:38:16  Done. PASS=22 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=22
