@@ -81,6 +81,12 @@ class ChargebackSeedGuardTests(unittest.TestCase):
             msg=violations,
         )
 
+    def test_hmac_regexes_are_exact(self) -> None:
+        self.assertEqual(self.guard.HMAC_RE.pattern, r"^hmac:v1:[0-9a-f]{64}$")
+        self.assertEqual(
+            self.guard.HMAC_FIXTURE_RE.pattern, r"^hmac:v[0-9]+:[0-9a-f]{64}$"
+        )
+
     def test_header_only_actor_map_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -161,13 +167,50 @@ class ChargebackSeedGuardTests(unittest.TestCase):
             root = Path(tmp)
             dest = root / "seeds"
             dest.mkdir()
+            v2 = "hmac:v2:" + "0" * 64
             (dest / "chargeback_actor_map.csv").write_text(
-                "actor_id,team,project\n" + "hmac:v2:" + "0" * 64 + ",platform,oteru\n",
+                f"actor_id,team,project\n{v2},platform,oteru\n",
                 encoding="utf-8",
             )
             violations = self.guard.check_tree(root)
             self.assertTrue(
-                any("does not match" in v for v in violations), msg=violations
+                any(
+                    "does not match" in v and self.guard.HMAC_RE.pattern in v
+                    for v in violations
+                ),
+                msg=violations,
+            )
+            self.assertEqual(self.guard.main(["--path", str(root)]), 1)
+
+    def test_v2_hmac_in_fixtures_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dest = root / "seeds" / "chargeback_fixtures"
+            dest.mkdir(parents=True)
+            v2 = "hmac:v2:" + "0" * 64
+            (dest / "chargeback_actor_map_fixture_v2.csv").write_text(
+                f"actor_id,team,project\n{v2},time-fixture,projeto-fixture\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(self.guard.check_tree(root), [])
+            self.assertEqual(self.guard.main(["--path", str(root)]), 0)
+
+    def test_malformed_hmac_in_fixtures_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dest = root / "seeds" / "chargeback_fixtures"
+            dest.mkdir(parents=True)
+            (dest / "chargeback_actor_map_fixture.csv").write_text(
+                "actor_id,team,project\nhmac:v2:deadbeef,time-fixture,projeto-fixture\n",
+                encoding="utf-8",
+            )
+            violations = self.guard.check_tree(root)
+            self.assertTrue(
+                any(
+                    "does not match" in v and self.guard.HMAC_FIXTURE_RE.pattern in v
+                    for v in violations
+                ),
+                msg=violations,
             )
             self.assertEqual(self.guard.main(["--path", str(root)]), 1)
 

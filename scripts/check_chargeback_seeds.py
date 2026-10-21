@@ -2,11 +2,11 @@
 """Chargeback seed guard (#46): no '@' in seeds/chargeback_*; actor keys hmac:v1.
 
 Fails if any file matching ``**/seeds/chargeback_*`` contains ``@`` — including
-files under ``seeds/chargeback_fixtures/`` — or if a production CSV in that
-glob with an ``actor_id`` column has a data value that does not match
-``^hmac:v1:[0-9a-f]{64}$``. Actor keys under ``chargeback_fixtures/`` may be
-``hmac:vN:<64 hex>`` (the v2 rotation fixture). Header-only files and an
-empty glob pass. Stdlib-only.
+files under ``seeds/chargeback_fixtures/``. Actor keys: ``hmac:vN:``
+(``^hmac:v[0-9]+:[0-9a-f]{64}$``) is allowed **only** under
+``seeds/chargeback_fixtures/``; every other ``seeds/chargeback_*`` CSV with
+an ``actor_id`` column must match ``^hmac:v1:[0-9a-f]{64}$``. Header-only
+files and an empty glob pass. Stdlib-only.
 
 The RFC 2606 ``.invalid`` fixture lives only at the exact path
 ``tests/fixtures/chargeback_guard/at_forbidden.csv`` (documented there and
@@ -48,17 +48,35 @@ _SKIP_DIR_NAMES = frozenset(
 )
 
 
+def _rel_parts(path: Path, root: Path) -> tuple[str, ...]:
+    try:
+        return path.relative_to(root).parts
+    except ValueError:
+        return path.parts
+
+
 def _is_chargeback_seed_path(path: Path, root: Path) -> bool:
     """True for ``seeds/chargeback_*`` files and anything under ``seeds/chargeback_*/``."""
-    try:
-        parts = path.relative_to(root).parts
-    except ValueError:
-        parts = path.parts
+    parts = _rel_parts(path, root)
     seeds_idxs = [i for i, part in enumerate(parts) if part == SEED_DIR_NAME]
     if not seeds_idxs:
         return False
     rest = parts[seeds_idxs[-1] + 1 :]
     return bool(rest) and rest[0].startswith(SEED_PREFIX)
+
+
+def _under_chargeback_fixtures(path: Path, root: Path) -> bool:
+    """True only for files under ``seeds/chargeback_fixtures/`` (consecutive)."""
+    parts = _rel_parts(path, root)
+    for i, part in enumerate(parts[:-1]):
+        if part == SEED_DIR_NAME and parts[i + 1] == FIXTURES_DIR_NAME:
+            return True
+    return False
+
+
+def _actor_hmac_re(path: Path, root: Path) -> re.Pattern[str]:
+    """hmac:vN: only under seeds/chargeback_fixtures/; everyone else hmac:v1:."""
+    return HMAC_FIXTURE_RE if _under_chargeback_fixtures(path, root) else HMAC_RE
 
 
 def iter_chargeback_seeds(root: Path) -> list[Path]:
@@ -97,7 +115,7 @@ def _csv_rows(text: str) -> tuple[list[str] | None, list[tuple[int, dict[str, st
     return fieldnames, rows
 
 
-def check_file(path: Path, rel: str) -> list[str]:
+def check_file(path: Path, rel: str, root: Path) -> list[str]:
     """Return violation strings for one chargeback seed file."""
     violations: list[str] = []
     try:
@@ -127,7 +145,7 @@ def check_file(path: Path, rel: str) -> list[str]:
     if not has_actor_id:
         return violations
 
-    hmac_re = HMAC_FIXTURE_RE if FIXTURES_DIR_NAME in path.parts else HMAC_RE
+    hmac_re = _actor_hmac_re(path, root)
     for lineno, row in rows:
         actor_id = row.get(ACTOR_ID_COLUMN, "")
         if not hmac_re.fullmatch(actor_id):
@@ -146,7 +164,7 @@ def check_tree(root: Path) -> list[str]:
             rel = str(path.relative_to(root))
         except ValueError:
             rel = str(path)
-        violations.extend(check_file(path, rel))
+        violations.extend(check_file(path, rel, root))
     return violations
 
 
