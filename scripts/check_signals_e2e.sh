@@ -75,6 +75,17 @@ failures=0
 
 fail() { echo "  FAIL: $*"; failures=$((failures + 1)); }
 
+# Git Bash (MSYS) rewrites Unix paths passed to Windows docker.exe. Prefix
+# docker/timeout so bind mounts stay intact. No-op on Linux/macOS.
+# cygpath -m converts /c/Users/... to C:/Users/... when present.
+host_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m -- "$1"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
 # Row counts filtered to this run's tag — concurrent telemetry (live or
 # synthetic) on the same collector contributes nothing to these numbers.
 counts() {
@@ -259,7 +270,9 @@ pathlib.Path(sys.argv[1]).write_text(
     "".join(json.dumps(b) + "\n" for b in mcp_capture()), encoding="utf-8"
 )
 pathlib.Path(sys.argv[2]).write_text(
-    "".join(f"{m}\t{n}\n" for m, n in sorted(MCP_EXPECTED_METHODS.items())), encoding="utf-8"
+    "".join(f"{m}\t{n}\n" for m, n in sorted(MCP_EXPECTED_METHODS.items())),
+    encoding="utf-8",
+    newline="\n",
 )
 PY
 inject_run_id "$MCP" "$SCOPED_MCP" || fail "could not tag the MCP capture"
@@ -406,10 +419,10 @@ hmac_fail_closed() {
   local label="$1"
   shift
   local log status=0
-  log="$(timeout 25 "$CTR" run --rm --network none \
-    -v "$HMAC_DIR/config.yml:/etc/oteru-collector-config.yml:ro" \
-    -v "$HMAC_DIR/privacy:/etc/oteru-privacy:ro" \
-    -v "$HMAC_DIR/empty:/telemetry" \
+  log="$(MSYS_NO_PATHCONV=1 timeout 25 "$CTR" run --rm --network none \
+    -v "$(host_path "$HMAC_DIR/config.yml"):/etc/oteru-collector-config.yml:ro" \
+    -v "$(host_path "$HMAC_DIR/privacy"):/etc/oteru-privacy:ro" \
+    -v "$(host_path "$HMAC_DIR/empty"):/telemetry" \
     "$@" \
     "$HMAC_IMAGE" --config=/etc/oteru-collector-config.yml 2>&1)" || status=$?
   if [ "$status" -eq 0 ] || [ "$status" -eq 124 ]; then
@@ -463,12 +476,12 @@ hmac_isolated_checks() {
   hmac_run_keyed() {
     local key="$1" outdir="$2" name="$3"
     local cid http i code
-    cid="$("$CTR" run -d --name "$name" \
+    cid="$(MSYS_NO_PATHCONV=1 "$CTR" run -d --name "$name" \
       -e "OTERU_PII_HMAC_KEY=$key" \
       -p 127.0.0.1::4318 \
-      -v "$HMAC_DIR/config.yml:/etc/oteru-collector-config.yml:ro" \
-      -v "$HMAC_DIR/privacy:/etc/oteru-privacy:ro" \
-      -v "$outdir:/telemetry" \
+      -v "$(host_path "$HMAC_DIR/config.yml"):/etc/oteru-collector-config.yml:ro" \
+      -v "$(host_path "$HMAC_DIR/privacy"):/etc/oteru-privacy:ro" \
+      -v "$(host_path "$outdir"):/telemetry" \
       "$HMAC_IMAGE" --config=/etc/oteru-collector-config.yml)" || {
       fail "HMAC keyed run: $CTR run $name failed"
       return 1
@@ -497,7 +510,8 @@ hmac_isolated_checks() {
     logs="$("$CTR" logs "$name" 2>&1 || true)"
     # Rootless podman writes bind-mount files as a mapped uid the host cannot
     # read; copy out as the invoking user before removing the container.
-    "$CTR" cp "$name:/telemetry/telemetry.json" "$outdir/telemetry.json" 2>/dev/null || true
+    MSYS_NO_PATHCONV=1 "$CTR" cp "$name:/telemetry/telemetry.json" \
+      "$(host_path "$outdir/telemetry.json")" 2>/dev/null || true
     if [ "$CTR" = podman ]; then
       podman unshare chmod -R a+rX "$outdir" >/dev/null 2>&1 || true
     fi

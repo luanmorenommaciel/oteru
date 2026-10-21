@@ -2,9 +2,16 @@
 """Load the cost fixture into otel.otel_logs with timestamps shifted near now().
 
 Does NOT edit the teammate fixture file and does NOT use restamp (request_id
-values stay as written). cost_usd is unchanged. user.email is hashed to
-hmac:v1:<hex> as the collector HMACSHA256 converter would. Distinct fixture calendar days
-map to yesterday/today UTC so the load still crosses midnight.
+values stay as written). cost_usd is unchanged. user.email is hashed with
+unkeyed SHA-256 of ``oteru-pii:v1|user.email|{email}`` and prefixed
+``hmac:v1:`` so staging ``actor_id`` looks like a collector pseudonym. This
+is not keyed HMACSHA256 (compile.py / hmacconverter); the hex digest will
+not match a collector-produced actor_id. Distinct fixture calendar days map
+to yesterday/today UTC so the load still crosses midnight.
+
+If no repo-local ``clickhouse`` binary and no host ``clickhouse-client`` are
+available, inserts go through ``docker compose exec`` (or podman compose
+when docker is absent) into the compose ``clickhouse`` service.
 
 Usage (repo root, ClickHouse running, otel.otel_logs exists):
   python3 oteru-dbt/tests/load_shifted_cost_fixture.py
@@ -14,14 +21,46 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+COLLECTOR = ROOT / "oteru-collector"
 FIXTURE = ROOT / "oteru-emitter/tests/fixtures/api_request_cost_fixture.json"
-CH = [str(ROOT / "clickhouse"), "client"] if (ROOT / "clickhouse").exists() else ["clickhouse-client"]
+# Local-dev ClickHouse compose credentials (oteru-collector/docker-compose.clickhouse.yml).
+_COMPOSE_CLIENT = (
+    "compose",
+    "exec",
+    "-T",
+    "clickhouse",
+    "clickhouse-client",
+    "--user",
+    "otel",
+    "--password",
+    "otel",
+)
+
+
+def clickhouse_cmd() -> tuple[list[str], Path | None]:
+    """Return (argv, cwd) for a ClickHouse client.
+
+    Prefer a repo-local binary or a host ``clickhouse-client``. If neither is
+    available, fall back to ``docker compose exec`` (podman compose if docker
+    is absent) so Windows hosts without a native client can still load.
+    """
+    local = ROOT / "clickhouse"
+    if local.exists():
+        return [str(local), "client"], None
+    if shutil.which("clickhouse-client"):
+        return ["clickhouse-client"], None
+    if shutil.which("docker"):
+        return ["docker", *_COMPOSE_CLIENT], COLLECTOR
+    if shutil.which("podman"):
+        return ["podman", *_COMPOSE_CLIENT], COLLECTOR
+    return ["clickhouse-client"], None
 
 
 def pseudonymize(email: str) -> str:
@@ -111,7 +150,8 @@ def insert(rec: dict) -> None:
         f"(fromUnixTimestamp64Nano({ns}), '{rec['body']}', '{rec['svc']}', "
         f"{esc_map(rec['res'])}, {esc_map(rec['log'])})"
     )
-    r = subprocess.run(CH + ["--query", q], capture_output=True, text=True)
+    cmd, cwd = clickhouse_cmd()
+    r = subprocess.run(cmd + ["--query", q], capture_output=True, text=True, cwd=cwd)
     if r.returncode != 0:
         raise SystemExit(r.stderr or r.stdout or "clickhouse insert failed")
 
