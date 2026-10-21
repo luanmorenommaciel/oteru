@@ -19,6 +19,8 @@ on:
       - "tests/**"
       - ".gitleaks.toml"
       - "oteru-dbt/seeds/**"
+      - "oteru-dbt/tests/**"
+      - "oteru-dbt/dbt_project.yml"
   pull_request:
     paths:
       - "oteru-emitter/**"
@@ -29,6 +31,8 @@ on:
       - "tests/**"
       - ".gitleaks.toml"
       - "oteru-dbt/seeds/**"
+      - "oteru-dbt/tests/**"
+      - "oteru-dbt/dbt_project.yml"
   workflow_dispatch:
   schedule:
     - cron: "0 6 * * 1" # weekly full OS x Python matrix
@@ -121,3 +125,5 @@ jobs:
         run: python -m pytest oteru-collector/tests/test_policy.py oteru-collector/tests/test_configs.py oteru-collector/tests/test_chargeback_attrs.py oteru-collector/tests/test_hmac_lookup.py
       - name: Exercise isolated Collector, ClickHouse and OTLP forwarding
         run: python -m pytest oteru-collector/tests/test_runtime.py
+      - name: Ephemeral HMAC fixture tests
+        run: python -m pytest oteru-dbt/tests/test_ephemeral_hmac.py

@@ -48,7 +48,7 @@ seeds:
       enabled: "{{ var('chargeback_fixtures', false) | as_bool }}"
       column_types: {service_name: String, team: String, project: String, owner_team: String, valid_from: Date}
   - name: chargeback_actor_map_fixture
-    description: "Fixture: actor_map populado com pseudônimo de teste (derivado do e-mail de fixture com chave de teste)."
+    description: "Fixture: actor_map de teste. Gabarito rastreado = hmac:v1: zeros; join usa HMAC efêmero (#107)."
     config:
       enabled: "{{ var('chargeback_fixtures', false) | as_bool }}"
       column_types: {actor_id: String, team: String, project: String}

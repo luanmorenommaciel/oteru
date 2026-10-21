@@ -1,6 +1,7 @@
 # Chargeback de custo (#46) — fase 1
 
 Fonte da verdade: `docs/intents/0046-cost-chargeback-{intent,spec,plan}.md`.
+Fixtures HMAC efêmeras: `docs/intents/0107-fixture-hmac-ephemeral-{intent,spec,plan}.md`.
 Fase 1 é 100% aditiva: nenhum modelo, seed, teste ou macro existente foi alterado.
 
 ## Objetos
@@ -68,8 +69,9 @@ histórica fica só nos fatos materializados. A reconciliação total por dia co
   o build padrão não cria essas tabelas nem lê esses dados.
   `test_chargeback_default_no_fixture_rows` falha se aparecer qualquer marcador de fixture
   (`time-fixture`, `projeto-fixture`, `hmac:v2:`, `attribution_source='actor_map'`, pseudônimo de teste nos seeds).
-- Origem dos pseudônimos de fixture: ver `tests/fixtures/chargeback_46/README.md`. Nenhuma chave
-  real nem e-mail real; nenhum material de chave está no repositório.
+- Origem dos pseudônimos de fixture: ver `tests/fixtures/chargeback_46/README.md` (#107).
+  Join de teste usa HMAC-SHA256 com chave efêmera em memória; gabarito rastreado é
+  `hmac:v1:`/`hmac:v2:` + zeros. Nenhuma chave real nem e-mail real no repositório.
 
 ## Regex de PII (condição Sentinela 4)
 

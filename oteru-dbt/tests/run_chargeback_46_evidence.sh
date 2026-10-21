@@ -81,7 +81,7 @@ done
      UNION ALL SELECT 'fct_cost_chargeback_daily', countIf(team='time-fixture' OR project='projeto-fixture' OR attribution_source='actor_map') FROM otel.fct_cost_chargeback_daily
      UNION ALL SELECT 'fct_cost_chargeback_actor_daily', countIf(team='time-fixture' OR project='projeto-fixture' OR startsWith(actor_id,'hmac:v2:')) FROM otel.fct_cost_chargeback_actor_daily
      UNION ALL SELECT 'chargeback_service_map', countIf(team='time-fixture' OR project='projeto-fixture') FROM otel.chargeback_service_map
-     UNION ALL SELECT 'chargeback_actor_map', countIf(team='time-fixture' OR startsWith(actor_id,'hmac:v2:') OR actor_id='hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14') FROM otel.chargeback_actor_map
+     UNION ALL SELECT 'chargeback_actor_map', countIf(team='time-fixture' OR startsWith(actor_id,'hmac:v2:') OR match(actor_id, '^hmac:v[0-9]+:0{64}$')) FROM otel.chargeback_actor_map
      FORMAT PrettyCompactMonoBlock"
   echo; echo "### Cond. 4: regex de seed exato + casos negativos"
   grep -n 'macro' "$ROOT/oteru-dbt/macros/chargeback_regex.sql"
@@ -93,8 +93,7 @@ done
   "$DBT_BIN" test --profiles-dir . --select test_audit_cost_runs_chargeback_no_actor 2>&1 | grep -E ' PASS | FAIL |Done\.'
   echo; echo "### Cond. 3: valores tipo-chave/pseudônimo nos arquivos de fixture"
   grep -rn 'hmac:' "$ROOT/oteru-dbt/seeds/chargeback_fixtures/"*.csv
-  echo "sha256 sem chave do e-mail sintético da fixture (loader existente):"
-  python3 -c 'import hashlib;print("hmac:v1:"+hashlib.sha256(b"oteru-pii:v1|user.email|user@example.com").hexdigest())'
+  echo "gabarito rastreado: hmac:v1:/v2: zeros; join de teste = HMAC efêmero (#107)"
   if command -v gitleaks >/dev/null; then gitleaks detect --no-git --source "$ROOT/oteru-dbt" --redact 2>&1 | tail -3; else echo "gitleaks não instalado no box: não executado (regra/CI é do Alicerce)"; fi
   echo; echo "### Controle negativo: o teste de cond. 2 FALHA quando há fixture ativa"
   "$DBT_BIN" build --profiles-dir . --vars "{$FIX, chargeback_actor_map_seed: chargeback_actor_map_fixture}" 2>&1 | grep 'Done\.'
