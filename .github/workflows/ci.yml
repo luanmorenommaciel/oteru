@@ -19,6 +19,8 @@ on:
       - "tests/**"
       - ".gitleaks.toml"
       - "oteru-dbt/seeds/**"
+      - "oteru-dbt/tests/**"
+      - "oteru-dbt/dbt_project.yml"
   pull_request:
     paths:
       - "oteru-emitter/**"
@@ -29,6 +31,8 @@ on:
       - "tests/**"
       - ".gitleaks.toml"
       - "oteru-dbt/seeds/**"
+      - "oteru-dbt/tests/**"
+      - "oteru-dbt/dbt_project.yml"
   workflow_dispatch:
   schedule:
     - cron: "0 6 * * 1" # weekly full OS x Python matrix
@@ -99,6 +103,10 @@ jobs:
           tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
           export PATH="/tmp:$PATH"
           python -m unittest discover -s tests -p "test_chargeback_seeds.py" -v
+      - name: Budget roles bootstrap (syntax; apply is before dbt)
+        run: bash scripts/bootstrap_budget_roles.sh --syntax
+      - name: Budget grant contract tests (2b static)
+        run: python -m unittest discover -s tests -p "test_budget_grants.py" -v
 
   privacy:
     runs-on: ubuntu-latest

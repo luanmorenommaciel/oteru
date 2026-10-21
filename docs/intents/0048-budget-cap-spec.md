@@ -108,7 +108,8 @@ scope LowCardinality(String), scope_key String, team, project, owner_team, perio
 | coluna | tipo | regra |
 |---|---|---|
 | run_id | String | not_null (invocation_id do dbt) |
-| run_completed_at | DateTime64(3) | not_null |
+| run_completed_at | DateTime64(3,'UTC') | not_null |
+| run_status | LowCardinality(String) | accepted_values success/error (status final do run, gravado no on-run-end) |
 | scope | LowCardinality(String) | accepted_values global/team/project/team_project |
 | scope_key | String | not_null |
 | team | String | not_null ('' conforme scope) |
@@ -143,7 +144,7 @@ Unicidade: (run_id, scope, scope_key, status). Sem actor_id. `audit_cost_runs`/`
 - **Teste de privilégio da view (S5)**, script de prova fora do dbt test, com credenciais só via env:
   1. Como `oteru_budget_reader`: `SELECT count() FROM budget_status_current` → ok.
   2. Como `oteru_budget_reader`: `SELECT * FROM fct_budget_consumption_daily LIMIT 1` e `SELECT * FROM fct_cost_chargeback_daily LIMIT 1` → erro `ACCESS_DENIED` (código 497).
-  2b. Como `oteru_budget_alerts_reader`: as listas de colunas allowed/denied são **exatamente as do §7.12**, sem cópia aqui, para não divergir. Do lado de dados, o contrato fornece `scope` e `scope_key` em `budget_status_current` e `audit_budget_runs`, e o §7.12 precisa listá-los como allowed (pendente no patch v3 do Vigia). `SELECT` em `fct_budget_consumption_daily` / `fct_cost_chargeback_daily` → `ACCESS_DENIED` (497).
+  2b. Como `oteru_budget_alerts_reader`: colunas allowed/denied **exatamente as do §7.12** (`scope`, `scope_key`, `period_start` na view; todas as de `audit_budget_runs` incl. `run_status`). `SELECT` em `fct_*` / seeds / `otel_*` → `ACCESS_DENIED` (497). Coluna fora da lista (ex.: `budget_usd_micros`) → `ACCESS_DENIED`.
   3. `SHOW CREATE VIEW budget_status_current` contém `SQL SECURITY DEFINER` e `DEFINER = oteru_budget_view_definer`.
   4. `SHOW GRANTS FOR oteru_budget_view_definer` lista só SELECT nas bases da view.
   - **Coordenação com §7.9 teste 3 (Alicerce):** os itens 1 e 2 são o lado "dados" do mesmo teste. O §7.9.3 cobre INSERT/ALTER/DROP do leitor. Os dois devem usar o mesmo nome de role e o mesmo script, sem duplicar. O §7 não é editado aqui; o Alicerce referencia este item em commit próprio.
@@ -210,9 +211,9 @@ Claude Code / Cursor / outros agentes  →  API do provedor (Anthropic etc., for
 | `block` (mecanismo do gateway) | **fora desta entrega** | https://github.com/luanmorenommaciel/oteru/issues/108 | decisão do Vinícius: só alertar |
 | `action_on_breach` no seed | **só `alert` nesta entrega** | validação do seed **rejeita** `block`; muda só por PR depois de #108 | decisão do Vinícius |
 
-**Testes allowed/denied de `oteru_budget_alerts_reader`** (conectar só com esse role; lista do §7.12 v3 **mais** `scope_key` — a Vigia atualiza o §7.12 em patch próprio):
+**Testes allowed/denied de `oteru_budget_alerts_reader`** (conectar só com esse role; **exatamente** a lista do §7.12):
 
-- **Allowed:** `SELECT` de **todas** as colunas de `audit_budget_runs` (incluindo `scope` e `scope_key`); de `budget_status_current` só `scope`, `scope_key`, `team`, `project`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`; de `audit_cost_runs` só `run_id`, `run_completed_at`, `run_status`, `events_dropped_late`.
+- **Allowed:** `SELECT` de **todas** as colunas de `audit_budget_runs` (incluindo `run_status`, `scope` e `scope_key`); de `budget_status_current` só `scope`, `scope_key`, `team`, `project`, `period_start`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`; de `audit_cost_runs` só `run_id`, `run_completed_at`, `run_status`, `events_dropped_late`.
 - **Denied:** `SELECT` de qualquer outra coluna de `budget_status_current` ou de `audit_cost_runs`; `SELECT` em qualquer `fct_*`, seeds ou `otel_*`; `INSERT`/`ALTER`/`DROP` em qualquer relação.
 
 Valores dos budgets são configuráveis (warn 80% / breach 100% = `warn_milli=800` / `breach_milli=1000` até o Vinícius fixar os números do seed).
@@ -311,7 +312,7 @@ Hot path: lookup in-process no cache de `budget_status_current` (mapa `team×pro
 
 **Fora desta entrega.** Condições 6–8 (credencial por par, segredo do provedor, bypass) e o `oteru-budget-enforcer` vivem em https://github.com/luanmorenommaciel/oteru/issues/108. Precisam de spec própria + revisão da Sentinela **antes de qualquer código**.
 
-**Guard do seed (esta entrega, dados):** `scripts/check_chargeback_seeds.py` será estendido para `seeds/budgets.csv`: `@` proibido em qualquer coluna; regex de slug (`^[a-z0-9][a-z0-9-]{0,62}$`) **só** em `team`/`project` **não vazios**; **nenhum** `*` em qualquer coluna; `scope` ∈ {`global`, `team`, `project`, `team_project`}. `hmac:vN` não se aplica (não há `actor_id`).
+**Guard do seed (esta entrega, dados):** `scripts/check_chargeback_seeds.py` cobre `seeds/budgets.csv`: `@` proibido em qualquer coluna; regex de slug (`^[a-z0-9][a-z0-9-]{0,62}$`) **só** em `team`/`project` **não vazios**; **nenhum** `*` em qualquer coluna; `scope` ∈ {`global`, `team`, `project`, `team_project`} com `scope_key` coerente; `action_on_breach` só `'alert'` (`block` rejeitado). `hmac:vN` não se aplica (não há `actor_id`).
 
 ### 7.12 Alertas (Vigia)
 
@@ -319,13 +320,13 @@ Entrega em `ops/alerts/48/`: SQL + `run_alert_tests.sh` (clickhouse-local, casos
 
 | # | Alerta | Fonte | Dispara quando |
 |---|---|---|---|
-| A1 | `budget_warn_breach_new` | `audit_budget_runs` (último run com sucesso) | uma linha (`scope`, `scope_key`) entra em `warn` (80%) ou `breach` (100%) e não estava nesse status no run anterior; vale para os 4 escopos (`global`, `team`, `project`, `team_project`); o `global` inclui `unassigned` |
+| A1 | `budget_warn_breach_new` | `budget_status_current` | uma linha (`scope`, `scope_key`) está em `warn` (80%) ou `breach` (100%); `dedup_key` inclui `period_start`; vale para os 4 escopos (`global`, `team`, `project`, `team_project`); o `global` inclui `unassigned`. O alerta **se resolve sozinho** quando a linha desaparece. |
 | A2 | `budget_status_stale` | `budget_status_current` | alguma linha com `is_stale = true`; é o sinal que sustenta o fail-open (§7.5). Depende de `as_of_ts` medir o último custo processado, não a hora do run (condição 1 da Sentinela) |
-| A3 | `budget_run_missing` | `audit_budget_runs` | nenhum run com sucesso há mais de `budget_stale_hours_daily` (26h; 2h na fase 2) |
-| A4 | `cost_late_beyond_lookback` | `audit_cost_runs.events_dropped_late` (contrato #45/#47, só leitura, sem mudança) | soma no dia UTC fechado > 0, ou seja, custo chegou com mais de 48h e ficou fora do consumo (§8) |
+| A3 | `budget_run_missing` | `audit_budget_runs` | nenhum run com `run_status='success'` há mais de `budget_stale_hours_daily` (26h; 2h na fase 2) |
+| A4 | `cost_late_beyond_lookback` | `audit_cost_runs.events_dropped_late` (contrato #45/#47, só leitura, sem mudança) | soma no dia UTC fechado dos runs com `run_status='success'` > 0, ou seja, custo chegou com mais de 48h e ficou fora do consumo (§8) |
 | A5 | `budget_gateway_bypass` | **fora desta entrega** (Vinícius: só alertar, sem gateway) | vai para a issue de follow-up do bloqueio, junto com as condições 6–8 |
 
-**Grant (privilégio mínimo):** role `oteru_budget_alerts_reader`, separado do `oteru_budget_reader`. `SELECT` só em `audit_budget_runs` (todas as colunas, incluindo `scope` e `scope_key`; só agregados), `budget_status_current` (colunas `scope`, `scope_key`, `team`, `project`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`) e `audit_cost_runs` (`run_id`, `run_completed_at`, `run_status`, `events_dropped_late`). Sem `fct_*`, seeds, `otel_*`, `INSERT`/`ALTER`/`DROP`. Mesma regra de `SQL SECURITY DEFINER` da condição 5. Credencial só em secret/env.
+**Grant (privilégio mínimo):** role `oteru_budget_alerts_reader`, separado do `oteru_budget_reader`. `SELECT` só em `audit_budget_runs` (todas as colunas, incluindo `run_status`, `scope` e `scope_key`; só agregados), `budget_status_current` (colunas `scope`, `scope_key`, `team`, `project`, `period_start`, `as_of_ts`, `is_stale`, `budget_status`, `action_on_breach`) e `audit_cost_runs` (`run_id`, `run_completed_at`, `run_status`, `events_dropped_late`). Sem `fct_*`, seeds, `otel_*`, `INSERT`/`ALTER`/`DROP`. Mesma regra de `SQL SECURITY DEFINER` da condição 5. Credencial só em secret/env.
 
 **Testes allowed/denied** (iguais aos de §7.4): allowed = cada coluna da lista acima; denied = qualquer outra coluna de `budget_status_current` ou de `audit_cost_runs`, qualquer `fct_*`, seeds, `otel_*`, e `INSERT`/`ALTER`/`DROP`.
 
@@ -363,4 +364,4 @@ Entrega em `ops/alerts/48/`: SQL + `run_alert_tests.sh` (clickhouse-local, casos
 - Política da §9 decidida em 21/10/2026.
 
 ## 10. Breaking changes
-Nenhuma prevista: só modelos/seed novos; contratos de #45/#46/#47 (incl. `audit_cost_runs`) inalterados. O contrato proposto dos modelos novos muda de grão (team × project → scope × scope_key), mas eles ainda não foram implementados, então não é breaking para consumidores. Os docs do Vigia/Alicerce que citam `team × project` (§7.12) precisam alinhar.
+Nenhuma prevista: só modelos/seed novos; contratos de #45/#46/#47 (incl. `audit_cost_runs`) inalterados.

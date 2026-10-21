@@ -44,5 +44,5 @@ Base: `feat/48-budget-cap`. Referência: `0048-budget-cap-spec.md` (S1–S5 = co
 ## Dependências externas
 - Alicerce: grants/usuários (`oteru_budget_reader`, `oteru_budget_view_definer`), guard de `seeds/budgets.csv` em `scripts/check_chargeback_seeds.py`/CI, scheduler #103.
 - Vinícius: §9 decidido em 21/10/2026; valores reais por PR no seed.
-- Vigia: §7.12 (patch v3) deve listar `scope`/`scope_key` como colunas allowed; o teste 2b referencia o §7.12 e não copia a lista.
+- Vigia: §7.12 lista `scope`/`scope_key`/`period_start` como colunas allowed; o teste 2b referencia o §7.12.
 - Follow-up fora do escopo: gateway de bloqueio (`block`).

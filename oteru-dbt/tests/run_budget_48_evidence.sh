@@ -20,6 +20,9 @@ hdr() { echo "tested_sha: $(git -C "$ROOT" rev-parse HEAD)"; echo "utc: $(date -
 FCT_HASH="SELECT count(), sum(cityHash64(day_utc, scope, scope_key, team, project, owner_team, budget_usd_micros, consumed_usd_micros, consumed_period_usd_micros, consumed_milli, warn_milli, breach_milli, budget_status, action_on_breach, last_cost_ts, projected_period_usd_micros)) FROM otel.fct_budget_consumption_daily FORMAT TSV"
 VIEW_HASH="SELECT count(), sum(cityHash64(*)) FROM (SELECT * EXCEPT is_stale FROM otel.budget_status_current) FORMAT TSV"
 
+# 0. Alicerce bootstrap (definer + alerts_reader) BEFORE any dbt build.
+bash "$ROOT/scripts/bootstrap_budget_roles.sh" --require
+
 # 1. build
 { hdr; "$DBT_BIN" --version 2>&1 | grep -E 'installed|clickhouse:'
   # Projeto inteiro primeiro: em CH vazio, o seletor do plan sozinho seleciona (indirect
