@@ -1,6 +1,6 @@
-tested_sha: 913ca7e412203e5759111f1ede973fbcfdd3a814
+tested_sha: 40ad3874f69380fbcb91939192dfd18feb0dcaee
 clickhouse_version: 26.9.23.15
-utc: 2026-10-21T04:53:08Z
+utc: 2026-10-21T12:38:51Z
 command: make test
 
 cd oteru-emitter && .venv/bin/python -m pytest
@@ -8,7 +8,7 @@ cd oteru-emitter && .venv/bin/python -m pytest
 ........................................................................ [ 59%]
 ........................................................................ [ 89%]
 .........................                                                [100%]
-241 passed in 1.58s
+241 passed in 1.35s
 make --no-print-directory test-hooks
 cd oteru-emitter && .venv/bin/python -m pytest ../oteru-hooks/tests
 ============================= test session starts ==============================
@@ -19,4 +19,4 @@ collected 36 items
 ../oteru-hooks/tests/test_oteru_hook.py ................................ [ 88%]
 ....                                                                     [100%]
 
-============================== 36 passed in 0.17s ==============================
+============================== 36 passed in 0.06s ==============================

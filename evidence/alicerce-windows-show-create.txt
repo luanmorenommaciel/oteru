@@ -1,7 +1,6 @@
-tested_sha: 913ca7e412203e5759111f1ede973fbcfdd3a814
+tested_sha: 40ad3874f69380fbcb91939192dfd18feb0dcaee
 clickhouse_version: 26.9.23.15
-utc: 2026-10-21T04:52:27Z
+utc: 2026-10-21T12:38:50Z
 command: SHOW CREATE TABLE otel.fct_cost_actor_daily
 
 CREATE TABLE otel.fct_cost_actor_daily\n(\n    `day_utc` Date,\n    `actor_id` String,\n    `cost_usd_micros` Nullable(Int64),\n    `cost_usd` Nullable(Float64),\n    `requests` UInt64,\n    `input_tokens` Nullable(Int64),\n    `output_tokens` Nullable(Int64),\n    `cache_read_tokens` Nullable(Int64),\n    `cache_creation_tokens` Nullable(Int64)\n)\nENGINE = ReplacingMergeTree\nORDER BY ((day_utc, actor_id))\nTTL day_utc + toIntervalDay(90)\nSETTINGS replicated_deduplication_window = \'0\', index_granularity = 8192
-
