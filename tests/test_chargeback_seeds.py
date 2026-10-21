@@ -214,6 +214,87 @@ class ChargebackSeedGuardTests(unittest.TestCase):
             )
             self.assertEqual(self.guard.main(["--path", str(root)]), 1)
 
+    def _git_repo(self, root: Path) -> None:
+        subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(root), "config", "user.email", "dev@example.com"],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(root), "config", "user.name", "dev"],
+            check=True,
+            capture_output=True,
+        )
+
+    def test_untracked_and_ignored_files_are_not_scanned(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            seeds = root / "seeds"
+            leaked = root / "oteru-dbt" / "target" / "seeds"
+            seeds.mkdir()
+            leaked.mkdir(parents=True)
+            (seeds / "chargeback_actor_map.csv").write_text(
+                "actor_id,team,project\n", encoding="utf-8"
+            )
+            (root / ".gitignore").write_text("oteru-dbt/target/\n", encoding="utf-8")
+            self._git_repo(root)
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(root),
+                    "add",
+                    "seeds/chargeback_actor_map.csv",
+                    ".gitignore",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "tracked seed"],
+                check=True,
+                capture_output=True,
+            )
+            junk = "actor_id,team,project\n" + "user@" + "example.invalid,x,y\n"
+            (leaked / "chargeback_leaked.csv").write_text(junk, encoding="utf-8")
+            (seeds / "chargeback_untracked.csv").write_text(junk, encoding="utf-8")
+            found = {
+                str(p.relative_to(root)) for p in self.guard.iter_chargeback_seeds(root)
+            }
+            self.assertEqual(found, {"seeds/chargeback_actor_map.csv"})
+            self.assertEqual(self.guard.check_tree(root), [])
+            self.assertEqual(self.guard.main(["--path", str(root)]), 0)
+
+    def test_non_csv_tracked_file_is_reported_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            seeds = root / "seeds"
+            seeds.mkdir()
+            (seeds / "chargeback_notes.md").write_text(
+                "not a csv seed\n", encoding="utf-8"
+            )
+            self._git_repo(root)
+            subprocess.run(
+                ["git", "-C", str(root), "add", "seeds/chargeback_notes.md"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "non-csv"],
+                check=True,
+                capture_output=True,
+            )
+            try:
+                violations = self.guard.check_tree(root)
+            except AttributeError as exc:  # noqa: BLE001 — must not leak
+                self.fail(f"AttributeError leaked: {exc}")
+            self.assertTrue(
+                any("must be a .csv file" in v for v in violations),
+                msg=violations,
+            )
+            self.assertEqual(self.guard.main(["--path", str(root)]), 1)
+
     def test_fake_email_only_in_documented_fixture(self) -> None:
         marker = "user@" + "example.invalid"
         hits: list[str] = []

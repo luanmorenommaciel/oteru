@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Chargeback seed guard (#46): no '@' in seeds/chargeback_*; actor keys hmac:v1.
 
-Fails if any file matching ``**/seeds/chargeback_*`` contains ``@`` — including
-files under ``seeds/chargeback_fixtures/``. Actor keys: ``hmac:vN:``
-(``^hmac:v[0-9]+:[0-9a-f]{64}$``) is allowed **only** under
+Fails if any **git-tracked** file matching ``**/seeds/chargeback_*`` contains
+``@`` — including files under ``seeds/chargeback_fixtures/``. Non-CSV files
+in that glob are a reported violation (no traceback). Actor keys:
+``hmac:vN:`` (``^hmac:v[0-9]+:[0-9a-f]{64}$``) is allowed **only** under
 ``seeds/chargeback_fixtures/``; every other ``seeds/chargeback_*`` CSV with
 an ``actor_id`` column must match ``^hmac:v1:[0-9a-f]{64}$``. Header-only
-files and an empty glob pass. Stdlib-only.
+files and an empty glob pass. Stdlib-only. Ignored/untracked trees such as
+``oteru-dbt/target/`` are never scanned (``git ls-files``).
 
 The RFC 2606 ``.invalid`` fixture lives only at the exact path
 ``tests/fixtures/chargeback_guard/at_forbidden.csv`` (documented there and
@@ -22,6 +24,7 @@ import csv
 import io
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -79,9 +82,44 @@ def _actor_hmac_re(path: Path, root: Path) -> re.Pattern[str]:
     return HMAC_FIXTURE_RE if _under_chargeback_fixtures(path, root) else HMAC_RE
 
 
+def _git_ls_files(root: Path) -> list[Path] | None:
+    """Tracked paths under ``root``, or None if ``root`` is not a git work tree."""
+    probe = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode != 0 or probe.stdout.strip() != "true":
+        return None
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z"],
+        check=False,
+        capture_output=True,
+    )
+    if listed.returncode != 0:
+        return None
+    files: list[Path] = []
+    for raw in listed.stdout.split(b"\0"):
+        if not raw:
+            continue
+        rel = raw.decode("utf-8", "surrogateescape")
+        files.append((root / rel).resolve())
+    return files
+
+
 def iter_chargeback_seeds(root: Path) -> list[Path]:
-    """Files matching ``**/seeds/chargeback_*`` including ``seeds/chargeback_fixtures/``."""
+    """Tracked ``**/seeds/chargeback_*`` files, including ``seeds/chargeback_fixtures/``.
+
+    Uses ``git ls-files`` so ignored/untracked trees (``oteru-dbt/target/``,
+    ``.venv``) are never scanned. Isolated test dirs without git still walk.
+    """
     root = root.resolve()
+    tracked = _git_ls_files(root)
+    if tracked is not None:
+        return sorted(
+            p for p in tracked if p.is_file() and _is_chargeback_seed_path(p, root)
+        )
     found: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in _SKIP_DIR_NAMES]
@@ -130,28 +168,35 @@ def check_file(path: Path, rel: str, root: Path) -> list[str]:
             )
 
     if path.suffix.lower() != ".csv":
+        suffix = path.suffix or "no suffix"
+        violations.append(f"{rel}: chargeback seed must be a .csv file (got {suffix})")
         return violations
 
-    fieldnames, rows = _csv_rows(text)
-    looks_like_actor_map = "actor_map" in path.name
-    has_actor_id = bool(fieldnames) and ACTOR_ID_COLUMN in fieldnames
+    try:
+        fieldnames, rows = _csv_rows(text)
+        looks_like_actor_map = "actor_map" in path.name
+        has_actor_id = bool(fieldnames) and ACTOR_ID_COLUMN in fieldnames
 
-    if looks_like_actor_map and rows and not has_actor_id:
-        violations.append(
-            f"{rel}: chargeback actor map is missing an {ACTOR_ID_COLUMN!r} column"
-        )
-        return violations
-
-    if not has_actor_id:
-        return violations
-
-    hmac_re = _actor_hmac_re(path, root)
-    for lineno, row in rows:
-        actor_id = row.get(ACTOR_ID_COLUMN, "")
-        if not hmac_re.fullmatch(actor_id):
+        if looks_like_actor_map and rows and not has_actor_id:
             violations.append(
-                f"{rel}:{lineno}: actor_id {actor_id!r} does not match {hmac_re.pattern}"
+                f"{rel}: chargeback actor map is missing an {ACTOR_ID_COLUMN!r} column"
             )
+            return violations
+
+        if not has_actor_id:
+            return violations
+
+        hmac_re = _actor_hmac_re(path, root)
+        for lineno, row in rows:
+            actor_id = (row or {}).get(ACTOR_ID_COLUMN, "")
+            if not hmac_re.fullmatch(actor_id):
+                violations.append(
+                    f"{rel}:{lineno}: actor_id {actor_id!r} does not match {hmac_re.pattern}"
+                )
+    except AttributeError as exc:
+        violations.append(
+            f"{rel}: cannot scan chargeback seed ({type(exc).__name__}: {exc})"
+        )
     return violations
 
 
