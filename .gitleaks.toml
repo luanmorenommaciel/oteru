@@ -5,10 +5,12 @@
 # top-level `[allowlist]` — that would skip default rules for matching
 # paths and weaken the existing secret scan.
 #
-# #46 task 3: chargeback seeds (`seeds/chargeback_*`) must never contain
-# '@' (no emails or identifiers in the clear). Actor-key format
-# (`^hmac:v1:[0-9a-f]{64}$`) is enforced by scripts/check_chargeback_seeds.py,
-# not by gitleaks (gitleaks is a finder, not a positive validator).
+# #46 task 3: chargeback seeds (`seeds/chargeback_*`, including
+# `seeds/chargeback_fixtures/`) must never contain '@' (no emails or
+# identifiers in the clear). Actor-key format is enforced by
+# scripts/check_chargeback_seeds.py, not by gitleaks (gitleaks is a
+# finder, not a positive validator). The path regex already matches
+# files under a directory named chargeback_*.
 
 title = "oteru"
 

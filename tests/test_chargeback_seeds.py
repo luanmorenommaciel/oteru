@@ -103,6 +103,74 @@ class ChargebackSeedGuardTests(unittest.TestCase):
         self.assertEqual(self.guard.check_tree(REPO_ROOT), [])
         self.assertEqual(self.guard.main(["--path", str(REPO_ROOT)]), 0)
 
+    def test_scans_chargeback_fixtures_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            seeds = root / "oteru-dbt" / "seeds"
+            fixtures = seeds / "chargeback_fixtures"
+            fixtures.mkdir(parents=True)
+            (seeds / "chargeback_actor_map.csv").write_text(
+                "actor_id,team,project\n", encoding="utf-8"
+            )
+            (seeds / "chargeback_service_map.csv").write_text(
+                "service_name,team,project,owner_team,valid_from\n"
+                "claude-code,plataforma,oteru,plataforma,2026-10-21\n",
+                encoding="utf-8",
+            )
+            (fixtures / "chargeback_actor_map_fixture.csv").write_text(
+                f"actor_id,team,project\n{DUMMY_HMAC},time-fixture,projeto-fixture\n",
+                encoding="utf-8",
+            )
+            v2 = "hmac:v2:" + "0" * 64
+            (fixtures / "chargeback_actor_map_fixture_v2.csv").write_text(
+                f"actor_id,team,project\n{DUMMY_HMAC},time-fixture,projeto-fixture\n"
+                f"{v2},time-fixture,projeto-fixture\n",
+                encoding="utf-8",
+            )
+            found = {
+                str(p.relative_to(root)) for p in self.guard.iter_chargeback_seeds(root)
+            }
+            self.assertIn("oteru-dbt/seeds/chargeback_actor_map.csv", found)
+            self.assertIn(
+                "oteru-dbt/seeds/chargeback_fixtures/chargeback_actor_map_fixture.csv",
+                found,
+            )
+            self.assertIn(
+                "oteru-dbt/seeds/chargeback_fixtures/chargeback_actor_map_fixture_v2.csv",
+                found,
+            )
+            self.assertEqual(self.guard.check_tree(root), [])
+            self.assertEqual(self.guard.main(["--path", str(root)]), 0)
+
+    def test_at_in_chargeback_fixtures_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dest = root / "seeds" / "chargeback_fixtures"
+            dest.mkdir(parents=True)
+            shutil.copy(
+                FIXTURES / "at_forbidden.csv", dest / "chargeback_actor_map_fixture.csv"
+            )
+            violations = self.guard.check_tree(root)
+            self.assertTrue(
+                any("'@' is forbidden" in v for v in violations), msg=violations
+            )
+            self.assertEqual(self.guard.main(["--path", str(root)]), 1)
+
+    def test_v2_hmac_fails_in_production_actor_map(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dest = root / "seeds"
+            dest.mkdir()
+            (dest / "chargeback_actor_map.csv").write_text(
+                "actor_id,team,project\n" + "hmac:v2:" + "0" * 64 + ",platform,oteru\n",
+                encoding="utf-8",
+            )
+            violations = self.guard.check_tree(root)
+            self.assertTrue(
+                any("does not match" in v for v in violations), msg=violations
+            )
+            self.assertEqual(self.guard.main(["--path", str(root)]), 1)
+
     def test_fake_email_only_in_documented_fixture(self) -> None:
         marker = "user@" + "example.invalid"
         hits: list[str] = []

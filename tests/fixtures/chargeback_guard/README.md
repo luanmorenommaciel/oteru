@@ -24,10 +24,14 @@ global allowlist):
 tests/fixtures/chargeback_guard/at_forbidden.csv
 ```
 
-Do not glob this exception. Do not put `@` in `oteru-dbt/seeds/chargeback_*`.
+Do not glob this exception. Do not put `@` in `oteru-dbt/seeds/chargeback_*`
+(including `oteru-dbt/seeds/chargeback_fixtures/`).
 
 ## Dummy HMAC
 
 `valid_hmac.csv` uses `hmac:v1:` followed by 64 hex `a` characters. That is a
 documented dummy, **not** an HMAC of any email or other identifier. Do not
 replace it with a real hash.
+
+Production `chargeback_actor_map.csv` must stay `hmac:v1:` only.
+`seeds/chargeback_fixtures/` may contain `hmac:v2:<64 hex>` (rotation test).

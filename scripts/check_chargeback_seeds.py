@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Chargeback seed guard (#46): no '@' in seeds/chargeback_*; actor keys hmac:v1.
 
-Fails if any file matching ``**/seeds/chargeback_*`` contains ``@``, or if a
-CSV in that glob with an ``actor_id`` column has a data value that does not
-match ``^hmac:v1:[0-9a-f]{64}$``. Header-only files and an empty glob pass
-(Modelo's seeds land in task 2). Stdlib-only.
+Fails if any file matching ``**/seeds/chargeback_*`` contains ``@`` — including
+files under ``seeds/chargeback_fixtures/`` — or if a production CSV in that
+glob with an ``actor_id`` column has a data value that does not match
+``^hmac:v1:[0-9a-f]{64}$``. Actor keys under ``chargeback_fixtures/`` may be
+``hmac:vN:<64 hex>`` (the v2 rotation fixture). Header-only files and an
+empty glob pass. Stdlib-only.
 
 The RFC 2606 ``.invalid`` fixture lives only at the exact path
 ``tests/fixtures/chargeback_guard/at_forbidden.csv`` (documented there and
@@ -27,8 +29,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SEED_DIR_NAME = "seeds"
 SEED_PREFIX = "chargeback_"
+FIXTURES_DIR_NAME = "chargeback_fixtures"
 ACTOR_ID_COLUMN = "actor_id"
 HMAC_RE = re.compile(r"^hmac:v1:[0-9a-f]{64}$")
+# dbt fixtures may include hmac:v2: to prove rotation is not silent (#46 3a).
+HMAC_FIXTURE_RE = re.compile(r"^hmac:v[0-9]+:[0-9a-f]{64}$")
 
 # Directories that are never production seeds (local venvs, deps, git).
 _SKIP_DIR_NAMES = frozenset(
@@ -43,17 +48,29 @@ _SKIP_DIR_NAMES = frozenset(
 )
 
 
+def _is_chargeback_seed_path(path: Path, root: Path) -> bool:
+    """True for ``seeds/chargeback_*`` files and anything under ``seeds/chargeback_*/``."""
+    try:
+        parts = path.relative_to(root).parts
+    except ValueError:
+        parts = path.parts
+    seeds_idxs = [i for i, part in enumerate(parts) if part == SEED_DIR_NAME]
+    if not seeds_idxs:
+        return False
+    rest = parts[seeds_idxs[-1] + 1 :]
+    return bool(rest) and rest[0].startswith(SEED_PREFIX)
+
+
 def iter_chargeback_seeds(root: Path) -> list[Path]:
-    """Files whose parent directory is named ``seeds`` and whose name starts with ``chargeback_``."""
+    """Files matching ``**/seeds/chargeback_*`` including ``seeds/chargeback_fixtures/``."""
     root = root.resolve()
     found: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in _SKIP_DIR_NAMES]
-        if Path(dirpath).name != SEED_DIR_NAME:
-            continue
         for name in filenames:
-            if name.startswith(SEED_PREFIX):
-                found.append(Path(dirpath) / name)
+            path = Path(dirpath) / name
+            if _is_chargeback_seed_path(path, root):
+                found.append(path)
     return sorted(found)
 
 
@@ -110,11 +127,12 @@ def check_file(path: Path, rel: str) -> list[str]:
     if not has_actor_id:
         return violations
 
+    hmac_re = HMAC_FIXTURE_RE if FIXTURES_DIR_NAME in path.parts else HMAC_RE
     for lineno, row in rows:
         actor_id = row.get(ACTOR_ID_COLUMN, "")
-        if not HMAC_RE.fullmatch(actor_id):
+        if not hmac_re.fullmatch(actor_id):
             violations.append(
-                f"{rel}:{lineno}: actor_id {actor_id!r} does not match {HMAC_RE.pattern}"
+                f"{rel}:{lineno}: actor_id {actor_id!r} does not match {hmac_re.pattern}"
             )
     return violations
 
