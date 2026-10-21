@@ -1,0 +1,24 @@
+tested_sha: b58027e614ff458af9ba7bf36b1ddfd11cd6021b
+utc: 2026-10-21T15:08:01Z
+clickhouse: 26.11.1.333
+-----
+== make check-cost-retention (script do Alicerce, não editado)
+bash scripts/check_cost_retention.sh
+cost-retention guard (OTERU_HOT_TTL=72h, lookback=48h)
+  ok   fct_cost_daily has no TTL (permanent aggregate preserved)
+  ok   otel_logs has TTL (raw hot retention enforced)
+  ok   otel_traces has TTL (raw hot retention enforced)
+  ok   otel_metrics_sum has TTL (raw hot retention enforced)
+  ok   lookback (48 h) < hot TTL (72 h) by 24h margin
+  skip expiry safety test: set OTERU_HOT_TTL_TEST=1 (test env only) to run
+    TTL snippet for fct_cost_actor_daily: TTL day_utc + toIntervalDay(90)
+  ok   fct_cost_actor_daily has actor_id and physical TTL <= 90 DAY (90 DAY, compliant)
+    TTL snippet for fct_cost_chargeback_actor_daily: TTL day_utc + toIntervalDay(90)
+  ok   fct_cost_chargeback_actor_daily has actor_id and physical TTL <= 90 DAY (90 DAY, compliant)
+  ok   fct_cost_chargeback_daily (permanent, no TTL in DDL) has no actor_id column (privacy by design)
+  ok   fct_cost_daily (permanent, no TTL in DDL) has no actor_id column (privacy by design)
+  skip actor TTL test: set OTERU_HOT_TTL_TEST=1 (test env only) to run
+  skip empty-table incremental test: set OTERU_HOT_TTL_TEST=1 (test env only) to run
+
+check-cost-retention: OK — aggregates have no TTL, raw TTL intact, lookback < TTL.
+exit=0
