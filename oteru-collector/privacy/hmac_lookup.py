@@ -41,7 +41,8 @@ def _stdin_email() -> str:
     return text
 
 
-def main() -> int:
+def main(_argv: list[str] | None = None) -> int:
+    # Email is never taken from argv (shell history). Extra args are ignored.
     raw = os.environ.get(HMAC_KEY_ENV)
     if raw is None or raw == "" or len(raw.encode()) < MIN_KEY_BYTES:
         return 1

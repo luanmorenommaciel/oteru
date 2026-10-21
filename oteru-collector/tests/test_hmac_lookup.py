@@ -7,8 +7,11 @@ import hmac
 import importlib.util
 import io
 import logging
+import os
 import re
 import secrets
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -82,12 +85,28 @@ def test_fail_closed_missing_empty_or_short_key(monkeypatch, caplog, capsys, key
         assert key not in out + err + logs
 
 
-def test_email_and_key_absent_from_exceptions(monkeypatch, caplog, capsys):
+def test_subprocess_ignores_argv_and_reads_email_from_stdin():
     key = secrets.token_hex(32)
-    email = "leaky@example.com"
-    try:
-        _run(monkeypatch, key, email + "\n", caplog, capsys)
-    except Exception as exc:  # noqa: BLE001 — leak check
-        text = f"{type(exc).__name__}:{exc}"
-        assert email not in text
-        assert key not in text
+    stdin_email = "stdin@example.com"
+    argv_email = "argv@example.com"
+    script = Path(__file__).resolve().parents[1] / "privacy" / "hmac_lookup.py"
+    env = os.environ.copy()
+    env["OTERU_PII_HMAC_KEY"] = key
+    result = subprocess.run(
+        [sys.executable, str(script), argv_email],
+        input=stdin_email + "\n",
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    expected = lookup.actor_id(stdin_email, key.encode())
+    argv_digest = lookup.actor_id(argv_email, key.encode())
+    assert result.returncode == 0
+    assert result.stdout.strip() == expected
+    assert result.stdout.strip() != argv_digest
+    blob = result.stdout + result.stderr
+    assert stdin_email not in blob
+    assert argv_email not in blob
+    assert key not in blob
+    assert result.stderr == ""

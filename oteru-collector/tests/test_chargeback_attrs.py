@@ -93,6 +93,8 @@ def test_absent_attribute_stays_absent_for_unassigned():
     out = _sanitize(payload)
     assert "oteru.team" not in _keys(out)
     assert "oteru.project" not in _keys(out)
+    assert _costs(out) == (1, 900)
+    assert out["resourceLogs"][0]["scopeLogs"][0]["logRecords"]
     # Downstream COALESCE to the literal unassigned bucket (Modelo dbt).
 
 
@@ -106,6 +108,22 @@ def test_invalid_team_matches_send_without_the_attribute():
     sanitized_without = _sanitize(without)
     assert _costs(sanitized_invalid) == _costs(sanitized_without) == (1, 123450)
     assert _keys(sanitized_invalid) == _keys(sanitized_without)
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["Platform", "", "a" * 64, "team\n", "café"],
+    ids=["uppercase", "empty", "64-chars", "newline", "unicode"],
+)
+def test_rejected_slugs_drop_only_the_attribute(value):
+    payload = _payload(
+        _resource_attrs(("oteru.team", value), ("service.name", "claude-code")),
+        100,
+    )
+    out = _sanitize(payload)
+    assert "oteru.team" not in _keys(out)
+    assert "service.name" in _keys(out)
+    assert _costs(out) == (1, 100)
 
 
 def test_compile_emits_slug_drop_not_hash_for_chargeback_keys():

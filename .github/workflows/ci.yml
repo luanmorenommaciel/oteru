@@ -118,6 +118,6 @@ jobs:
           python -m ruff format --check oteru-collector/privacy oteru-collector/tests scripts/apply_privacy.py
           bash -n scripts/check_signals_e2e.sh
       - name: Check static policy and topology
-        run: python -m pytest oteru-collector/tests/test_policy.py oteru-collector/tests/test_configs.py
+        run: python -m pytest oteru-collector/tests/test_policy.py oteru-collector/tests/test_configs.py oteru-collector/tests/test_chargeback_attrs.py oteru-collector/tests/test_hmac_lookup.py
       - name: Exercise isolated Collector, ClickHouse and OTLP forwarding
         run: python -m pytest oteru-collector/tests/test_runtime.py
