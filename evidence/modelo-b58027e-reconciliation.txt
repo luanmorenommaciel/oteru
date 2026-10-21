@@ -1,0 +1,21 @@
+tested_sha: b58027e614ff458af9ba7bf36b1ddfd11cd6021b
+utc: 2026-10-21T15:06:59Z
+clickhouse: 26.11.1.333
+-----
+== cenário padrão (claude-code mapeado → plataforma)
+   ┌────day_utc─┬─chargeback_micros─┬─daily_micros─┬─diff_micros─┬─chargeback_requests─┬─daily_requests─┐
+1. │ 2026-10-19 │            531950 │       531950 │           0 │                   6 │              6 │
+2. │ 2026-10-20 │            151000 │       151000 │           0 │                   2 │              2 │
+   └────────────┴───────────────────┴──────────────┴─────────────┴─────────────────────┴────────────────┘
+   ┌─t─────┬─chargeback─┬──daily─┬─diff─┐
+1. │ TOTAL │     682950 │ 682950 │    0 │
+   └───────┴────────────┴────────┴──────┘
+   ┌────day_utc─┬─team───────┬─project─┬─owner_team─┬─attribution_source─┬─cost_usd_micros─┬─requests─┐
+1. │ 2026-10-19 │ plataforma │ oteru   │ plataforma │ service_map        │          531950 │        6 │
+2. │ 2026-10-20 │ plataforma │ oteru   │ plataforma │ service_map        │          151000 │        2 │
+   └────────────┴────────────┴─────────┴────────────┴────────────────────┴─────────────────┴──────────┘
+   ┌────day_utc─┬─team───────┬─project─┬─actor_id─────────────────────────────────────────────────────────────────┬─cost_usd_micros─┬─requests─┐
+1. │ 2026-10-19 │ plataforma │ oteru   │ hmac:v1:c71cc8fe3782f8d0510586af964334b6930f817fc79bfb460c764f6be9f5d598 │          251500 │        2 │
+2. │ 2026-10-19 │ plataforma │ oteru   │ hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14 │          280450 │        4 │
+3. │ 2026-10-20 │ plataforma │ oteru   │ hmac:v1:dd5cefde2a9c1825d42de9ac8af71a5a17d816f89e8cfa5318513a245ca3ad14 │          151000 │        2 │
+   └────────────┴────────────┴─────────┴──────────────────────────────────────────────────────────────────────────┴─────────────────┴──────────┘

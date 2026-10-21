@@ -25,6 +25,9 @@ CH = [str(ROOT / "clickhouse"), "client"] if (ROOT / "clickhouse").exists() else
 
 
 def pseudonymize(email: str) -> str:
+    # Unkeyed sha256 over the synthetic email user@example.com; test fixture only.
+    # Not a real HMAC and never leaves the collector (the collector uses
+    # HMAC-SHA256 with OTERU_PII_HMAC_KEY).
     digest = hashlib.sha256(f"oteru-pii:v1|user.email|{email}".encode()).hexdigest()
     return f"hmac:v1:{digest}"
 

@@ -29,6 +29,10 @@ batch per line) and **re-sends it to the collector**:
   consistently, so the capture can be re-sent N times without the backend
   deduplicating it. The **principal identity** (`user.email`,
   `organization.id`, ...) is preserved.
+- **Chargeback resource attributes (#46).** `oteru.team` and `oteru.project`
+  are read from `OTEL_RESOURCE_ATTRIBUTES` (standard `key=value,key=value`
+  list) and emitted on every resource. The collector allowlists slug values
+  `^[a-z0-9][a-z0-9-]{0,62}$` and drops only an invalid attribute.
 
 ## Step by step (from scratch)
 

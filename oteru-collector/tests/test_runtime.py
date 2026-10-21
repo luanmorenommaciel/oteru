@@ -1187,3 +1187,71 @@ def test_policy_activation_replaces_valid_policy_and_stops_on_invalid(tmp_path, 
     finally:
         OUTPUT_CONTAINERS.pop(stack / "telemetry/telemetry.json", None)
         docker(*compose, "down", "-v", "--remove-orphans", check=False)
+
+
+def _chargeback_cost_log(team: str | None, cost: int) -> dict:
+    resource_attrs = [{"key": "service.name", "value": {"stringValue": "claude-code"}}]
+    if team is not None:
+        resource_attrs.append({"key": "oteru.team", "value": {"stringValue": team}})
+    now = str(time.time_ns())
+    return {
+        "resourceLogs": [
+            {
+                "resource": {"attributes": resource_attrs},
+                "scopeLogs": [
+                    {
+                        "scope": {"name": "chargeback-test"},
+                        "logRecords": [
+                            {
+                                "timeUnixNano": now,
+                                "body": {"stringValue": "api.request"},
+                                "attributes": [
+                                    {
+                                        "key": "cost_usd_micros",
+                                        "value": {"intValue": str(cost)},
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+
+def _envelope_cost(env: dict) -> tuple[int, int]:
+    count = 0
+    total = 0
+    for scope in env.get("scopeLogs", []):
+        for rec in scope.get("logRecords", []):
+            count += 1
+            for attr in rec.get("attributes", []):
+                if attr.get("key") == "cost_usd_micros":
+                    value = attr.get("value") or {}
+                    total += int(value.get("intValue") or value.get("doubleValue") or 0)
+    return count, total
+
+
+def _resource_keys(env: dict) -> set[str]:
+    return {attr["key"] for attr in env.get("resource", {}).get("attributes", [])}
+
+
+def test_invalid_oteru_team_ottl_matches_send_without_attribute(tmp_path):
+    """Real Collector OTTL: invalid oteru.team (@) drops only the attr, keeps cost."""
+    cost = 123450
+    invalid = "not-an-email@example.com"
+    config = config_for("hash")
+    with collector(tmp_path, config) as instance:
+        send(instance, "logs", "http", _chargeback_cost_log(invalid, cost))
+        send(instance, "logs", "http", _chargeback_cost_log(None, cost))
+        batches = wait_records(instance[3], "logs", 2)
+        envelopes = [env for batch in batches for env in batch.get("resourceLogs", [])]
+        assert len(envelopes) == 2
+        costs = [_envelope_cost(env) for env in envelopes]
+        assert costs[0] == costs[1] == (1, cost)
+        for env in envelopes:
+            assert "oteru.team" not in _resource_keys(env)
+        dumped = json.dumps(batches)
+        assert invalid not in dumped
+        assert "@" not in dumped

@@ -1,0 +1,31 @@
+# Gitleaks config for oteru.
+#
+# Extends the default rule set shipped with the gitleaks CLI
+# (`useDefault = true`). Custom rules below are additive. Do not add a
+# top-level `[allowlist]` — that would skip default rules for matching
+# paths and weaken the existing secret scan.
+#
+# #46 task 3: chargeback seeds (`seeds/chargeback_*`, including
+# `seeds/chargeback_fixtures/`) must never contain '@' (no emails or
+# identifiers in the clear). Actor-key format is enforced by
+# scripts/check_chargeback_seeds.py, not by gitleaks (gitleaks is a
+# finder, not a positive validator). The path regex already matches
+# files under a directory named chargeback_*.
+
+title = "oteru"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "chargeback-seed-at"
+description = "Chargeback seeds (paths matching seeds/chargeback_*) must not contain '@'"
+regex = '''@'''
+path = '''(^|/)seeds/chargeback_[^/]*'''
+
+# Rule-scoped, exact-path only. Does not weaken default rules on this file.
+[rules.allowlist]
+description = """Documented fake-email fixture (RFC 2606 .invalid) used only to prove chargeback-seed-at rejects '@'. Not a production seed. Exact path — do not glob."""
+paths = [
+  '''^tests/fixtures/chargeback_guard/at_forbidden\.csv$''',
+]

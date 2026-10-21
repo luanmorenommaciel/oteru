@@ -1,0 +1,263 @@
+# #46 fase 1 (Modelo). Contratos enforced; tipos conforme spec §4.
+version: 2
+models:
+- name: int_cost_attributed
+  description: '#46: 1 linha por dedup_key com time/projeto/owner_team e attribution_source (precedência otel_attr → service_map → actor_map → unassigned). View sobre int_api_request_dedup; contém actor_id
+    (pseudônimo).'
+  config:
+    materialized: view
+    contract:
+      enforced: true
+  columns:
+  - name: dedup_key
+    data_type: String
+    description: Chave de deduplicação (1 linha por chave)
+    data_tests:
+    - not_null
+    - unique
+  - name: event_ts
+    data_type: DateTime64(9)
+    description: Timestamp do evento
+    data_tests:
+    - not_null
+  - name: day_utc
+    data_type: Date
+    description: Dia UTC
+    data_tests:
+    - not_null
+  - name: actor_id
+    data_type: String
+    description: Pseudônimo hmac:v1:<64 hex> (dado pessoal; nunca e-mail)
+    data_tests:
+    - not_null
+  - name: service_name
+    data_type: String
+    description: service.name do recurso OTel
+    data_tests:
+    - not_null
+  - name: team
+    data_type: String
+    description: Time atribuído ou 'unassigned'
+    data_tests:
+    - not_null
+  - name: project
+    data_type: String
+    description: Projeto atribuído ou 'unassigned'
+    data_tests:
+    - not_null
+  - name: owner_team
+    data_type: String
+    description: Time responsável (nunca pessoa) ou 'unassigned'
+    data_tests:
+    - not_null
+  - name: attribution_source
+    data_type: LowCardinality(String)
+    description: Regra vencedora
+    data_tests:
+    - not_null
+    - &id001
+      accepted_values:
+        arguments:
+          values:
+          - otel_attr
+          - service_map
+          - actor_map
+          - unassigned
+  - name: cost_usd_micros
+    data_type: Int64
+    description: Custo total em micros de USD (soma exata)
+    data_tests:
+    - not_null
+  - name: input_tokens
+    data_type: Int64
+    description: Tokens de entrada
+    data_tests:
+    - not_null
+  - name: output_tokens
+    data_type: Int64
+    description: Tokens de saída
+    data_tests:
+    - not_null
+  - name: cache_read_tokens
+    data_type: Int64
+    description: Tokens lidos do cache
+    data_tests:
+    - not_null
+  - name: cache_creation_tokens
+    data_type: Int64
+    description: Tokens de criação de cache
+    data_tests:
+    - not_null
+- name: fct_cost_chargeback_daily
+  description: '#46: chargeback diário permanente (sem TTL, sem actor_id). Grão day_utc × team × project × owner_team × attribution_source. Custo de actor_map somado em ''unassigned''. Reconcilia exatamente
+    com fct_cost_daily por dia.'
+  config:
+    contract:
+      enforced: true
+    on_schema_change: fail
+  columns:
+  - name: day_utc
+    data_type: Date
+    description: Dia UTC
+    data_tests:
+    - not_null
+  - name: team
+    data_type: String
+    description: Time ou 'unassigned'
+    data_tests:
+    - not_null
+  - name: project
+    data_type: String
+    description: Projeto ou 'unassigned'
+    data_tests:
+    - not_null
+  - name: owner_team
+    data_type: String
+    description: Time responsável ou 'unassigned'
+    data_tests:
+    - not_null
+  - name: attribution_source
+    data_type: LowCardinality(String)
+    description: Regra vencedora; 'actor_map' nunca aparece aqui (somado em 'unassigned')
+    data_tests:
+    - not_null
+    - *id001
+  - name: cost_usd_micros
+    data_type: Int64
+    description: Custo total em micros de USD (soma exata)
+    data_tests:
+    - not_null
+  - name: cost_usd
+    data_type: Float64
+    description: cost_usd_micros / 1e6
+    data_tests:
+    - not_null
+  - name: requests
+    data_type: UInt64
+    description: Requests distintos (dedup_key)
+    data_tests:
+    - not_null
+  - name: input_tokens
+    data_type: Int64
+    description: Tokens de entrada
+    data_tests:
+    - not_null
+  - name: output_tokens
+    data_type: Int64
+    description: Tokens de saída
+    data_tests:
+    - not_null
+  - name: cache_read_tokens
+    data_type: Int64
+    description: Tokens lidos do cache
+    data_tests:
+    - not_null
+  - name: cache_creation_tokens
+    data_type: Int64
+    description: Tokens de criação de cache
+    data_tests:
+    - not_null
+- name: fct_cost_chargeback_actor_daily
+  description: '#46: chargeback por ator (pseudônimo), TTL day_utc + actor_cost_ttl_days (90). Grão day_utc × team × project × actor_id.'
+  config:
+    contract:
+      enforced: true
+    on_schema_change: fail
+  columns:
+  - name: day_utc
+    data_type: Date
+    description: Dia UTC
+    data_tests:
+    - not_null
+  - name: team
+    data_type: String
+    description: Time ou 'unassigned'
+    data_tests:
+    - not_null
+  - name: project
+    data_type: String
+    description: Projeto ou 'unassigned'
+    data_tests:
+    - not_null
+  - name: actor_id
+    data_type: String
+    description: Pseudônimo hmac:v1:<64 hex>
+    data_tests:
+    - not_null
+  - name: cost_usd_micros
+    data_type: Int64
+    description: Custo total em micros de USD (soma exata)
+    data_tests:
+    - not_null
+  - name: cost_usd
+    data_type: Float64
+    description: cost_usd_micros / 1e6
+    data_tests:
+    - not_null
+  - name: requests
+    data_type: UInt64
+    description: Requests distintos (dedup_key)
+    data_tests:
+    - not_null
+  - name: input_tokens
+    data_type: Int64
+    description: Tokens de entrada
+    data_tests:
+    - not_null
+  - name: output_tokens
+    data_type: Int64
+    description: Tokens de saída
+    data_tests:
+    - not_null
+  - name: cache_read_tokens
+    data_type: Int64
+    description: Tokens lidos do cache
+    data_tests:
+    - not_null
+  - name: cache_creation_tokens
+    data_type: Int64
+    description: Tokens de criação de cache
+    data_tests:
+    - not_null
+- name: audit_cost_runs_chargeback
+  description: '#46: métricas de chargeback por run (actor_map_hmac_version_mismatch_rows, unassigned_share_by_source). Companheira aditiva de otel.audit_cost_runs (join por run_id). Append-only.'
+  config:
+    contract:
+      enforced: true
+    on_schema_change: fail
+  columns:
+  - name: run_id
+    data_type: String
+    description: invocation_id do dbt (= audit_cost_runs.run_id)
+    data_tests:
+    - not_null
+  - name: run_completed_at
+    data_type: DateTime64(9, 'UTC')
+    description: Momento da gravação (UTC)
+    data_tests:
+    - not_null
+  - name: metric_name
+    data_type: LowCardinality(String)
+    description: Nome da métrica
+    data_tests:
+    - not_null
+    - accepted_values:
+        arguments:
+          values:
+          - actor_map_hmac_version_mismatch_rows
+          - unassigned_share_by_source
+  - name: day_utc
+    data_type: Date
+    description: Dia UTC a que a métrica se refere
+    data_tests:
+    - not_null
+  - name: attribution_source
+    data_type: LowCardinality(String)
+    description: Fonte (vazio para métricas sem fonte)
+    data_tests:
+    - not_null
+  - name: metric_value
+    data_type: Float64
+    description: Valor (contagem ou fração 0..1)
+    data_tests:
+    - not_null

@@ -1,0 +1,11 @@
+tested_sha: b0eadb85f929644211be169ffd35faa2f7f37821
+utc: 2026-10-21T15:21:52Z
+clickhouse: 26.11.1.333
+-----
+== run 1 (incremental)
+[0m15:21:56  Done. PASS=109 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=109
+totais run1 (daily | actor): 682950	8	2 | 682950	8	3
+== run 2 (incremental)
+[0m15:22:02  Done. PASS=109 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=109
+totais run2 (daily | actor): 682950	8	2 | 682950	8	3
+IDEMPOTENTE: PASS

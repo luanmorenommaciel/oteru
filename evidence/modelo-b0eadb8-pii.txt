@@ -1,0 +1,18 @@
+tested_sha: b0eadb85f929644211be169ffd35faa2f7f37821
+utc: 2026-10-21T15:22:46Z
+clickhouse: 26.11.1.333
+-----
+== '@' em colunas String dos novos objetos / regex actor_id
+   ┌─o───────────────────────────────┬─com_arroba─┬─fora_regex─┬─total─┐
+1. │ chargeback_actor_map            │          0 │          0 │     0 │
+2. │ fct_cost_chargeback_actor_daily │          0 │          0 │     3 │
+3. │ chargeback_service_map          │          0 │          0 │     1 │
+4. │ fct_cost_chargeback_daily       │          0 │          0 │     2 │
+5. │ int_cost_attributed             │          0 │          0 │     8 │
+   └─────────────────────────────────┴────────────┴────────────┴───────┘
+== grep '@' em seeds/chargeback*
+nenhum @ (PASS)
+== dbt test PII
+[0m15:22:48  1 of 2 PASS test_chargeback_no_pii ............................................. [[32mPASS[0m in 0.06s]
+[0m15:22:48  2 of 2 PASS test_no_pii ........................................................ [[32mPASS[0m in 0.01s]
+[0m15:22:48  Done. PASS=3 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=3
