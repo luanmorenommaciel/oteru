@@ -11,6 +11,10 @@ you are working in:
   Forges OTLP telemetry traffic (Phase 1: faithful replay of captured
   OTLP/JSON over HTTP `:4318` or gRPC `:4317`). See
   [`oteru-emitter/CLAUDE.md`](oteru-emitter/CLAUDE.md).
+- **`oteru-ingestor/`** — the POD-of-3 OTLP→ClickHouse ingestor (#3): one
+  `SPEC.md` + `schema.sql`, implementations in `python/` (#24), `go/` (#25),
+  `rust/` (#26), each built in Docker and held to `scripts/check_ingestor.sh`.
+  Never edit the suite to fit one implementation — fix the spec for all three.
 - **`oteru-collector/`** — OpenTelemetry Collector (contrib) sandbox via Docker
   Compose. Receives OTLP, prints to stdout (`debug`) and persists to
   `telemetry/telemetry.json` (`file`). See
@@ -37,6 +41,8 @@ make up-clickstack  # collector + forward to ClickStack (needs CLICKSTACK_ENDPOI
 make up-hyperdx # collector + ClickHouse + the local HyperDX UI on :8080 (no API key)
 make up-direct  # local ClickStack all-in-one + API-key bootstrap; `make ingest` replays into it
 make up-clickstack-local  # collector forwarding to a local ClickStack all-in-one
+make up-ingestor IMPL=python # one POD-of-3 ingestor (oteru-ingestor/, #24-#26) on :14318/:24318/:34318
+make ingestor-check IMPL=python # conformance suite every ingestor must pass (scripts/check_ingestor.sh)
 make demo       # up + 5 batches over HTTP + collector logs
 make clean      # removes build/test caches (keeps .venv)
 ```
