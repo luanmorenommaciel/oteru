@@ -14,6 +14,7 @@ import base64
 import gzip
 import json
 import logging
+import math
 import os
 import threading
 import time
@@ -40,8 +41,14 @@ PORT = int(os.environ.get("PORT", "4318"))
 SCHEMA = Path(os.environ.get("SCHEMA_PATH", Path(__file__).with_name("schema.sql")))
 
 SIGNALS = {
-    "/v1/logs": (logs_service_pb2.ExportLogsServiceRequest, logs_service_pb2.ExportLogsServiceResponse),
-    "/v1/traces": (trace_service_pb2.ExportTraceServiceRequest, trace_service_pb2.ExportTraceServiceResponse),
+    "/v1/logs": (
+        logs_service_pb2.ExportLogsServiceRequest,
+        logs_service_pb2.ExportLogsServiceResponse,
+    ),
+    "/v1/traces": (
+        trace_service_pb2.ExportTraceServiceRequest,
+        trace_service_pb2.ExportTraceServiceResponse,
+    ),
     "/v1/metrics": (
         metrics_service_pb2.ExportMetricsServiceRequest,
         metrics_service_pb2.ExportMetricsServiceResponse,
@@ -80,7 +87,9 @@ def clickhouse(sql: str, body: bytes | None = None) -> None:
 def apply_schema() -> None:
     statements = SCHEMA.read_text(encoding="utf-8").replace("{db}", DB).split("\n;\n")
     for statement in statements:
-        sql = "\n".join(ln for ln in statement.splitlines() if not ln.strip().startswith("--")).strip()
+        sql = "\n".join(
+            ln for ln in statement.splitlines() if not ln.strip().startswith("--")
+        ).strip()
         if sql:
             clickhouse(sql)
 
@@ -95,7 +104,7 @@ def insert(table: str, rows: list[dict]) -> None:
 
 
 def fmt_double(x: float) -> str:
-    if x != x or x in (float("inf"), float("-inf")):
+    if math.isnan(x) or x in (float("inf"), float("-inf")):
         return str(x)
     s = format(Decimal(repr(x)), "f")
     return s.rstrip("0").rstrip(".") if "." in s else s
@@ -182,8 +191,14 @@ def span_rows(req) -> list[dict]:
         res = attrs(rs.resource.attributes)
         for ss in rs.scope_spans:
             for sp in ss.spans:
-                kind = SPAN_KINDS[sp.kind] if 0 <= sp.kind < len(SPAN_KINDS) else "Unspecified"
-                code = STATUS_CODES[sp.status.code] if 0 <= sp.status.code < 3 else "Unset"
+                kind = (
+                    SPAN_KINDS[sp.kind]
+                    if 0 <= sp.kind < len(SPAN_KINDS)
+                    else "Unspecified"
+                )
+                code = (
+                    STATUS_CODES[sp.status.code] if 0 <= sp.status.code < 3 else "Unset"
+                )
                 rows.append(
                     {
                         "Timestamp": ts(sp.start_time_unix_nano),
@@ -198,7 +213,9 @@ def span_rows(req) -> list[dict]:
                         "ScopeName": ss.scope.name,
                         "ScopeVersion": ss.scope.version,
                         "SpanAttributes": attrs(sp.attributes),
-                        "Duration": max(sp.end_time_unix_nano - sp.start_time_unix_nano, 0),
+                        "Duration": max(
+                            sp.end_time_unix_nano - sp.start_time_unix_nano, 0
+                        ),
                         "StatusCode": code,
                         "StatusMessage": sp.status.message,
                     }
@@ -225,7 +242,11 @@ def metric_rows(req) -> tuple[list[dict], list[dict], int, set[str]]:
                 if kind in ("sum", "gauge"):
                     data = getattr(m, kind)
                     for p in data.data_points:
-                        value = p.as_int if p.WhichOneof("value") == "as_int" else p.as_double
+                        value = (
+                            p.as_int
+                            if p.WhichOneof("value") == "as_int"
+                            else p.as_double
+                        )
                         row = dict(
                             base,
                             Attributes=attrs(p.attributes),
@@ -234,7 +255,9 @@ def metric_rows(req) -> tuple[list[dict], list[dict], int, set[str]]:
                             Value=float(value),
                         )
                         if kind == "sum":
-                            row["AggregationTemporality"] = int(data.aggregation_temporality)
+                            row["AggregationTemporality"] = int(
+                                data.aggregation_temporality
+                            )
                             row["IsMonotonic"] = data.is_monotonic
                             sums.append(row)
                         else:
@@ -303,7 +326,9 @@ class Handler(BaseHTTPRequestHandler):
             req = request_cls()
             if ctype == "application/json":
                 if raw.strip():
-                    json_format.ParseDict(hex_to_b64(json.loads(raw)), req, ignore_unknown_fields=True)
+                    json_format.ParseDict(
+                        hex_to_b64(json.loads(raw)), req, ignore_unknown_fields=True
+                    )
             else:
                 req.ParseFromString(raw)
         except (DecodeError, json_format.ParseError, ValueError, OSError) as exc:
@@ -349,7 +374,9 @@ def bootstrap() -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(message)s")
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(message)s"
+    )
     threading.Thread(target=bootstrap, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     log.info("oteru-ingestor (python) listening on :%d -> %s.*", PORT, DB)
