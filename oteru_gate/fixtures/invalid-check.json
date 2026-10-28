@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "run_id": "human-gate-invalid-check",
+  "cases": [
+    {
+      "case_id": "invalid-check",
+      "now": "2026-10-13T00:00:00+00:00",
+      "entry": {
+        "request": {
+          "schema_version": 1,
+          "request_id": "request-invalid-check",
+          "action_id": "action-invalid-check",
+          "revision": 1,
+          "requester_subject": "requester-demo",
+          "operation": "modify",
+          "resource_ref": "resource-demo",
+          "environment": "sandbox",
+          "impact_scope": "limited",
+          "reversible": true,
+          "sensitive_data": false,
+          "privilege_change": false,
+          "parameters": {
+            "scenario": "invalid-check"
+          },
+          "created_at": "2026-10-13T00:00:00+00:00"
+        },
+        "checks": [
+          {
+            "check_id": "inventory",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-inventory"
+            ]
+          },
+          {
+            "check_id": "permission",
+            "status": "invalid",
+            "evidence_refs": [
+              "evidence-permission"
+            ]
+          },
+          {
+            "check_id": "anomaly",
+            "status": "pass",
+            "evidence_refs": [
+              "evidence-anomaly"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
