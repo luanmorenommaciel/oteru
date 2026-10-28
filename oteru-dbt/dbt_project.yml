@@ -17,6 +17,11 @@ clean-targets:
 vars:
   cost_lookback_hours: 48
   actor_cost_ttl_days: 90
+  # #48 budget: is_stale quando as_of_ts > N horas (fail-open); hourly = fase 2
+  budget_stale_hours_daily: 26
+  budget_stale_hours_hourly: 2
+  # #48 S5: definer da view budget_status_current (usuário criado fora do dbt, §7.1)
+  budget_view_definer: oteru_budget_view_definer
 
 models:
   oteru_dbt:
@@ -37,3 +42,4 @@ seeds:
     
 on-run-end:
   - "{{ log_run_audit() }}"
+  - "{{ log_budget_audit(results) }}"

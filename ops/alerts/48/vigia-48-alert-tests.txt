@@ -1,0 +1,29 @@
+PASS a1_ok (linhas=0) 
+PASS a1_dispara_warn (linhas=1) team	a	warn	team|a|warn|2026-10-21
+PASS a1_dispara_breach (linhas=1) project	p	breach	project|p|breach|2026-10-21
+PASS a1_no_budget_ignora (linhas=0) 
+PASS a1_quatro_escopos (linhas=4) global	global	breach	global|global|breach|2026-10-21
+project	p	warn	project|p|warn|2026-10-21
+team	a	warn	team|a|warn|2026-10-21
+team_project	a/p	breach	team_project|a/p|breach|2026-10-21
+PASS a1_stale_ainda_dispara (linhas=1) team	a	breach	team|a|breach|2026-10-21
+PASS a1_periodo_anterior_nao_dispara (linhas=0) 
+PASS a1_seq1_warn (linhas=1) team	a	warn	team|a|warn|2026-10-21
+PASS a1_seq2_ok_resolve (linhas=0) 
+PASS a1_seq3_warn_reabre (linhas=1) team	a	warn	team|a|warn|2026-10-21
+PASS a1_dedup_key (team|a|warn|2026-10-01 = mesmo period_start mesmo com as_of_ts em outro mês; team|a|breach|2026-10-01 = status novo; team|a|warn|2026-11-01 = period_start novo)
+PASS a2_ok (linhas=0) 
+PASS a2_dispara (linhas=1) global	global	warn	1
+PASS a3_ok (linhas=0) 
+PASS a3_dispara (linhas=1) budget_run_missing	0
+PASS a3_limite (linhas=0) 
+PASS a3_tabela_vazia (linhas=1) budget_run_missing	0
+PASS a3_so_run_error (linhas=1) budget_run_missing	0
+PASS a3_error_recente_success_antigo (linhas=1) budget_run_missing	0
+PASS a3_tipo_utc (linhas=0) 
+PASS a4_ok (linhas=0) 
+PASS a4_dispara (linhas=1) events_dropped_late	2026-10-20	2	3
+PASS a4_ignora_run_falho (linhas=0) 
+PASS a4_ignora_dia_corrente (linhas=0) 
+TODOS OS TESTES PASSARAM
+clickhouse-local ClickHouse local version 26.11.1.421 (official build).; base 6ce94b23ba0fe732f44e5ca80f3f270ccdd6285f (origin/feat/48-budget-cap)

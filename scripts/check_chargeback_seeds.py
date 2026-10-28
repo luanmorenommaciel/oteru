@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Chargeback seed guard (#46): no '@' in seeds/chargeback_*; actor keys hmac:v1.
+"""Chargeback + budgets seed guard (#46 / #48).
 
 Fails if any **git-tracked** file matching ``**/seeds/chargeback_*`` contains
 ``@`` — including files under ``seeds/chargeback_fixtures/``. Non-CSV files
@@ -7,8 +7,17 @@ in that glob are a reported violation (no traceback). Actor keys:
 ``hmac:vN:`` (``^hmac:v[0-9]+:[0-9a-f]{64}$``) is allowed **only** under
 ``seeds/chargeback_fixtures/``; every other ``seeds/chargeback_*`` CSV with
 an ``actor_id`` column must match ``^hmac:v1:[0-9a-f]{64}$``. Header-only
-files and an empty glob pass. Stdlib-only. Ignored/untracked trees such as
-``oteru-dbt/target/`` are never scanned (``git ls-files``).
+files and an empty glob pass.
+
+Also scans tracked ``**/seeds/budgets.csv`` (#48): ``@`` and ``*`` forbidden
+in any column; slug ``^[a-z0-9][a-z0-9-]{0,62}$`` only on non-empty
+``team``/``project``; ``scope`` ∈ {global, team, project, team_project} with
+``scope_key`` consistent (global→'global', team→team, project→project,
+team_project→'team/project'); ``action_on_breach`` must be ``alert``
+(``block`` rejected). Does not loosen HMAC allowlists.
+
+Stdlib-only. Ignored/untracked trees such as ``oteru-dbt/target/`` are
+never scanned (``git ls-files``).
 
 The RFC 2606 ``.invalid`` fixture lives only at the exact path
 ``tests/fixtures/chargeback_guard/at_forbidden.csv`` (documented there and
@@ -37,6 +46,10 @@ ACTOR_ID_COLUMN = "actor_id"
 HMAC_RE = re.compile(r"^hmac:v1:[0-9a-f]{64}$")
 # dbt fixtures may include hmac:v2: to prove rotation is not silent (#46 3a).
 HMAC_FIXTURE_RE = re.compile(r"^hmac:v[0-9]+:[0-9a-f]{64}$")
+BUDGETS_FILENAME = "budgets.csv"
+BUDGET_SCOPES = frozenset({"global", "team", "project", "team_project"})
+# Identical to CHARGEBACK_SLUG in oteru-collector/privacy/compile.py.
+BUDGET_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 # Directories that are never production seeds (local venvs, deps, git).
 _SKIP_DIR_NAMES = frozenset(
@@ -66,6 +79,27 @@ def _is_chargeback_seed_path(path: Path, root: Path) -> bool:
         return False
     rest = parts[seeds_idxs[-1] + 1 :]
     return bool(rest) and rest[0].startswith(SEED_PREFIX)
+
+
+def _is_budgets_seed_path(path: Path, root: Path) -> bool:
+    """True for ``**/seeds/budgets.csv`` (not chargeback_*)."""
+    parts = _rel_parts(path, root)
+    if path.name != BUDGETS_FILENAME:
+        return False
+    return SEED_DIR_NAME in parts
+
+
+def expected_budget_scope_key(scope: str, team: str, project: str) -> str:
+    """scope_key rule from spec §7.3 / §3.1."""
+    if scope == "global":
+        return "global"
+    if scope == "team":
+        return team
+    if scope == "project":
+        return project
+    if scope == "team_project":
+        return f"{team}/{project}"
+    return ""
 
 
 def _under_chargeback_fixtures(path: Path, root: Path) -> bool:
@@ -126,6 +160,24 @@ def iter_chargeback_seeds(root: Path) -> list[Path]:
         for name in filenames:
             path = Path(dirpath) / name
             if _is_chargeback_seed_path(path, root):
+                found.append(path)
+    return sorted(found)
+
+
+def iter_budget_seeds(root: Path) -> list[Path]:
+    """Tracked ``**/seeds/budgets.csv`` files."""
+    root = root.resolve()
+    tracked = _git_ls_files(root)
+    if tracked is not None:
+        return sorted(
+            p for p in tracked if p.is_file() and _is_budgets_seed_path(p, root)
+        )
+    found: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIR_NAMES]
+        for name in filenames:
+            path = Path(dirpath) / name
+            if _is_budgets_seed_path(path, root):
                 found.append(path)
     return sorted(found)
 
@@ -200,8 +252,75 @@ def check_file(path: Path, rel: str, root: Path) -> list[str]:
     return violations
 
 
+def check_budgets_file(path: Path, rel: str) -> list[str]:
+    """Return violation strings for one ``seeds/budgets.csv``."""
+    violations: list[str] = []
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        return [f"{rel}: binary/non-utf8 budgets seed — refuse to scan as text"]
+
+    for lineno, line in enumerate(text.splitlines(), 1):
+        if "@" in line:
+            violations.append(f"{rel}:{lineno}: '@' is forbidden in budgets seeds")
+        if "*" in line:
+            violations.append(f"{rel}:{lineno}: '*' is forbidden in budgets seeds")
+
+    if path.suffix.lower() != ".csv":
+        suffix = path.suffix or "no suffix"
+        violations.append(f"{rel}: budgets seed must be a .csv file (got {suffix})")
+        return violations
+
+    try:
+        fieldnames, rows = _csv_rows(text)
+        if not fieldnames:
+            return violations
+        for lineno, row in rows:
+            scope = (row or {}).get("scope", "")
+            team = (row or {}).get("team", "")
+            project = (row or {}).get("project", "")
+            action = (row or {}).get("action_on_breach", "")
+            scope_key = (row or {}).get("scope_key", "")
+            if scope not in BUDGET_SCOPES:
+                violations.append(
+                    f"{rel}:{lineno}: scope {scope!r} is not one of "
+                    f"{sorted(BUDGET_SCOPES)}"
+                )
+            if team and not BUDGET_SLUG_RE.fullmatch(team):
+                violations.append(
+                    f"{rel}:{lineno}: team {team!r} does not match {BUDGET_SLUG_RE.pattern}"
+                )
+            if project and not BUDGET_SLUG_RE.fullmatch(project):
+                violations.append(
+                    f"{rel}:{lineno}: project {project!r} does not match "
+                    f"{BUDGET_SLUG_RE.pattern}"
+                )
+            expected = expected_budget_scope_key(scope, team, project)
+            if scope in BUDGET_SCOPES:
+                coherent = (
+                    (scope == "global" and team == "" and project == "")
+                    or (scope == "team" and team != "" and project == "")
+                    or (scope == "project" and team == "" and project != "")
+                    or (scope == "team_project" and team != "" and project != "")
+                )
+                if not coherent or (scope_key and scope_key != expected):
+                    violations.append(
+                        f"{rel}:{lineno}: scope_key inconsistent with scope "
+                        f"(expected {expected!r})"
+                    )
+            if action != "alert":
+                violations.append(
+                    f"{rel}:{lineno}: action_on_breach must be 'alert' (got {action!r})"
+                )
+    except AttributeError as exc:
+        violations.append(
+            f"{rel}: cannot scan budgets seed ({type(exc).__name__}: {exc})"
+        )
+    return violations
+
+
 def check_tree(root: Path) -> list[str]:
-    """Scan ``root`` for chargeback seeds; empty glob is OK."""
+    """Scan ``root`` for chargeback and budgets seeds; empty glob is OK."""
     violations: list[str] = []
     root = root.resolve()
     for path in iter_chargeback_seeds(root):
@@ -210,6 +329,12 @@ def check_tree(root: Path) -> list[str]:
         except ValueError:
             rel = str(path)
         violations.extend(check_file(path, rel, root))
+    for path in iter_budget_seeds(root):
+        try:
+            rel = str(path.relative_to(root))
+        except ValueError:
+            rel = str(path)
+        violations.extend(check_budgets_file(path, rel))
     return violations
 
 
@@ -227,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"chargeback-seed-guard: not a directory: {root}", file=sys.stderr)
         return 2
 
-    files = iter_chargeback_seeds(root)
+    files = iter_chargeback_seeds(root) + iter_budget_seeds(root)
     violations = check_tree(root)
     for violation in violations:
         print(violation)

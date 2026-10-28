@@ -86,6 +86,113 @@ class ChargebackSeedGuardTests(unittest.TestCase):
         self.assertEqual(
             self.guard.HMAC_FIXTURE_RE.pattern, r"^hmac:v[0-9]+:[0-9a-f]{64}$"
         )
+        self.assertEqual(
+            self.guard.BUDGET_SLUG_RE.pattern, r"^[a-z0-9][a-z0-9-]{0,62}$"
+        )
+
+    def _write_budgets(self, root: Path, row: str) -> None:
+        dest = root / "seeds"
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "budgets.csv").write_text(
+            "scope,team,project,period,budget_usd_micros,warn_milli,"
+            "breach_milli,action_on_breach,valid_from,valid_to,owner_team\n"
+            f"{row}\n",
+            encoding="utf-8",
+        )
+
+    def test_budgets_valid_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_budgets(
+                root,
+                "global,,,month,5000000,800,1000,alert,2026-10-01,,plataforma",
+            )
+            extra = root / "seeds" / "budgets.csv"
+            extra.write_text(
+                extra.read_text(encoding="utf-8")
+                + "team,plataforma,,month,600000,800,1000,alert,2026-10-01,,plataforma\n"
+                + "project,,oteru,month,2000000,800,1000,alert,2026-10-01,,plataforma\n"
+                + "team_project,plataforma,oteru,month,800000,800,1000,alert,"
+                "2026-10-01,,plataforma\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(self.guard.check_tree(root), [])
+            self.assertEqual(self.guard.main(["--path", str(root)]), 0)
+
+    def test_budgets_at_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_budgets(
+                root,
+                "team,bad@team,,month,1,800,1000,alert,2026-10-01,,plataforma",
+            )
+            violations = self.guard.check_tree(root)
+            self.assertTrue(
+                any("'@' is forbidden" in v for v in violations), violations
+            )
+            self.assertEqual(self.guard.main(["--path", str(root)]), 1)
+
+    def test_budgets_star_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_budgets(
+                root,
+                "team,plataforma,,month,1,800,1000,alert,2026-10-01,,*",
+            )
+            violations = self.guard.check_tree(root)
+            self.assertTrue(
+                any("'*' is forbidden" in v for v in violations), violations
+            )
+            self.assertEqual(self.guard.main(["--path", str(root)]), 1)
+
+    def test_budgets_bad_scope_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_budgets(
+                root,
+                "org,plataforma,,month,1,800,1000,alert,2026-10-01,,plataforma",
+            )
+            violations = self.guard.check_tree(root)
+            self.assertTrue(any("scope " in v for v in violations), violations)
+            self.assertEqual(self.guard.main(["--path", str(root)]), 1)
+
+    def test_budgets_bad_slug_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_budgets(
+                root,
+                "team,Plataforma,,month,1,800,1000,alert,2026-10-01,,plataforma",
+            )
+            violations = self.guard.check_tree(root)
+            self.assertTrue(any("does not match" in v for v in violations), violations)
+            self.assertEqual(self.guard.main(["--path", str(root)]), 1)
+
+    def test_budgets_scope_key_inconsistent_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_budgets(
+                root,
+                "global,plataforma,,month,1,800,1000,alert,2026-10-01,,plataforma",
+            )
+            violations = self.guard.check_tree(root)
+            self.assertTrue(
+                any("scope_key inconsistent" in v for v in violations), violations
+            )
+            self.assertEqual(self.guard.main(["--path", str(root)]), 1)
+
+    def test_budgets_block_action_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_budgets(
+                root,
+                "global,,,month,1,800,1000,block,2026-10-01,,plataforma",
+            )
+            violations = self.guard.check_tree(root)
+            self.assertTrue(
+                any("action_on_breach must be 'alert'" in v for v in violations),
+                violations,
+            )
+            self.assertEqual(self.guard.main(["--path", str(root)]), 1)
 
     def test_header_only_actor_map_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

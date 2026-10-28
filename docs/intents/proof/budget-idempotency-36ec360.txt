@@ -1,0 +1,14 @@
+tested_sha: 36ec3608c7eed47d4330f617579ea5af7d9ede99
+utc: 2026-10-21T21:37:27Z
+clickhouse: 26.11.1.333 tz=UTC
+-----
+== run 1 (incremental)
+21:37:33  Budget audit recorded in audit_budget_runs (run_status=success)
+21:37:33  Done. PASS=163 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=163
+fct (count, hash): 8	16128040044604569579 | view: 4	6210659623384935402
+== run 2 (incremental)
+21:37:41  Budget audit recorded in audit_budget_runs (run_status=success)
+21:37:41  Done. PASS=163 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=163
+fct (count, hash): 8	16128040044604569579 | view: 4	6210659623384935402
+(loaded_at fora do hash; audit_budget_runs é append por run por desenho)
+IDEMPOTENTE: PASS
