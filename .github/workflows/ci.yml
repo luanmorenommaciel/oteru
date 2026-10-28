@@ -69,9 +69,9 @@ jobs:
       - name: Install (editable + dev)
         run: pip install -e ".[dev]"
       - name: Lint (ruff check)
-        run: ruff check . ../scripts/check_pii.py ../scripts/check_risk_e2e.py
+        run: ruff check . ../scripts/check_pii.py ../scripts/check_risk_e2e.py ../scripts/check_risk_tool_rate_e2e.py
       - name: Formatting (ruff format --check)
-        run: ruff format --check . ../scripts/check_pii.py ../scripts/check_risk_e2e.py
+        run: ruff format --check . ../scripts/check_pii.py ../scripts/check_risk_e2e.py ../scripts/check_risk_tool_rate_e2e.py
       - name: Tests
         run: pytest
       - name: Hook bridge (lint + tests)
