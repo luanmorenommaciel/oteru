@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals test-risk lint-risk demo-risk-permission e2e-risk up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -48,10 +48,27 @@ test: ## run the emitter's and the hook bridge's pytest suites
 test-hooks: ## run the hook bridge tests (oteru-hooks/, #90)
 	cd $(EMITTER) && $(VENV_PY) -m pytest ../oteru-hooks/tests
 
+test-risk: ## run the operational-risk contract tests
+	cd $(EMITTER) && $(VENV_PY) -m pytest tests/test_risk.py
+
 lint: ## ruff check + formatting check
 	cd $(EMITTER) && $(VENV_PY) -m ruff check oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff format --check oteru_emitter tests
+	cd $(EMITTER) && $(VENV_PY) -m ruff check ../scripts/check_pii.py ../scripts/check_risk_e2e.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff format --check ../scripts/check_pii.py ../scripts/check_risk_e2e.py
 	cd $(EMITTER) && $(VENV_PY) -m ruff check ../oteru-hooks && $(VENV_PY) -m ruff format --check ../oteru-hooks
+
+lint-risk: ## lint the operational-risk evaluator and tests
+	cd $(EMITTER) && $(VENV_PY) -m ruff check oteru_emitter/risk tests/test_risk.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff format --check oteru_emitter/risk tests/test_risk.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff check ../scripts/check_risk_e2e.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff format --check ../scripts/check_risk_e2e.py
+
+demo-risk-permission: ## project synthetic Claude events and evaluate permission risk offline
+	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.risk.demo
+
+e2e-risk: ## send risk logs to an isolated collector and ClickHouse
+	$(VENV)/$(BINDIR)/python scripts/check_risk_e2e.py
 
 format: ## apply ruff format + autofixes
 	cd $(EMITTER) && $(VENV_PY) -m ruff check --fix oteru_emitter tests
