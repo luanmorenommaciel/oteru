@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals privacy-config-check e2e-privacy demo-privacy apply-privacy up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals privacy-config-check e2e-privacy demo-privacy apply-privacy up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -42,21 +42,27 @@ setup: ## create the venv, install the emitter (editable + dev) and enable the P
 	git config core.hooksPath .githooks
 	@echo "setup OK — pre-commit hook (PII guard) enabled."
 
-test: ## run emitter tests and static Collector privacy contracts
+test: ## run emitter, hook bridge and static Collector privacy tests
 	cd $(EMITTER) && $(VENV_PY) -m pytest
+	$(MAKE) --no-print-directory test-hooks
 	$(VENV)/$(BINDIR)/python -m pytest $(COLLECTOR)/tests/test_policy.py $(COLLECTOR)/tests/test_configs.py
+
+test-hooks: ## run the hook bridge tests (oteru-hooks/, #90)
+	cd $(EMITTER) && $(VENV_PY) -m pytest ../oteru-hooks/tests
 
 lint: ## ruff check + formatting check
 	cd $(EMITTER) && $(VENV_PY) -m ruff check oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff format --check oteru_emitter tests
 	$(VENV)/$(BINDIR)/python -m ruff check $(COLLECTOR)/privacy $(COLLECTOR)/tests scripts/apply_privacy.py
 	$(VENV)/$(BINDIR)/python -m ruff format --check $(COLLECTOR)/privacy $(COLLECTOR)/tests scripts/apply_privacy.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff check ../oteru-hooks && $(VENV_PY) -m ruff format --check ../oteru-hooks
 
 format: ## apply ruff format + autofixes
 	cd $(EMITTER) && $(VENV_PY) -m ruff check --fix oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff format oteru_emitter tests
 	$(VENV)/$(BINDIR)/python -m ruff check --fix $(COLLECTOR)/privacy $(COLLECTOR)/tests scripts/apply_privacy.py
 	$(VENV)/$(BINDIR)/python -m ruff format $(COLLECTOR)/privacy $(COLLECTOR)/tests scripts/apply_privacy.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff check --fix ../oteru-hooks && $(VENV_PY) -m ruff format ../oteru-hooks
 
 dry-run: ## validate the sample without network (smoke test)
 	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.cli replay $(SAMPLE) --dry-run
@@ -113,6 +119,18 @@ up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK
 
 up-clickhouse: ## start the collector + a self-contained ClickHouse backend (native clickhouse exporter)
 	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml up -d
+
+INGEST_COMPOSE := -f docker-compose.yml -f docker-compose.clickhouse.yml -f docker-compose.ingestor.yml
+IMPL ?= python
+
+up-ingestor: ## build + start one ingestor (IMPL=python|go|rust) next to the collector + ClickHouse
+	cd $(COLLECTOR) && docker compose $(INGEST_COMPOSE) --profile $(IMPL) up -d --build
+
+down-ingestor: ## stop the ingestor stack (keeps the ClickHouse volume)
+	cd $(COLLECTOR) && docker compose $(INGEST_COMPOSE) --profile python --profile go --profile rust down
+
+ingestor-check: ## run the conformance suite against one ingestor (IMPL=python|go|rust)
+	bash scripts/check_ingestor.sh $(IMPL)
 
 up-direct: ## start ClickStack alone (persistent volumes) + bootstrap the API key into .env
 	cd $(COLLECTOR) && docker compose -f docker-compose.hyperdx-direct.yml up -d
