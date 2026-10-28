@@ -12,3 +12,8 @@
 .DS_Store
 .vscode/
 .idea/
+
+# Python policy compiler / tests
+__pycache__/
+.pytest_cache/
+.ruff_cache/

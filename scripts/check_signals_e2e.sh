@@ -24,8 +24,9 @@ TINY="$EMITTER/tests/fixtures/tiny-capture.json"
 # Trace captures are built, not committed — see oteru-emitter/tests/factories.py.
 TRACES="$(mktemp -t oteru-traces-XXXXXX).json"
 SCOPED_TINY="$(mktemp -t oteru-tiny-XXXXXX).json"
+SCOPED_BENIGN="$(mktemp -t oteru-benign-XXXXXX).json"
 SCOPED_TRACES="$(mktemp -t oteru-scoped-traces-XXXXXX).json"
-trap 'rm -f "$TRACES" "$SCOPED_TINY" "$SCOPED_TRACES"' EXIT
+trap 'rm -f "$TRACES" "$SCOPED_TINY" "$SCOPED_BENIGN" "$SCOPED_TRACES"' EXIT
 # Unique per execution; tags every replayed batch so ClickHouse assertions can
 # filter to rows this run produced. date+pid keeps it portable (Git Bash/macOS/Linux).
 RUN_ID="e2e-$(date +%s)-$$"
@@ -84,7 +85,7 @@ case_emit_rejects() {
   IFS=$'\t' read -r l0 t0 m0 <<<"$before"
 
   if "$PY" -m oteru_emitter.cli replay "$capture" \
-      --transport http --max-gap 0.2 --emit "$emit" >/dev/null 2>&1; then
+      --transport http --endpoint "$OTLP" --max-gap 0.2 --emit "$emit" >/dev/null 2>&1; then
     fail "$desc: --emit $emit should have exited non-zero"
     return
   fi
@@ -108,7 +109,7 @@ case_emit() {
   IFS=$'\t' read -r l0 t0 m0 <<<"$before"
 
   if ! "$PY" -m oteru_emitter.cli replay "$capture" \
-      --transport http --max-gap 0.2 --emit "$emit" >/dev/null 2>&1; then
+      --transport http --endpoint "$OTLP" --max-gap 0.2 --emit "$emit" >/dev/null 2>&1; then
     fail "$desc: emitter exited non-zero"
     return
   fi
@@ -140,13 +141,44 @@ PY
 
 inject_run_id "$TINY" "$SCOPED_TINY" \
   || { echo "  FAIL: could not tag the tiny capture"; exit 1; }
+
+# Privacy rejects metric series with principal identity labels. Keep the
+# signal-selection contract focused on benign metric delivery; the privacy E2E
+# separately proves that identified series are rejected.
+"$PY" - "$SCOPED_TINY" "$SCOPED_BENIGN" <<'PY' \
+  || { echo "  FAIL: could not build benign metric capture"; exit 1; }
+import json, sys
+
+identity = {"user.email", "user.id", "user.account_uuid", "user.account_id", "organization.id", "host.name"}
+with open(sys.argv[1], encoding="utf-8") as src, open(sys.argv[2], "w", encoding="utf-8") as dst:
+    for line in src:
+        batch = json.loads(line)
+        for resource in batch.get("resourceMetrics", []):
+            resource["resource"]["attributes"] = [
+                attr for attr in resource["resource"].get("attributes", [])
+                if attr["key"] not in identity
+            ]
+            for scope in resource.get("scopeMetrics", []):
+                scope["scope"]["attributes"] = [
+                    attr for attr in scope.get("scope", {}).get("attributes", [])
+                    if attr["key"] not in identity
+                ]
+                for metric in scope.get("metrics", []):
+                    for family in ("gauge", "sum", "histogram", "exponentialHistogram", "summary"):
+                        for point in metric.get(family, {}).get("dataPoints", []):
+                            point["attributes"] = [
+                                attr for attr in point.get("attributes", [])
+                                if attr["key"] not in identity
+                            ]
+        dst.write(json.dumps(batch) + "\n")
+PY
 inject_run_id "$TRACES" "$SCOPED_TRACES" \
   || { echo "  FAIL: could not tag the traces capture"; exit 1; }
 
 case_emit "logs only"    "$SCOPED_TINY"   "log"        3 0 0
-case_emit "metrics only" "$SCOPED_TINY"   "metric"     0 0 1
+case_emit "metrics only" "$SCOPED_BENIGN" "metric"     0 0 1
 case_emit "traces only"  "$SCOPED_TRACES" "trace"      0 6 0
-case_emit "combined"     "$SCOPED_TINY"   "log,metric" 3 0 1
+case_emit "combined"     "$SCOPED_BENIGN" "log,metric" 3 0 1
 case_emit_rejects "partially absent" "$SCOPED_TINY" "log,trace"
 
 # Replaying the same capture twice must yield two distinct traces. Trace/span
@@ -158,7 +190,7 @@ traces_before="$(curl -sf "$CH" --data-binary \
    WHERE ResourceAttributes['oteru.e2e.run_id'] = '$RUN_ID' FORMAT TSV")"
 for _ in 1 2; do
   if ! "$PY" -m oteru_emitter.cli replay "$SCOPED_TRACES" \
-    --transport http --max-gap 0.2 --emit trace >/dev/null 2>&1; then
+    --transport http --endpoint "$OTLP" --max-gap 0.2 --emit trace >/dev/null 2>&1; then
     fail "trace replay exited non-zero"
   fi
 done

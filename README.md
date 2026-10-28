@@ -17,8 +17,8 @@ end-to-end without depending on live AI sessions:
 oteru-emitter / Claude Code CLI / future emitters
         │  OTLP (gRPC :4317 │ HTTP :4318)
         ▼
-oteru-collector ──► debug (stdout)
-                └─► file  (telemetry/telemetry.json)
+oteru-collector ──► privacy policy ──► debug (stdout)
+                                  └─► file  (telemetry/telemetry.json)
 ```
 
 ## Quickstart
@@ -67,7 +67,8 @@ See [`oteru-emitter/README.md`](oteru-emitter/README.md#choosing-which-signals-t
 
 To land everything in a **local ClickStack** (ClickHouse + HyperDX) with a
 searchable UI at http://localhost:8080, use `make up-direct` + `make ingest`
-(direct, simplest) or `make up-clickstack-local` (through the collector) — see
+(direct, without Collector privacy processing) or `make up-clickstack-local`
+(through the collector) — see
 [`docs/clickstack.md`](docs/clickstack.md). For a remote/cloud ClickStack, set
 `CLICKSTACK_ENDPOINT` + `CLICKSTACK_API_KEY` and use `make up-clickstack` —
 see [`oteru-collector/README.md`](oteru-collector/README.md). Credentials go
@@ -93,6 +94,9 @@ CI (GitHub Actions) runs lint + tests on Ubuntu and Windows × Python 3.10 and
 `scripts/` or the workflow itself.
 
 ### PII guard
+
+The Collector also has a runtime privacy policy for known identity and content fields. By default it replaces six cataloged identity fields with stable SHA-256 pseudonyms before export, retaining safe metric series by pseudonym; known prompt/completion fields are removed. See [Collector privacy policy](docs/privacy.md) for the exact catalog, data-loss decisions, activation procedure and limitations. `make privacy-config-check` validates the policy and every pipeline; `make e2e-privacy` checks actual Collector outputs in isolated Docker containers. The PII guard below protects committed fixtures and is a separate check.
+Run `make demo-privacy` for a reproducible proof with synthetic identity and the 934-datapoint metric reference across the Collector's output paths.
 
 The #1 documented risk here is committing an un-redacted capture.
 `scripts/check_pii.py` (stdlib-only) scans `oteru-emitter/samples/` and

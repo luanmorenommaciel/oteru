@@ -6,6 +6,9 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+# Compiled by privacy-policy before this Collector starts. Missing file is fatal.
+processors: ${file:/etc/oteru-privacy/processors.json}
+
 exporters:
   debug:
     verbosity: detailed
@@ -18,13 +21,19 @@ exporters:
       max_backups: 5
 
 service:
+  telemetry:
+    logs:
+      level: info  # OTTL debug diagnostics can contain pre-scrub telemetry.
   pipelines:
     traces:
       receivers: [otlp]
+      processors: [filter/privacy_links, filter/privacy_invalid, transform/privacy]
       exporters: [debug, file]
     logs:
       receivers: [otlp]
+      processors: [filter/privacy_invalid, transform/privacy]
       exporters: [debug, file]
     metrics:
       receivers: [otlp]
+      processors: [filter/privacy_invalid, transform/privacy, filter/privacy_metrics]
       exporters: [debug, file]

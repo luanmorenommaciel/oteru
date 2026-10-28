@@ -40,6 +40,8 @@ make lint       # ruff check + ruff format --check
 make format     # ruff format + autofixes
 make dry-run    # validates the sample without network (523 batches)
 make pii-guard  # python scripts/check_pii.py (system python — works before setup)
+make privacy-config-check # verify Collector policy and pipeline topology
+make e2e-privacy # isolated Docker E2E for privacy and all exporters
 make e2e-signals # asserts every --emit combination reaches ClickHouse (needs up-clickhouse)
 make up/down    # collector via docker compose
 make up-clickstack  # collector + forward to ClickStack (needs CLICKSTACK_ENDPOINT/API_KEY env)
@@ -52,9 +54,9 @@ make demo       # up + 5 batches over HTTP + collector logs
 make clean      # removes build/test caches (keeps .venv)
 ```
 
-CI (`.github/workflows/ci.yml`): lint + tests on ubuntu/windows × Python
-3.10/3.13 + a `pii-guard` job, path-filtered to `oteru-emitter/**`,
-`scripts/**` and the workflow itself.
+CI (`.github/workflows/ci.yml`): emitter lint + tests on ubuntu/windows ×
+Python 3.10/3.13, `pii-guard`, and a Linux Docker E2E privacy job. Changes to
+`oteru-emitter/**`, `oteru-collector/**`, `scripts/**` or the workflow trigger CI.
 
 ## Cross-cutting gotchas
 

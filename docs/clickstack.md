@@ -24,6 +24,10 @@ Two integration modes
 
 ### Mode A — direct ingest (`make up-direct`) — simplest
 
+This mode bypasses the Oteru Collector and its privacy policy. Use the
+Collector-backed mode below when telemetry requires the masking and dropping
+rules in [`privacy.md`](privacy.md).
+
 The emitter sends OTLP straight into ClickStack; no intermediate collector.
 
 ```
