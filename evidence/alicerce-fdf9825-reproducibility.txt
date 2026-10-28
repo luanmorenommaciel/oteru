@@ -1,0 +1,13 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+utc: 2026-10-20T22:58:45Z
+command: buildah build --no-cache --layers=false --timestamp "$(git log -1 --format=%ct fdf9825)" --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct fdf9825)" -f oteru-collector/Dockerfile -t oteru-collector:0.155.0 oteru-collector (x2)
+
+build1_image_id: d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+build1_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+build1_binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+build2_image_id: d7a637ceeed1dffe5767eace76dc6038774b7e236b20b84ee36c7b66d079d1a9
+build2_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+build2_binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+match: YES

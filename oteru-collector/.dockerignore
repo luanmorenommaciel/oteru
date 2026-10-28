@@ -1,0 +1,11 @@
+_build/
+telemetry/
+**/.venv/
+**/__pycache__/
+**/*.log
+.git
+.env
+*.md
+tests/
+privacy/
+clickhouse/

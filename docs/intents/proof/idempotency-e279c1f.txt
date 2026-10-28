@@ -1,0 +1,17 @@
+idempotency: two incremental dbt runs over identical source
+
+After run 1:
+   ┌─tbl───┬─rows─┬─micros─┐
+1. │ int   │    8 │ 682950 │
+2. │ daily │    5 │ 682950 │
+3. │ actor │    3 │ 682950 │
+   └───────┴──────┴────────┘
+
+After run 2 (already executed; re-query):
+   ┌─tbl───┬─rows─┬─micros─┐
+1. │ int   │    8 │ 682950 │
+2. │ actor │    3 │ 682950 │
+3. │ daily │    5 │ 682950 │
+   └───────┴──────┴────────┘
+
+Diff: int 8/682950, daily 682950, actor 682950 — zero change across runs.

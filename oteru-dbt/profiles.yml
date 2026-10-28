@@ -1,0 +1,16 @@
+oteru:
+  target: dev
+  outputs:
+    dev:
+      type: clickhouse
+      schema: otel
+      host: "{{ env_var('CLICKHOUSE_HOST', 'localhost') }}"
+      port: "{{ env_var('CLICKHOUSE_PORT', '8123') | int }}"
+      user: "{{ env_var('CLICKHOUSE_USER', 'default') }}"
+      password: "{{ env_var('CLICKHOUSE_PASSWORD', '') }}"
+      secure: false
+      verify: false
+      connect_timeout: 30
+      send_receive_timeout: 300
+      custom_settings:
+        allow_experimental_object_type: 1

@@ -1,0 +1,46 @@
+bash scripts/check_cost_retention.sh
+cost-retention guard (OTERU_HOT_TTL=72h, lookback=48h)
+  ok   fct_cost_daily has no TTL (permanent aggregate preserved)
+  ok   otel_logs has TTL (raw hot retention enforced)
+  ok   otel_traces has TTL (raw hot retention enforced)
+  ok   otel_metrics_sum has TTL (raw hot retention enforced)
+  ok   lookback (48 h) < hot TTL (72 h) by 24h margin
+  Running expiry safety test with real dbt models...
+    test day (today() - 1): 2026-10-19
+    1. Inserting test raw data for 2026-10-19 (INSERT … SELECT, columns from DESCRIBE)...
+    Raw logs inserted: 2 rows
+    2. Loading dbt seeds and running models (--full-refresh, int_api_request_dedup+)...
+    dbt seed + run --full-refresh completed (initial run)
+    totals (check 4 initial 2026-10-19): fct_cost_daily=575950 micros  fct_cost_actor_daily=575950 micros  actor_rows=5
+    3. Deleting raw data (simulating TTL expiry)...
+    Raw logs after deletion: 0 rows
+    4. Re-running dbt incrementally after raw data expired...
+    dbt run completed (second run, raw data gone)
+    totals (check 4 final 2026-10-19): fct_cost_daily=575950 micros  fct_cost_actor_daily=575950 micros  actor_rows=5
+  ok   fct_cost_daily: day_utc total unchanged after raw data expired (575950 micros)
+    TTL snippet for fct_cost_actor_daily: TTL day_utc + toIntervalDay(90)
+  ok   fct_cost_actor_daily has actor_id and physical TTL <= 90 DAY (90 DAY, compliant)
+  ok   fct_cost_daily (permanent, no TTL in DDL) has no actor_id column (privacy by design)
+  Running actor TTL expiry test (permanent totals must survive)...
+    test day (today() - 1): 2026-10-19
+    1. Inserting test raw data for 2026-10-19 (INSERT … SELECT, columns from DESCRIBE)...
+    Raw logs inserted: 2 rows
+    2. dbt seed + run --full-refresh (int_api_request_dedup+)...
+    totals (check 6 initial): fct_cost_daily=732950 micros  fct_cost_actor_daily=732950 micros  actor_rows=8
+    3. Deleting fct_cost_actor_daily rows (simulating 90-day TTL expiry)...
+    totals (check 6 after actor truncate): fct_cost_daily=732950 micros  fct_cost_actor_daily=0 micros  actor_rows=0
+    4. Re-running dbt incrementally...
+    totals (check 6 final): fct_cost_daily=732950 micros  fct_cost_actor_daily=732950 micros  actor_rows=8
+  ok   fct_cost_daily: permanent total unchanged after actor rows expired (732950 micros)
+  Running incremental empty-table regression...
+    test day (today() - 1): 2026-10-19
+    1. Inserting test raw data for 2026-10-19 (INSERT … SELECT, columns from DESCRIBE)...
+    2. Ensuring models exist (full-refresh), then emptying the physical fact tables...
+    totals (check 7 after setup): int=772950 daily=772950 actor=772950 actor_rows=9
+    totals (check 7 setup): fct_cost_daily=772950 micros  fct_cost_actor_daily=772950 micros  actor_rows=9
+    Facts emptied: fct_cost_daily=0 fct_cost_actor_daily=0 actor_rows=0
+    3. dbt run WITHOUT --full-refresh (int_api_request_dedup+)...
+    totals (check 7 after incremental): int=772950 daily=772950 actor=772950 actor_rows=9
+  ok   incremental on empty facts reproduced int_api_request_dedup (772950 micros)
+
+check-cost-retention: OK — aggregates have no TTL, raw TTL intact, lookback < TTL.

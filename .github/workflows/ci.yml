@@ -15,6 +15,7 @@ on:
       - "oteru-ingestor/**"
       - "oteru-hooks/**"
       - "scripts/**"
+      - "oteru-collector/**"
       - "scripts/check_ingestor.sh"
       - "oteru-collector/docker-compose.ingestor.yml"
       - "Makefile"
@@ -25,6 +26,7 @@ on:
       - "oteru-ingestor/**"
       - "oteru-hooks/**"
       - "scripts/**"
+      - "oteru-collector/**"
       - "scripts/check_ingestor.sh"
       - "oteru-collector/docker-compose.ingestor.yml"
       - "Makefile"
@@ -89,6 +91,28 @@ jobs:
       - uses: actions/checkout@v4
       - name: PII guard (committed captures)
         run: python scripts/check_pii.py
+
+  privacy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependencies
+        run: |
+          python -m pip install -e "./oteru-emitter[dev]"
+          python -m pip install -r oteru-collector/requirements-dev.txt
+      - name: Lint Collector privacy code
+        run: |
+          python -m ruff check oteru-collector/privacy oteru-collector/tests scripts/apply_privacy.py
+          python -m ruff format --check oteru-collector/privacy oteru-collector/tests scripts/apply_privacy.py
+          bash -n scripts/check_signals_e2e.sh
+      - name: Check static policy and topology
+        run: python -m pytest oteru-collector/tests/test_policy.py oteru-collector/tests/test_configs.py
+      - name: Exercise isolated Collector, ClickHouse and OTLP forwarding
+        run: python -m pytest oteru-collector/tests/test_runtime.py
 
   ingestor-check:
     runs-on: ubuntu-latest

@@ -1,0 +1,22 @@
+[0m20:51:19  Running with dbt=1.12.6
+[0m20:51:19  Registered adapter: clickhouse=1.10.3
+[0m20:51:20  Found 4 models, 2 analyses, 29 data tests, 1 seed, 1 operation, 1 source, 548 macros
+[0m20:51:20  
+[0m20:51:20  Concurrency: 1 threads (target='dev')
+[0m20:51:20  
+[0m20:51:20  1 of 3 START test test_actor_daily_equals_daily ................................ [RUN]
+[0m20:51:20  1 of 3 PASS test_actor_daily_equals_daily ...................................... [[32mPASS[0m in 0.03s]
+[0m20:51:20  2 of 3 START test test_no_pii .................................................. [RUN]
+[0m20:51:20  2 of 3 PASS test_no_pii ........................................................ [[32mPASS[0m in 0.01s]
+[0m20:51:20  3 of 3 START test test_table_structure ......................................... [RUN]
+[0m20:51:20  3 of 3 PASS test_table_structure ............................................... [[32mPASS[0m in 0.01s]
+[0m20:51:20  
+[0m20:51:20  Run audit recorded in otel.audit_cost_runs
+[0m20:51:20  1 of 1 START hook: oteru_dbt.on-run-end.0 ...................................... [RUN]
+[0m20:51:20  1 of 1 OK hook: oteru_dbt.on-run-end.0 ......................................... [[32mOK[0m in 0.05s]
+[0m20:51:20  
+[0m20:51:20  Finished running 1 project hook, 3 data tests in 0 hours 0 minutes and 0.21 seconds (0.21s).
+[0m20:51:20  
+[0m20:51:20  [32mCompleted successfully[0m
+[0m20:51:20  
+[0m20:51:20  Done. PASS=4 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=4

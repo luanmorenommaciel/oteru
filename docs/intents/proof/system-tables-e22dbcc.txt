@@ -1,0 +1,26 @@
+   ┌─name─────────────────┬─engine─────────────┬─engine_full────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+1. │ fct_cost_actor_daily │ ReplacingMergeTree │ ReplacingMergeTree ORDER BY ((day_utc, actor_id)) TTL day_utc + toIntervalDay(90) SETTINGS replicated_deduplication_window = '0', index_granularity = 8192 │
+2. │ fct_cost_daily       │ ReplacingMergeTree │ ReplacingMergeTree ORDER BY ((day_utc, model_family)) SETTINGS replicated_deduplication_window = '0', index_granularity = 8192                             │
+3. │ otel_logs            │ MergeTree          │ MergeTree ORDER BY Timestamp TTL toDateTime(Timestamp) + toIntervalHour(72) SETTINGS index_granularity = 8192                                              │
+   └──────────────────────┴────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+    ┌─table────────────────┬─name──────────────────┐
+ 1. │ fct_cost_actor_daily │ actor_id              │
+ 2. │ fct_cost_actor_daily │ cache_creation_tokens │
+ 3. │ fct_cost_actor_daily │ cache_read_tokens     │
+ 4. │ fct_cost_actor_daily │ cost_usd              │
+ 5. │ fct_cost_actor_daily │ cost_usd_micros       │
+ 6. │ fct_cost_actor_daily │ day_utc               │
+ 7. │ fct_cost_actor_daily │ input_tokens          │
+ 8. │ fct_cost_actor_daily │ output_tokens         │
+ 9. │ fct_cost_actor_daily │ requests              │
+10. │ fct_cost_daily       │ cache_creation_tokens │
+11. │ fct_cost_daily       │ cache_read_tokens     │
+12. │ fct_cost_daily       │ cost_usd              │
+13. │ fct_cost_daily       │ cost_usd_micros       │
+14. │ fct_cost_daily       │ day_utc               │
+15. │ fct_cost_daily       │ input_tokens          │
+16. │ fct_cost_daily       │ model_family          │
+17. │ fct_cost_daily       │ output_tokens         │
+18. │ fct_cost_daily       │ requests              │
+    └──────────────────────┴───────────────────────┘

@@ -1,0 +1,23 @@
+tested_sha: fdf98252227899b81976ef194790a4ef9e8484c1
+image_digest: sha256:d13aaee23f68a14ca6cb955e14ba19053b9025a8aad0829580b5472388305376
+binary_sha256: 1935d03eeb3eb7a778574a38792ce511af205fcd49b90224cb6e0a6188765c06
+utc: 2026-10-20T22:58:45Z
+command: trivy fs --severity HIGH,CRITICAL --scanners vuln /tmp/otelcol-oteru-fdf9825-1
+
+2026-10-20T22:54:53Z	INFO	[vuln] Vulnerability scanning is enabled
+2026-10-20T22:54:53Z	INFO	Number of language-specific files	num=0
+2026-10-20T22:54:53Z	WARN	[report] Supported files for scanner(s) not found.	scanners=[vuln]
+
+Report Summary
+
+┌────────┬──────┬─────────────────┐
+│ Target │ Type │ Vulnerabilities │
+├────────┼──────┼─────────────────┤
+│   -    │  -   │        -        │
+└────────┴──────┴─────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+
+Note: standalone binary has no package index; gobinary HIGH/CRITICAL=0 is from the image scan of the same digest.

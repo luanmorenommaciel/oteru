@@ -1,0 +1,16 @@
+freshness: on-time vs late vs empty request_id
+
+Latest audit row:
+Row 1:
+──────
+rows_processed:        11
+events_dropped_late:   1
+rows_empty_request_id: 1
+max_event_ts_read:     2026-10-20 18:40:00.000000000
+
+On-time (event_ts >= max-48h) vs late (event_ts < max-48h) in staging:
+Row 1:
+──────
+on_time:          12
+late:             1
+empty_request_id: 1

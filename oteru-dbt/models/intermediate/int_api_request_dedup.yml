@@ -1,0 +1,52 @@
+version: 2
+
+models:
+  - name: int_api_request_dedup
+    description: "Deduplicated API requests - one row per dedup_key, keeping the earliest observed_ts. Incremental with {{ var('cost_lookback_hours') }}h lookback on event_ts."
+    config:
+      materialized: incremental
+      engine: MergeTree()
+      order_by: (event_ts, dedup_key)
+      unique_key: dedup_key
+    columns:
+      - name: dedup_key
+        description: "Deduplication key (request_id or hash)"
+        tests:
+          - unique
+          - not_null
+      - name: event_ts
+        description: "Event timestamp"
+        tests:
+          - not_null
+      - name: observed_ts
+        description: "Observation timestamp"
+      - name: session_id
+        description: "Session identifier"
+      - name: model_raw
+        description: "Raw model name"
+      - name: cost_usd_micros
+        description: "Cost in USD micros"
+        tests:
+          - not_null
+      - name: input_tokens
+        description: "Number of input tokens"
+        tests:
+          - not_null
+      - name: output_tokens
+        description: "Number of output tokens"
+        tests:
+          - not_null
+      - name: cache_read_tokens
+        description: "Number of cache read tokens"
+        tests:
+          - not_null
+      - name: cache_creation_tokens
+        description: "Number of cache creation tokens"
+        tests:
+          - not_null
+      - name: actor_id
+        description: "Pseudonymized actor identifier"
+        tests:
+          - not_null
+      - name: service_name
+        description: "Service name"
