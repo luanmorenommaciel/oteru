@@ -66,7 +66,7 @@ unchanged.
 - Same insert strategy as Python (JSONEachRow, one INSERT per table per
   request); static binary on `distroless/static:nonroot`.
 - `go.sum` is committed; regenerate inside Docker, no local Go needed:
-  `docker run --rm -v "$PWD/oteru-ingestor/go":/src -w /src golang:1.26 go mod tidy`.
+  `docker run --rm -v "$PWD/oteru-ingestor/go":/src -w /src golang:1.27.3 go mod tidy`.
 
 ## Rust notes
 
