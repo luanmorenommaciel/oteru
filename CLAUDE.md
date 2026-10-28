@@ -11,6 +11,11 @@ you are working in:
   Forges OTLP telemetry traffic (Phase 1: faithful replay of captured
   OTLP/JSON over HTTP `:4318` or gRPC `:4317`). See
   [`oteru-emitter/CLAUDE.md`](oteru-emitter/CLAUDE.md).
+- **`oteru-hooks/`** — `oteru_hook.py`, a stdlib-only hook → OTLP bridge for
+  agent IDEs without native OTel (Antigravity, Windsurf, Cursor hooks; #90).
+  Turns each agent turn into an `invoke_agent` trace with `execute_tool` /
+  `tools/call` children on the integration surface. Must never block the
+  agent: exit 0, neutral stdout per IDE, swallow send errors. `make test-hooks`.
 - **`oteru-collector/`** — OpenTelemetry Collector (contrib) sandbox via Docker
   Compose. Receives OTLP, prints to stdout (`debug`) and persists to
   `telemetry/telemetry.json` (`file`). See
