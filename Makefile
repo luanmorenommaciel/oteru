@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals test-risk lint-risk demo-risk-permission demo-risk-tool-rate demo-risk-inventory e2e-risk e2e-risk-tool-rate e2e-risk-inventory up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals test-risk lint-risk demo-risk-permission demo-risk-tool-rate demo-risk-inventory e2e-risk e2e-risk-tool-rate e2e-risk-inventory up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -41,8 +41,12 @@ setup: ## create the venv, install the emitter (editable + dev) and enable the P
 	git config core.hooksPath .githooks
 	@echo "setup OK — pre-commit hook (PII guard) enabled."
 
-test: ## run the emitter's pytest suite
+test: ## run the emitter's and the hook bridge's pytest suites
 	cd $(EMITTER) && $(VENV_PY) -m pytest
+	$(MAKE) --no-print-directory test-hooks
+
+test-hooks: ## run the hook bridge tests (oteru-hooks/, #90)
+	cd $(EMITTER) && $(VENV_PY) -m pytest ../oteru-hooks/tests
 
 test-risk: ## run the operational-risk contract tests
 	cd $(EMITTER) && $(VENV_PY) -m pytest tests/test_risk*.py
@@ -52,6 +56,7 @@ lint: ## ruff check + formatting check
 	cd $(EMITTER) && $(VENV_PY) -m ruff format --check oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff check ../scripts/check_pii.py ../scripts/check_risk_e2e.py ../scripts/check_risk_tool_rate_e2e.py ../scripts/check_risk_inventory_e2e.py
 	cd $(EMITTER) && $(VENV_PY) -m ruff format --check ../scripts/check_pii.py ../scripts/check_risk_e2e.py ../scripts/check_risk_tool_rate_e2e.py ../scripts/check_risk_inventory_e2e.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff check ../oteru-hooks && $(VENV_PY) -m ruff format --check ../oteru-hooks
 
 lint-risk: ## lint the operational-risk evaluator and tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff check oteru_emitter/risk tests/test_risk*.py
@@ -114,6 +119,18 @@ up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK
 
 up-clickhouse: ## start the collector + a self-contained ClickHouse backend (native clickhouse exporter)
 	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml up -d
+
+INGEST_COMPOSE := -f docker-compose.yml -f docker-compose.clickhouse.yml -f docker-compose.ingestor.yml
+IMPL ?= python
+
+up-ingestor: ## build + start one ingestor (IMPL=python|go|rust) next to the collector + ClickHouse
+	cd $(COLLECTOR) && docker compose $(INGEST_COMPOSE) --profile $(IMPL) up -d --build
+
+down-ingestor: ## stop the ingestor stack (keeps the ClickHouse volume)
+	cd $(COLLECTOR) && docker compose $(INGEST_COMPOSE) --profile python --profile go --profile rust down
+
+ingestor-check: ## run the conformance suite against one ingestor (IMPL=python|go|rust)
+	bash scripts/check_ingestor.sh $(IMPL)
 
 up-direct: ## start ClickStack alone (persistent volumes) + bootstrap the API key into .env
 	cd $(COLLECTOR) && docker compose -f docker-compose.hyperdx-direct.yml up -d
