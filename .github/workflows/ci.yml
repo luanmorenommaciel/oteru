@@ -9,7 +9,7 @@ name: CI
 
 on:
   push:
-    branches: [main, feat/115-ingestor-go-xnet]
+    branches: [main]
     paths:
       - "oteru-emitter/**"
       - "oteru-ingestor/**"
