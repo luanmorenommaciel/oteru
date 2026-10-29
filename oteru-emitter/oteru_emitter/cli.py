@@ -10,6 +10,10 @@ Examples:
     oteru-emitter replay telemetry.json --no-restamp --transport http
     oteru-emitter replay telemetry.json --emit log,metric   # only these signals
     oteru-emitter replay traces.json --emit trace           # traces alone
+
+``check`` subcommand: does a capture meet the Minimum Integration Surface
+(docs/integration-surface.md, #22)?
+    oteru-emitter check capture.json --strict
 """
 
 from __future__ import annotations
@@ -232,6 +236,33 @@ def cmd_replay(args) -> int:
     return 0 if total_fail == 0 else 1
 
 
+def cmd_check(args) -> int:
+    from .surface import check_payloads
+
+    try:
+        batches = load_batches(args.file)
+    except OSError as exc:
+        print(f"error: could not read '{args.file}': {exc}", file=sys.stderr)
+        return 1
+    report = check_payloads([b.payload for b in batches])
+
+    for finding in report.findings:
+        print(f"  {finding.level:<7} {finding.span}: {finding.attribute} — {finding.message}")
+    print(
+        f"  {report.on_surface} span(s) on the surface, {report.outside} outside; "
+        f"{len(report.errors)} error(s), {len(report.warnings)} warning(s)"
+    )
+    if report.on_surface == 0:
+        print(
+            "  no span on the integration surface (needs gen_ai.operation.name or "
+            "mcp.method.name) — see docs/integration-surface.md"
+        )
+        return 1
+    if report.errors or (args.strict and report.warnings):
+        return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="oteru-emitter",
@@ -300,6 +331,14 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--timeout", type=float, default=30.0, help="network timeout (s)")
     r.add_argument("--dry-run", action="store_true", help="validate and summarize only; no send")
     r.set_defaults(func=cmd_replay)
+
+    c = sub.add_parser(
+        "check",
+        help="checks a capture's spans against the Minimum Integration Surface (#22)",
+    )
+    c.add_argument("file", help="capture file (one OTLP/JSON batch per line)")
+    c.add_argument("--strict", action="store_true", help="fail on warnings too")
+    c.set_defaults(func=cmd_check)
     return parser
 
 
