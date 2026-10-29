@@ -173,6 +173,24 @@ else
   fail "two replays of a 2-trace capture yielded $new_traces distinct traces (expected 4)"
 fi
 
+# --mark-synthetic: every replayed row must carry oteru.traffic=synthetic, so
+# cost/usage queries can drop test traffic that shares a collector with real.
+if "$PY" -m oteru_emitter.cli replay "$SCOPED_TINY" --mark-synthetic \
+    --transport http --max-gap 0.2 >/dev/null 2>&1; then
+  sleep "$SETTLE"
+  tagged="$(curl -sf "$CH" --data-binary "SELECT
+      countIf(ResourceAttributes['oteru.traffic'] = 'synthetic'), count()
+    FROM otel.otel_logs WHERE ResourceAttributes['oteru.e2e.run_id'] = '$RUN_ID'
+      AND ResourceAttributes['oteru.traffic'] != '' FORMAT TSV")"
+  if [ "$tagged" = $'3\t3' ]; then
+    echo "  ok   --mark-synthetic -> every replayed row tagged oteru.traffic=synthetic"
+  else
+    fail "--mark-synthetic: tagged/total = [$tagged], expected 3/3"
+  fi
+else
+  fail "--mark-synthetic replay exited non-zero"
+fi
+
 # A payload with no records at all must be accepted, not rejected.
 for path in v1/logs v1/metrics v1/traces; do
   code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$OTLP/$path" \

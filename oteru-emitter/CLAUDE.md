@@ -165,8 +165,11 @@ Key design decisions:
   the `Resource` block byte-faithful, synthetic and real traffic are
   indistinguishable at the OTLP envelope; only fragile discriminators differ
   (redacted email `user@example.com` vs real, rotated vs stable `session.id`,
-  restamped timestamps). A clean separation (opt-in `--mark-synthetic` resource
-  attribute) is **deferred** — see `oteru-collector/CLAUDE.md`.
+  restamped timestamps). `--mark-synthetic` (`rewrite/mark.py`) is the clean
+  separation: one resource attribute `oteru.traffic=synthetic` on every
+  resource of every batch, records and the rest of the resource byte-identical,
+  idempotent (an existing value is replaced, never duplicated). Opt-in on
+  purpose — an unmarked replay sends exactly what it always did.
 
 ## Roadmap
 
