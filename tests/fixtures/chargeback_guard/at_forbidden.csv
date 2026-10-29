@@ -1,0 +1,8 @@
+# TEST FIXTURE ONLY — not a production seed.
+# Obviously fake RFC 2606 address user@example.invalid, used only to prove
+# the chargeback seed guard rejects '@'. Exact path excluded by the
+# rule-scoped gitleaks allowlist in .gitleaks.toml:
+#   tests/fixtures/chargeback_guard/at_forbidden.csv
+# No real identity. Do not copy this file into oteru-dbt/seeds/.
+actor_id,team,project
+user@example.invalid,platform,oteru

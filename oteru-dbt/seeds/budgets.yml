@@ -1,0 +1,66 @@
+version: 2
+
+# #48: budgets por scope (global | team | project | team_project) × período.
+# Valores configuráveis; padrão warn_milli=800 (80%) e breach_milli=1000 (100%).
+# Detalhes em seeds/README-budgets.md. Sem Float (S2), sem '@', sem ator.
+seeds:
+  - name: budgets
+    description: "#48: caps de custo por scope × scope_key (spec §3.1). action_on_breach só 'alert' nesta entrega (§9 item 1). Valores reais saem por PR."
+    config:
+      column_types:
+        scope: LowCardinality(String)
+        team: String
+        project: String
+        period: LowCardinality(String)
+        budget_usd_micros: Int64
+        warn_milli: UInt16
+        breach_milli: UInt16
+        action_on_breach: LowCardinality(String)
+        valid_from: Date
+        valid_to: Nullable(Date)
+        owner_team: String
+    columns:
+      - name: scope
+        description: "global | team | project | team_project"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['global', 'team', 'project', 'team_project']
+      - name: team
+        description: "Slug do time; '' quando o scope não usa team"
+        data_tests: [not_null, matches_chargeback_slug]
+      - name: project
+        description: "Slug do projeto; '' quando o scope não usa project"
+        data_tests: [not_null, matches_chargeback_slug]
+      - name: period
+        description: "Período do acumulado; só 'month' (mês UTC) nesta entrega"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['month']
+      - name: budget_usd_micros
+        description: "Cap do período em micros de USD (Int64, >= 0; 0 = no_budget)"
+        data_tests: [not_null]
+      - name: warn_milli
+        description: "Limite de warn em milésimos do budget (padrão 800 = 80%)"
+        data_tests: [not_null]
+      - name: breach_milli
+        description: "Limite de breach em milésimos do budget (padrão 1000 = 100%)"
+        data_tests: [not_null]
+      - name: action_on_breach
+        description: "Só 'alert' nesta entrega; 'block' é rejeitado (volta só com o gateway, #108)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['alert']
+      - name: valid_from
+        description: "Início da vigência (inclusive)"
+        data_tests: [not_null]
+      - name: valid_to
+        description: "Fim da vigência (inclusive); vazio = aberto"
+      - name: owner_team
+        description: "Time dono do budget (nunca uma pessoa)"
+        data_tests: [not_null]

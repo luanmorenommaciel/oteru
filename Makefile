@@ -60,8 +60,9 @@ format: ## apply ruff format + autofixes
 dry-run: ## validate the sample without network (smoke test)
 	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.cli replay $(SAMPLE) --dry-run
 
-pii-guard: ## scan committed captures for PII (system python)
+pii-guard: ## scan committed captures for PII + chargeback seeds (system python)
 	$(PYTHON) scripts/check_pii.py
+	$(PYTHON) scripts/check_chargeback_seeds.py
 
 e2e-signals: ## verify every --emit combination lands in ClickHouse (needs `make up-clickhouse`)
 	bash scripts/check_signals_e2e.sh

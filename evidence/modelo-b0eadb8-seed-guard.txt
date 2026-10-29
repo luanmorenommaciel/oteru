@@ -1,0 +1,5 @@
+tested_sha: b0eadb85f929644211be169ffd35faa2f7f37821
+utc: 2026-10-21T15:21:37Z
+== python3 scripts/check_chargeback_seeds.py em export limpo (git archive HEAD; sem target/ gitignored)
+chargeback-seed-guard: OK (5 file(s)).
+exit=0

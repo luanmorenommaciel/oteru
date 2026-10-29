@@ -1,0 +1,15 @@
+tested_sha: b0eadb85f929644211be169ffd35faa2f7f37821
+utc: 2026-10-21T15:21:52Z
+clickhouse: 26.11.1.333
+-----
+Row 1:
+──────
+name:               fct_cost_chargeback_actor_daily
+engine_full:        ReplacingMergeTree ORDER BY ((day_utc, team, project, actor_id)) TTL day_utc + toIntervalDay(90) SETTINGS replicated_deduplication_window = '0', index_granularity = 8192
+create_table_query: CREATE TABLE otel.fct_cost_chargeback_actor_daily (`day_utc` Date, `team` String, `project` String, `actor_id` String, `cost_usd_micros` Int64, `cost_usd` Float64, `requests` UInt64, `input_tokens` Int64, `output_tokens` Int64, `cache_read_tokens` Int64, `cache_creation_tokens` Int64) ENGINE = ReplacingMergeTree ORDER BY ((day_utc, team, project, actor_id)) TTL day_utc + toIntervalDay(90) SETTINGS replicated_deduplication_window = '0', index_granularity = 8192
+
+Row 2:
+──────
+name:               fct_cost_chargeback_daily
+engine_full:        ReplacingMergeTree ORDER BY ((day_utc, team, project, owner_team, attribution_source)) SETTINGS replicated_deduplication_window = '0', index_granularity = 8192
+create_table_query: CREATE TABLE otel.fct_cost_chargeback_daily (`day_utc` Date, `team` String, `project` String, `owner_team` String, `attribution_source` LowCardinality(String), `cost_usd_micros` Int64, `cost_usd` Float64, `requests` UInt64, `input_tokens` Int64, `output_tokens` Int64, `cache_read_tokens` Int64, `cache_creation_tokens` Int64) ENGINE = ReplacingMergeTree ORDER BY ((day_utc, team, project, owner_team, attribution_source)) SETTINGS replicated_deduplication_window = '0', index_granularity = 8192

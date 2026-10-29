@@ -1,0 +1,47 @@
+tested_sha: 36ec3608c7eed47d4330f617579ea5af7d9ede99
+utc: 2026-10-21T21:38:17Z
+clickhouse (stale): 26.11.1.333 tz=UTC
+-----
+linhas de custo antes do load (esperado 0): 0
+loaded 10 records; T (último event_ts, UTC) = 2026-10-20 17:38:17; idade = 28h
+T = max(event_ts) da fixture: 2026-10-20 17:38:17.000000000 | now: 2026-10-21 21:38:18.249
+vars: budget_stale_hours_daily = 26 (padrão, não alterado)
+== build 1 (T+28h, primeiro processamento do custo)
+21:38:27  Budget audit recorded in audit_budget_runs (run_status=success)
+21:38:27  Done. PASS=210 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=210
+   ┌─scope────────┬─scope_key────────┬──as_of_day─┬──────────────────────as_of_ts─┬─stale_threshold_hours─┬─is_stale─┬─budget_status─┐
+1. │ global       │ global           │ 2026-10-20 │ 2026-10-20 17:38:17.000000000 │                    26 │ true     │ ok            │
+2. │ project      │ oteru            │ 2026-10-20 │ 2026-10-20 17:38:17.000000000 │                    26 │ true     │ ok            │
+3. │ team         │ plataforma       │ 2026-10-20 │ 2026-10-20 17:38:17.000000000 │                    26 │ true     │ breach        │
+4. │ team_project │ plataforma/oteru │ 2026-10-20 │ 2026-10-20 17:38:17.000000000 │                    26 │ true     │ warn          │
+   └──────────────┴──────────────────┴────────────┴───────────────────────────────┴───────────────────────┴──────────┴───────────────┘
+== build 2 (T+28h, run bem-sucedido SEM custo novo)
+21:38:36  Budget audit recorded in audit_budget_runs (run_status=success)
+21:38:36  Done. PASS=210 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=210
+   ┌─scope────────┬─scope_key────────┬──as_of_day─┬──────────────────────as_of_ts─┬─stale_threshold_hours─┬─is_stale─┬─budget_status─┐
+1. │ global       │ global           │ 2026-10-20 │ 2026-10-20 17:38:17.000000000 │                    26 │ true     │ ok            │
+2. │ project      │ oteru            │ 2026-10-20 │ 2026-10-20 17:38:17.000000000 │                    26 │ true     │ ok            │
+3. │ team         │ plataforma       │ 2026-10-20 │ 2026-10-20 17:38:17.000000000 │                    26 │ true     │ breach        │
+4. │ team_project │ plataforma/oteru │ 2026-10-20 │ 2026-10-20 17:38:17.000000000 │                    26 │ true     │ warn          │
+   └──────────────┴──────────────────┴────────────┴───────────────────────────────┴───────────────────────┴──────────┴───────────────┘
+as_of_ts build1=2026-10-20 17:38:17.000000000 build2=2026-10-20 17:38:17.000000000 T=2026-10-20 17:38:17.000000000
+as_of_ts = T antes e depois: PASS
+is_stale=true em todas as linhas (limite 26h): PASS
+
+== A3: o único success vira antigo (> 26h) — fixture no CH descartável (mutation local)
+   ┌─run_id───────────────────────────────┬─rs──────┬──────────────────────at─┐
+1. │ 2b1981fd-773b-4249-b557-4fdfccff52ec │ success │ 2026-10-20 15:38:38.316 │
+2. │ b1b4002b-a725-4d84-84fa-22c53efb393e │ success │ 2026-10-20 15:38:38.316 │
+   └──────────────────────────────────────┴─────────┴─────────────────────────┘
+== run com falha forçada
+21:38:47  Budget audit recorded in audit_budget_runs (run_status=error)
+21:38:47  Done. PASS=194 WARN=0 ERROR=1 SKIP=15 NO-OP=0 REUSED=0 TOTAL=210
+exit=1 (esperado != 0)
+   ┌─run_id───────────────────────────────┬─rs──────┬──────────────────────at─┐
+1. │ b1b4002b-a725-4d84-84fa-22c53efb393e │ success │ 2026-10-20 15:38:38.316 │
+2. │ 2b1981fd-773b-4249-b557-4fdfccff52ec │ success │ 2026-10-20 15:38:38.316 │
+3. │ f66736fe-0376-4b09-990d-b792d0a22d73 │ error   │ 2026-10-21 21:38:47.416 │
+   └──────────────────────────────────────┴─────────┴─────────────────────────┘
+run com falha gravado com run_status='error': PASS
+A3 (ops/alerts/48/budget_run_missing.sql): 1 linha(s) [budget_run_missing	0]
+A3 dispara com exatamente 1 linha (último success > 26h, só error recente): PASS

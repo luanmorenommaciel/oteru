@@ -20,7 +20,8 @@ def test_default_is_closed_and_reproducible():
 
 def test_default_preserves_identity_dimensioned_metrics_with_hash():
     source = default()
-    assert source["version"] == 2
+    assert source["version"] == 3
+    assert source["allowlist"] == {"oteru.team": "slug", "oteru.project": "slug"}
     assert source["metrics"] == "preserve_hashed"
     assert set(source["identity"].values()) == {"hash"}
     result = policy.compile_policy(source)
@@ -41,7 +42,7 @@ def test_unsupported_identity_actions_fail(action):
 @pytest.mark.parametrize(
     "field,value",
     [
-        ("version", 3),
+        ("version", 4),
         ("version", True),
         ("metrics", "mask"),
         ("content", {}),
