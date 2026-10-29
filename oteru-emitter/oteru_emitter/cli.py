@@ -10,11 +10,16 @@ Examples:
     oteru-emitter replay telemetry.json --no-restamp --transport http
     oteru-emitter replay telemetry.json --emit log,metric   # only these signals
     oteru-emitter replay traces.json --emit trace           # traces alone
+
+``forge`` subcommand: builds a traces capture from a hand-written spec, for
+``replay`` to send (data bootstrap, #43):
+    oteru-emitter forge samples/manual-trace.spec.json -o run.json
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections import Counter
 
@@ -232,6 +237,32 @@ def cmd_replay(args) -> int:
     return 0 if total_fail == 0 else 1
 
 
+def cmd_forge(args) -> int:
+    from .sources.manual import SpecError, forge, load_spec
+
+    try:
+        spec = load_spec(args.spec)
+    except (OSError, ValueError) as exc:  # JSONDecodeError is a ValueError
+        print(f"error: could not read spec '{args.spec}': {exc}", file=sys.stderr)
+        return 1
+    try:
+        batches = forge(spec, seed=args.seed)
+    except SpecError as exc:
+        print(f"error: invalid spec '{args.spec}': {exc}", file=sys.stderr)
+        return 1
+
+    text = "".join(json.dumps(batch) + "\n" for batch in batches)
+    spans = sum(len(ss["spans"]) for b in batches for ss in b["resourceSpans"][0]["scopeSpans"])
+    if args.output == "-":
+        sys.stdout.write(text)
+        print(f"forged {len(batches)} trace(s), {spans} span(s)", file=sys.stderr)
+    else:
+        with open(args.output, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        print(f"forged {len(batches)} trace(s), {spans} span(s) -> {args.output}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="oteru-emitter",
@@ -300,6 +331,20 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--timeout", type=float, default=30.0, help="network timeout (s)")
     r.add_argument("--dry-run", action="store_true", help="validate and summarize only; no send")
     r.set_defaults(func=cmd_replay)
+
+    f = sub.add_parser(
+        "forge",
+        help="builds an OTLP traces capture from a hand-written spec (feed it to replay)",
+    )
+    f.add_argument("spec", help="JSON spec: spans with id/name/parent/start_ms/duration_ms")
+    f.add_argument(
+        "-o",
+        "--output",
+        default="-",
+        help="capture file to write (one OTLP/JSON batch per line). Default: stdout",
+    )
+    f.add_argument("--seed", type=int, default=None, help="seed for trace/span IDs (reproducible)")
+    f.set_defaults(func=cmd_forge)
     return parser
 
 

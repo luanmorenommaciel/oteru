@@ -1,0 +1,115 @@
+{
+  "resource": {
+    "service.name": "support-agent",
+    "service.version": "0.1.0",
+    "deployment.environment.name": "dev"
+  },
+  "scope": {
+    "name": "oteru.manual",
+    "version": "0.1.0"
+  },
+  "traces": [
+    {
+      "spans": [
+        {
+          "id": "agent",
+          "name": "invoke_agent support-agent",
+          "duration_ms": 2400,
+          "attributes": {
+            "gen_ai.operation.name": "invoke_agent",
+            "gen_ai.agent.name": "support-agent"
+          }
+        },
+        {
+          "id": "plan",
+          "name": "chat claude-sonnet-5-5",
+          "parent": "agent",
+          "kind": "client",
+          "start_ms": 20,
+          "duration_ms": 900,
+          "status": "ok",
+          "attributes": {
+            "gen_ai.operation.name": "chat",
+            "gen_ai.provider.name": "anthropic",
+            "gen_ai.request.model": "claude-sonnet-5-5",
+            "gen_ai.usage.input_tokens": 1830,
+            "gen_ai.usage.output_tokens": 142,
+            "gen_ai.response.finish_reasons": [
+              "tool_use"
+            ]
+          }
+        },
+        {
+          "id": "tool",
+          "name": "tools/call get_order_status",
+          "parent": "agent",
+          "kind": "client",
+          "start_ms": 940,
+          "duration_ms": 610,
+          "status": "ok",
+          "attributes": {
+            "mcp.method.name": "tools/call",
+            "gen_ai.tool.name": "get_order_status",
+            "gen_ai.tool.call.id": "call_0001",
+            "mcp.session.id": "mcp-session-0001",
+            "gen_ai.operation.name": "execute_tool",
+            "jsonrpc.request.id": "1"
+          }
+        },
+        {
+          "id": "answer",
+          "name": "chat claude-sonnet-5-5",
+          "parent": "agent",
+          "kind": "client",
+          "start_ms": 1570,
+          "duration_ms": 800,
+          "status": "ok",
+          "attributes": {
+            "gen_ai.operation.name": "chat",
+            "gen_ai.provider.name": "anthropic",
+            "gen_ai.request.model": "claude-sonnet-5-5",
+            "gen_ai.usage.input_tokens": 2104,
+            "gen_ai.usage.output_tokens": 318,
+            "gen_ai.response.finish_reasons": [
+              "end_turn"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "spans": [
+        {
+          "id": "agent",
+          "name": "invoke_agent support-agent",
+          "duration_ms": 1300,
+          "status": "error",
+          "status_message": "tool failed",
+          "attributes": {
+            "gen_ai.operation.name": "invoke_agent",
+            "gen_ai.agent.name": "support-agent",
+            "error.type": "tool_error"
+          }
+        },
+        {
+          "id": "tool",
+          "name": "tools/call refund_order",
+          "parent": "agent",
+          "kind": "client",
+          "start_ms": 600,
+          "duration_ms": 650,
+          "status": "error",
+          "status_message": "permission denied",
+          "attributes": {
+            "mcp.method.name": "tools/call",
+            "gen_ai.tool.name": "refund_order",
+            "gen_ai.tool.call.id": "call_0002",
+            "error.type": "permission_denied",
+            "gen_ai.operation.name": "execute_tool",
+            "jsonrpc.request.id": "2"
+          }
+        }
+      ]
+    }
+  ]
+}
