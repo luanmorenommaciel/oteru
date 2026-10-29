@@ -1,6 +1,6 @@
 # oteru-ingestor, Go implementation (#25). Build context: oteru-ingestor/
 #   docker build -f go/Dockerfile -t oteru-ingestor-go oteru-ingestor
-FROM golang:1.26 AS build
+FROM golang:1.27.3 AS build
 WORKDIR /src
 COPY go/go.mod go/go.sum ./
 RUN go mod download
