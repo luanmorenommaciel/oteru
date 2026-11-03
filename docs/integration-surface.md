@@ -6,6 +6,14 @@ ADR-001 (#7); this document is the "design via a minimum surface" position
 written down so it can be judged concretely. Until #7 is decided, treat the
 rules as the target, not as a gate.
 
+The decision record itself is drafted in #123
+(`docs/adr/0001-otlp-mcp-minimum-surface.md`). The split: **the ADR decides
+the policy** (whether the surface is a target or an ingest gate, and who
+ratifies it); **this document and `oteru-emitter check` are its
+implementation and evidence** — the rule table, and a command that shows
+whether a given capture meets it. If the ADR changes a rule, change it here
+and in `oteru_emitter/surface.py` together.
+
 What it is
 ----------
 
