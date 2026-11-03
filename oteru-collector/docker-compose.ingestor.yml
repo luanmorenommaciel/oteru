@@ -9,7 +9,7 @@ x-ingestor: &ingestor
   environment:
     CLICKHOUSE_URL: http://clickhouse:8123
     CLICKHOUSE_USER: otel
-    CLICKHOUSE_PASSWORD: otel
+    CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-otel}"
   depends_on:
     clickhouse:
       condition: service_healthy

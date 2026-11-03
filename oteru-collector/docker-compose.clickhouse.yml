@@ -24,7 +24,7 @@ services:
     environment:
       CLICKHOUSE_DB: otel
       CLICKHOUSE_USER: otel
-      CLICKHOUSE_PASSWORD: otel
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-otel}"
     ports:
       - "8123:8123"   # HTTP interface (host queries)
       - "9000:9000"   # native protocol
