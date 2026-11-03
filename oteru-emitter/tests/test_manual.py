@@ -262,3 +262,68 @@ def test_cli_forge_malformed_json_exits_1(tmp_path, capsys):
     bad.write_text("{not json", encoding="utf-8")
     assert main(["forge", str(bad)]) == 1
     assert "error" in capsys.readouterr().err
+
+
+# --- numeric bounds: forge must never announce a capture OTLP will reject -----------
+#
+# Review on #82 (silmarahp): OTLP intValue is int64 and timestamps are uint64. A spec
+# value past those limits used to be written happily and only fail later, in the
+# protobuf conversion ("Value out of range"). Each case below must raise SpecError
+# naming the span and the field, before anything is written.
+
+INT64_MAX = 2**63 - 1
+INT64_MIN = -(2**63)
+UINT64_MAX = 2**64 - 1
+
+OUT_OF_RANGE = [
+    ("int64 + 1", _spec([dict(ROOT, attributes={"count": INT64_MAX + 1})]), "'count'"),
+    ("int64 - 1", _spec([dict(ROOT, attributes={"count": INT64_MIN - 1})]), "'count'"),
+    ("in array", _spec([dict(ROOT, attributes={"ids": [1, INT64_MAX + 1]})]), "'ids'"),
+    ("nan", _spec([dict(ROOT, attributes={"ratio": float("nan")})]), "'ratio'"),
+    ("infinity", _spec([dict(ROOT, attributes={"ratio": float("inf")})]), "'ratio'"),
+    ("resource", _spec([ROOT], resource={"count": INT64_MAX + 1}), "'count'"),
+    ("duration inf", _spec([dict(ROOT, duration_ms=float("inf"))]), "duration_ms"),
+    ("start nan", _spec([dict(ROOT, start_ms=float("nan"))]), "start_ms"),
+    ("end past uint64", _spec([dict(ROOT, duration_ms=UINT64_MAX // MS)]), "uint64"),
+]
+
+
+@pytest.mark.parametrize(
+    ("spec", "message"), [t[1:] for t in OUT_OF_RANGE], ids=[t[0] for t in OUT_OF_RANGE]
+)
+def test_out_of_range_numbers_raise_spec_error(spec, message):
+    with pytest.raises(SpecError, match=message):
+        forge(spec, base_ns=BASE, seed=1)
+
+
+def test_attribute_errors_name_the_span():
+    spec = _spec([dict(ROOT, attributes={"count": INT64_MAX + 1})])
+    with pytest.raises(SpecError, match="span 'root'"):
+        forge(spec, base_ns=BASE, seed=1)
+
+
+@pytest.mark.parametrize("value", [INT64_MAX, INT64_MIN, 0, -1])
+def test_int64_boundaries_themselves_are_accepted(value):
+    span = _spans(forge(_spec([dict(ROOT, attributes={"n": value})]), base_ns=BASE, seed=1)[0])[0]
+    assert _attr(span, "n") == {"intValue": str(value)}
+
+
+def test_boundary_values_survive_the_protobuf_round_trip():
+    """What forge accepts, the OTLP converter must accept too."""
+    pytest.importorskip("opentelemetry.proto")
+    from oteru_emitter.model.otlp import to_request
+
+    spec = _spec([dict(ROOT, attributes={"max": INT64_MAX, "min": INT64_MIN, "d": 1e308})])
+    for batch in forge(spec, base_ns=BASE, seed=1):
+        assert to_request("traces", batch).resource_spans
+
+
+def test_cli_forge_out_of_range_exits_1_and_writes_nothing(tmp_path, capsys):
+    bad = tmp_path / "bad.json"
+    bad.write_text(
+        json.dumps(_spec([dict(ROOT, attributes={"count": INT64_MAX + 1})])), encoding="utf-8"
+    )
+    out = tmp_path / "out.json"
+    assert main(["forge", str(bad), "-o", str(out)]) == 1
+    assert "'count'" in capsys.readouterr().err
+    assert not out.exists()
