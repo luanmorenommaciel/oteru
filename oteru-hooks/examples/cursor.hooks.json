@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "python3 /path/to/oteru-hooks/oteru_hook.py cursor",
+        "timeout": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "python3 /path/to/oteru-hooks/oteru_hook.py cursor",
+        "timeout": 5
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "python3 /path/to/oteru-hooks/oteru_hook.py cursor",
+        "timeout": 5
+      }
+    ],
+    "stop": [
+      {
+        "command": "python3 /path/to/oteru-hooks/oteru_hook.py cursor",
+        "timeout": 5
+      }
+    ]
+  }
+}
