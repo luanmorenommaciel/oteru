@@ -5,7 +5,7 @@
 - **Issue:** [#10](https://github.com/luanmorenommaciel/oteru/issues/10)
 - **Issues relacionadas:** [#23](https://github.com/luanmorenommaciel/oteru/issues/23), [#108](https://github.com/luanmorenommaciel/oteru/issues/108)
 - **Decidor:** Vinicius Sena, Captain
-- **Revisores:** a definir na #13
+- **Revisora de segurança:** Silmara (`silmarahp`)
 
 ## Contexto
 
