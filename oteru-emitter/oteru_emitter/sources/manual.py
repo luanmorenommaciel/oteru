@@ -34,6 +34,7 @@ Stdlib-only, so ``forge`` works without ``opentelemetry-proto`` installed.
 from __future__ import annotations
 
 import json
+import math
 import random
 import time
 from pathlib import Path
@@ -41,6 +42,11 @@ from pathlib import Path
 DEFAULT_SERVICE_NAME = "oteru-manual"
 DEFAULT_SCOPE = {"name": "oteru.manual"}
 MS = 1_000_000
+# OTLP field limits: AnyValue.int_value is int64, *_time_unix_nano are fixed64.
+# A value past them would be written here and only fail later, in the protobuf
+# conversion ("Value out of range") — so forge refuses it up front.
+INT64_MIN, INT64_MAX = -(2**63), 2**63 - 1
+UINT64_MAX = 2**64 - 1
 
 # OTLP SpanKind / Status.code enum values, by the names the spec accepts.
 SPAN_KINDS = {"internal": 1, "server": 2, "client": 3, "producer": 4, "consumer": 5}
@@ -63,8 +69,12 @@ def any_value(value: object, key: str) -> dict:
     if isinstance(value, bool):
         return {"boolValue": value}
     if isinstance(value, int):
+        if not INT64_MIN <= value <= INT64_MAX:
+            raise SpecError(f"attribute {key!r}: {value} is outside int64")
         return {"intValue": str(value)}  # int64 is a string in OTLP/JSON
     if isinstance(value, float):
+        if not math.isfinite(value):
+            raise SpecError(f"attribute {key!r}: {value} is not a finite number")
         return {"doubleValue": value}
     if isinstance(value, str):
         return {"stringValue": value}
@@ -76,8 +86,15 @@ def any_value(value: object, key: str) -> dict:
     )
 
 
-def _attributes(mapping: dict) -> list[dict]:
-    return [{"key": k, "value": any_value(v, k)} for k, v in mapping.items()]
+def _attributes(mapping: dict, where: str) -> list[dict]:
+    try:
+        return [{"key": k, "value": any_value(v, k)} for k, v in mapping.items()]
+    except SpecError as exc:
+        raise SpecError(f"{where}: {exc}") from None
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _new_id(rng: random.Random, byte_length: int) -> str:
@@ -102,11 +119,11 @@ def _validate_trace(index: int, spans: list) -> dict[str, dict]:
         if span["id"] in by_id:
             raise SpecError(f"{where}: duplicate id")
         duration = span.get("duration_ms")
-        if not isinstance(duration, (int, float)) or isinstance(duration, bool) or duration < 0:
-            raise SpecError(f"{where}: 'duration_ms' must be a number >= 0")
+        if not _is_number(duration) or duration < 0:
+            raise SpecError(f"{where}: 'duration_ms' must be a finite number >= 0")
         start = span.get("start_ms", 0)
-        if not isinstance(start, (int, float)) or isinstance(start, bool) or start < 0:
-            raise SpecError(f"{where}: 'start_ms' must be a number >= 0")
+        if not _is_number(start) or start < 0:
+            raise SpecError(f"{where}: 'start_ms' must be a finite number >= 0")
         if span.get("kind", "internal") not in SPAN_KINDS:
             raise SpecError(
                 f"{where}: unknown kind {span['kind']!r} (one of {', '.join(SPAN_KINDS)})"
@@ -156,7 +173,13 @@ def forge(spec: dict, *, seed: int | None = None, base_ns: int | None = None) ->
 
         otlp_spans = []
         for span in spans:
+            where = f"trace #{index}, span {span['id']!r}"
             start = base + round(span.get("start_ms", 0) * MS)
+            end = start + round(span["duration_ms"] * MS)
+            if end > UINT64_MAX:
+                raise SpecError(
+                    f"{where}: end time {end} ns is past uint64 (start_ms + duration_ms too large)"
+                )
             status = {"code": STATUS_CODES[span.get("status", "unset")]}
             if "status_message" in span:
                 status["message"] = str(span["status_message"])
@@ -166,8 +189,8 @@ def forge(spec: dict, *, seed: int | None = None, base_ns: int | None = None) ->
                 "name": span["name"],
                 "kind": SPAN_KINDS[span.get("kind", "internal")],
                 "startTimeUnixNano": str(start),
-                "endTimeUnixNano": str(start + round(span["duration_ms"] * MS)),
-                "attributes": _attributes(span.get("attributes", {})),
+                "endTimeUnixNano": str(end),
+                "attributes": _attributes(span.get("attributes", {}), where),
                 "status": status,
             }
             if span.get("parent") is not None:
@@ -178,7 +201,7 @@ def forge(spec: dict, *, seed: int | None = None, base_ns: int | None = None) ->
             {
                 "resourceSpans": [
                     {
-                        "resource": {"attributes": _attributes(resource)},
+                        "resource": {"attributes": _attributes(resource, "resource")},
                         "scopeSpans": [{"scope": scope, "spans": otlp_spans}],
                     }
                 ]
