@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "feature": "otlp-replay",
+      "kind": "synthetic",
+      "source": "oteru-emitter replay of a redacted historical capture",
+      "evidence": ["oteru-emitter/tests/test_sample_integration.py"],
+      "limitations": ["Replay is not a live AI session", "The committed sample has no traces"]
+    },
+    {
+      "feature": "otlp-ingest",
+      "kind": "real",
+      "source": "OpenTelemetry Collector OTLP receivers",
+      "evidence": ["scripts/check_signals_e2e.sh"],
+      "limitations": ["A successful local path does not prove production availability"]
+    },
+    {
+      "feature": "agent-intent",
+      "kind": "conceptual",
+      "source": "feature catalog",
+      "evidence": [],
+      "limitations": ["No runtime intent binding exists on main"]
+    },
+    {
+      "feature": "compliance-pack",
+      "kind": "unavailable",
+      "source": "issue #5",
+      "evidence": [],
+      "limitations": ["No auditor export exists on main"]
+    }
+  ]
+}
