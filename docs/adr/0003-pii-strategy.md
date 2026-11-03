@@ -4,7 +4,7 @@
 - **Data:** 2026-11-02
 - **Issue:** [#9](https://github.com/luanmorenommaciel/oteru/issues/9)
 - **Decidor:** Vinicius Sena, Captain
-- **Revisores:** a definir na #13
+- **Revisora de segurança/compliance:** Silmara (`silmarahp`)
 
 ## Contexto
 
