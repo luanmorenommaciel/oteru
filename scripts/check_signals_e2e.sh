@@ -234,6 +234,8 @@ else
   else
     fail "otel.mcp_calls client/server join: got $joined row(s), expected 1"
   fi
+fi
+
 # --mark-synthetic: every replayed row must carry oteru.traffic=synthetic, so
 # cost/usage queries can drop test traffic that shares a collector with real.
 if "$PY" -m oteru_emitter.cli replay "$SCOPED_TINY" --mark-synthetic \

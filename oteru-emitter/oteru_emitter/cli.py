@@ -29,7 +29,6 @@ from collections import Counter
 
 from . import __version__
 from .profiles import get_profile, list_profiles, profile_for_service
-from .profiles import get_profile, list_profiles
 from .rewrite.mark import SYNTHETIC, TRAFFIC_KEY, mark_synthetic
 from .rewrite.restamp import restamp
 from .scheduler.realtime import run_realtime
