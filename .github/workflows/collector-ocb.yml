@@ -35,13 +35,13 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Checkout (full history for gitleaks)
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.26.10"
           cache: false
@@ -58,6 +58,10 @@ jobs:
       - name: OCB build
         working-directory: oteru-collector
         run: ocb --config=builder-config.yaml
+
+      - name: Binary sha256
+        working-directory: oteru-collector/_build
+        run: sha256sum otelcol-oteru
 
       - name: Collector modules stay on v0.155.0 / v1.61.0
         working-directory: oteru-collector/_build
@@ -76,7 +80,7 @@ jobs:
             echo "$off"
             exit 1
           fi
-          go list -m all | grep -E 'opentelemetry-collector|go.opentelemetry.io/collector' || true
+          go list -m all
 
       - name: go test (hmacconverter)
         working-directory: oteru-collector
@@ -142,6 +146,15 @@ jobs:
           path: oteru-collector/_build
           format: spdx-json
           upload-artifact: false
+          output-file: otelcol-oteru.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: otelcol-oteru-sbom
+          path: otelcol-oteru.spdx.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Trivy filesystem (fail on CRITICAL/HIGH)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -156,8 +169,17 @@ jobs:
       - name: Gitleaks (full branch history)
         run: |
           ver=8.24.3
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz" -o /tmp/gitleaks.tgz
-          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          tgz="gitleaks_${ver}_linux_x64.tar.gz"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${ver}"
+          cd /tmp
+          curl -sSfL "${base}/${tgz}" -o "${tgz}"
+          curl -sSfL "${base}/gitleaks_${ver}_checksums.txt" -o gitleaks_checksums.txt
+          # Check only the matching line; fails if absent or mismatched.
+          grep -E "  ${tgz}\$" gitleaks_checksums.txt > gitleaks_tgz.sha256
+          [ "$(wc -l < gitleaks_tgz.sha256)" -eq 1 ]
+          sha256sum -c gitleaks_tgz.sha256
+          tar -xzf "${tgz}" -C /tmp gitleaks
+          cd "${GITHUB_WORKSPACE}"
           /tmp/gitleaks detect --source . --verbose --redact --log-opts=--all
 
       - name: Docker image (local tag, no push)
