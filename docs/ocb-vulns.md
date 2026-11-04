@@ -1,6 +1,6 @@
 # OCB collector — vuln proof (otelcol-oteru 0.155.0)
 
-Toolchain: Go 1.26.10 (`GOTOOLCHAIN=go1.26.10`).
+Toolchain: Go 1.27.3 (`GOTOOLCHAIN=go1.27.3`).
 Collector line: every `go.opentelemetry.io/collector*` and
 `opentelemetry-collector-contrib*` module is v0.155.0 or v1.61.0.
 OCB has no `requires` field; floors are explicit `replaces` in
