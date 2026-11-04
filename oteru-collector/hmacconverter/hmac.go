@@ -13,14 +13,21 @@ import (
 )
 
 const (
-	HMACKeyEnv            = "OTERU_PII_HMAC_KEY"
-	MinProductionKeyBytes = 32
+	HMACKeyEnv = "OTERU_PII_HMAC_KEY"
+	// ProductionKeyHexLen is the exact length of a production key: 32 random
+	// bytes rendered as lowercase hex, e.g.
+	//   python -c 'import secrets;print(secrets.token_hex(32))'
+	// The HMAC key material is the UTF-8 bytes of that 64-character string
+	// (not the decoded bytes), so the hmac:v1 format stays unchanged.
+	ProductionKeyHexLen = 64
 )
 
 var (
 	ErrKeyUnset    = errors.New("hmac key is unset")
 	ErrKeyEmpty    = errors.New("hmac key is empty")
-	ErrKeyTooShort = errors.New("hmac key is shorter than 32 bytes")
+	ErrKeyTooShort = errors.New("hmac key is shorter than 64 hex characters")
+	ErrKeyTooLong  = errors.New("hmac key is longer than 64 hex characters")
+	ErrKeyNotHex   = errors.New("hmac key is not lowercase hex")
 
 	boundKey atomic.Pointer[[]byte]
 )
@@ -34,8 +41,9 @@ func Digest(key, value []byte) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// ValidateProductionKey rejects nil, empty, and keys shorter than 32 bytes.
-// The error text never includes the key material.
+// ValidateProductionKey accepts only exactly 64 lowercase hex characters and
+// rejects nil, empty, short, long and non-hex keys. The error text never
+// includes the key material (only its length).
 func ValidateProductionKey(key []byte) error {
 	if key == nil {
 		return ErrKeyUnset
@@ -43,8 +51,16 @@ func ValidateProductionKey(key []byte) error {
 	if len(key) == 0 {
 		return ErrKeyEmpty
 	}
-	if len(key) < MinProductionKeyBytes {
+	if len(key) < ProductionKeyHexLen {
 		return fmt.Errorf("%w (got %d)", ErrKeyTooShort, len(key))
+	}
+	if len(key) > ProductionKeyHexLen {
+		return fmt.Errorf("%w (got %d)", ErrKeyTooLong, len(key))
+	}
+	for _, c := range key {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return ErrKeyNotHex
+		}
 	}
 	return nil
 }

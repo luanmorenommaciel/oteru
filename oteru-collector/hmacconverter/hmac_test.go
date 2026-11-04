@@ -128,8 +128,14 @@ func TestValidateProductionKey(t *testing.T) {
 		{name: "nil", key: nil, wantErr: ErrKeyUnset},
 		{name: "empty", key: []byte{}, wantErr: ErrKeyEmpty},
 		{name: "short 31", key: []byte(randomShortKey(t, 31)), wantErr: ErrKeyTooShort},
-		{name: "ok 32", key: []byte(randomShortKey(t, 32))},
-		{name: "ok long", key: []byte(secret)},
+		{name: "short 32", key: []byte(randomShortKey(t, 32)), wantErr: ErrKeyTooShort},
+		{name: "short 63", key: []byte(randomShortKey(t, 63)), wantErr: ErrKeyTooShort},
+		{name: "long 65", key: []byte(secret + "a"), wantErr: ErrKeyTooLong},
+		{name: "long 128", key: []byte(secret + randomKey(t)), wantErr: ErrKeyTooLong},
+		{name: "uppercase hex", key: []byte(strings.ToUpper(secret[:1]) + "F" + secret[2:]), wantErr: ErrKeyNotHex},
+		{name: "non-hex 64", key: []byte("g" + secret[1:]), wantErr: ErrKeyNotHex},
+		{name: "whitespace 64", key: []byte(" " + secret[1:]), wantErr: ErrKeyNotHex},
+		{name: "ok 64", key: []byte(secret)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
