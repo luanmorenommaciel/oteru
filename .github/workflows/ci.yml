@@ -15,7 +15,9 @@ on:
       - "oteru-ingestor/**"
       - "oteru-hooks/**"
       - "scripts/**"
-      - "scripts/check_ingestor.sh"
+      - "oteru_gate/**"
+      - "tests/test_human_gate.py"
+      - "ruff.toml"
       - "oteru-collector/docker-compose.ingestor.yml"
       - "Makefile"
       - ".github/workflows/ci.yml"
@@ -25,7 +27,9 @@ on:
       - "oteru-ingestor/**"
       - "oteru-hooks/**"
       - "scripts/**"
-      - "scripts/check_ingestor.sh"
+      - "oteru_gate/**"
+      - "tests/test_human_gate.py"
+      - "ruff.toml"
       - "oteru-collector/docker-compose.ingestor.yml"
       - "Makefile"
       - ".github/workflows/ci.yml"
@@ -74,6 +78,12 @@ jobs:
         run: ruff format --check .
       - name: Tests
         run: pytest
+      - name: Human gate lint and tests
+        run: |
+          python -m ruff check ../oteru_gate ../tests/test_human_gate.py
+          python -m ruff format --check ../oteru_gate ../tests/test_human_gate.py
+          cd ..
+          python -m pytest -q tests/test_human_gate.py
       - name: Hook bridge (lint + tests)
         run: |
           ruff check ../oteru-hooks

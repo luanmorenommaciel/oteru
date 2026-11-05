@@ -78,6 +78,9 @@ no API key, nothing leaving the machine — use `make up-hyperdx`. It adds the
 HyperDX UI on `:8080` on top of the ClickHouse this repo already runs, so the
 collector keeps writing exactly where `make up-clickhouse` puts it.
 
+The isolated [human gate simulation](oteru_gate/README.md) exercises the
+response policy proposed for #65 using synthetic checks.
+
 ## Development
 
 ```bash
