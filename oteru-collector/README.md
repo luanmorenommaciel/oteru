@@ -100,7 +100,6 @@ Notes:
   (raw ClickHouse tables you query with SQL); **`up-hyperdx`** (below) keeps
   that self-contained ClickHouse and puts the HyperDX UI in front of it.
 
-<<<<<<< HEAD
 ## Views over the raw tables (`make views`)
 
 `clickhouse/views/*.sql` holds plain ClickHouse views over the `otel_*`
@@ -129,7 +128,7 @@ The attribute names follow the OTel MCP semantic conventions — see
 [`../docs/integration-surface.md`](../docs/integration-surface.md) once #22
 lands. `make e2e-signals` replays an MCP fixture and asserts the view's
 per-method counts, the failed call and the client/server join.
-=======
+
 ## Dual retention: hot for query, cold for legal archive (`make up-archive`)
 
 Two stores with two jobs (#44):
@@ -194,7 +193,6 @@ Gotchas:
 - **This is not the persistent buffer (#6 / ADR-002 #8).** Cold archive keeps
   what the collector received; a collector that is down still loses what it
   never received. The decoupled buffer is a separate piece.
->>>>>>> origin/feat/44-dual-retention
 
 ## Browsing it in HyperDX (local UI, no API key)
 
