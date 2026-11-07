@@ -100,6 +100,71 @@ Notes:
   (raw ClickHouse tables you query with SQL); **`up-hyperdx`** (below) keeps
   that self-contained ClickHouse and puts the HyperDX UI in front of it.
 
+## Dual retention: hot for query, cold for legal archive (`make up-archive`)
+
+Two stores with two jobs (#44):
+
+| | HOT — ClickHouse | COLD — S3 bucket with Object Lock |
+|---|---|---|
+| For | dashboards, SQL, every Oteru feature | proving to an auditor what happened |
+| Lifetime | `OTERU_HOT_TTL` (default `72h`), then ClickHouse drops the rows | the legal retention, then the object may be deleted |
+| Mutable? | yes | **no** — write once, read many (WORM) |
+| Format | `otel_*` tables | one gzip OTLP/JSON object per batch, `year=…/month=…/day=…/hour=…/logs_<uuidv7>.json.gz` |
+
+The collector writes every batch to both (`oteru-collector-config.archive.yml`
+adds the `awss3/archive` exporter next to `clickhouse`), so a record that ages
+out of hot is still in cold.
+
+```bash
+make up-archive     # collector + ClickHouse (hot) + MinIO with a locked bucket (cold)
+make e2e-archive    # replay → rows in hot, objects in cold, version delete refused
+make down-archive   # stop and remove both volumes
+```
+
+Read the cold archive back from ClickHouse when it is needed (dev credentials;
+ClickHouse reaches the bucket by service name on the compose network):
+
+```sql
+SELECT _path, json
+FROM s3('http://archive:9000/oteru-archive/year=2026/month=10/**/*.json.gz',
+        'oteru-archive', 'oteru-archive-dev-secret', 'JSONAsString', 'json String', 'gzip')
+WHERE position(json, 'some-session-id') > 0;
+```
+
+The MinIO console is on http://localhost:9001 and the S3 API on `:9002` (9000
+is ClickHouse's native port).
+
+Configuration (env vars or the gitignored `.env`, see `.env.example`):
+
+| Variable | Default (dev) | Production |
+|---|---|---|
+| `OTERU_HOT_TTL` | `72h` | as long as queries need |
+| `OTERU_ARCHIVE_RETENTION_MODE` | `GOVERNANCE` (an admin can bypass) | `COMPLIANCE` (nobody can shorten or bypass) |
+| `OTERU_ARCHIVE_RETENTION_DAYS` | `1` | the legal period — the EU AI Act asks for automatically generated logs to be kept at least six months (Art. 19 / 26); confirm with legal |
+| `OTERU_ARCHIVE_ENDPOINT` / `_BUCKET` | `http://archive:9000` / `oteru-archive` | the real object store |
+| `OTERU_ARCHIVE_ACCESS_KEY` / `_SECRET_KEY` | throwaway placeholders | real credentials, never in the repo |
+
+Gotchas:
+
+- **The hot TTL is set when the tables are created.** The `clickhouse`
+  exporter applies `ttl` only under `create_schema` (72h becomes
+  `toIntervalDay(3)`). Changing `OTERU_HOT_TTL` later does not alter existing
+  tables: `make down-archive` first, or `ALTER TABLE … MODIFY TTL`.
+- **Object Lock can only be enabled when the bucket is created** — the
+  `archive-init` one-shot does it; an existing unlocked bucket cannot be
+  converted.
+- **A plain DELETE is not refused**, by S3 design: on a versioned bucket it
+  adds a delete marker and the locked version survives. Deleting the
+  *version* is what Object Lock refuses — and what `make e2e-archive` asserts.
+- **Image choice.** MinIO no longer publishes community images on Docker Hub
+  (`minio/minio` does not pull), so the override uses Chainguard's
+  `cgr.dev/chainguard/minio`, which tracks current releases. It has no shell:
+  the bucket is set up with the official AWS CLI image, which also keeps the
+  setup portable to any S3.
+- **This is not the persistent buffer (#6 / ADR-002 #8).** Cold archive keeps
+  what the collector received; a collector that is down still loses what it
+  never received. The decoupled buffer is a separate piece.
+
 ## Browsing it in HyperDX (local UI, no API key)
 
 The override `docker-compose.hyperdx.yml` adds the HyperDX UI on `:8080` **on

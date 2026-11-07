@@ -1,0 +1,76 @@
+# Dual retention (#44): everything the ClickHouse config does — debug + file +
+# the queryable HOT store — PLUS a COLD legal archive: every batch is also
+# written, as OTLP/JSON, to an S3 bucket with Object Lock (write once, read
+# many). Hot expires on its TTL; cold keeps the record for the legal period.
+#
+# Used by `make up-archive` (docker-compose.archive.yml adds MinIO, an
+# S3-compatible store, and creates the locked bucket). In production, point
+# `endpoint`/`region`/`s3_bucket` at the real object store instead.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+  file:
+    path: /telemetry/telemetry.json
+    rotation:
+      max_megabytes: 10
+      max_backups: 5
+  # HOT: fast queries, short life. Rows older than the TTL are dropped by
+  # ClickHouse itself — set OTERU_HOT_TTL to tune it (Go duration, e.g. 720h).
+  clickhouse:
+    endpoint: tcp://clickhouse:9000?dial_timeout=10s
+    database: otel
+    username: otel
+    password: otel
+    create_schema: true
+    ttl: ${env:OTERU_HOT_TTL:-72h}
+    logs_table_name: otel_logs
+    traces_table_name: otel_traces
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+  # COLD: the legal archive. One gzip OTLP/JSON object per batch, partitioned by
+  # signal and UTC hour, in a bucket whose default Object Lock retention makes
+  # each object undeletable for the configured period. Credentials come from
+  # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in the container environment.
+  awss3/archive:
+    s3uploader:
+      region: us-east-1
+      endpoint: ${env:OTERU_ARCHIVE_ENDPOINT:-http://archive:9000}
+      s3_force_path_style: true
+      disable_ssl: true
+      s3_bucket: ${env:OTERU_ARCHIVE_BUCKET:-oteru-archive}
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
+      s3_partition_timezone: UTC
+      compression: gzip
+      unique_key_func_name: uuidv7
+    marshaler: otlp_json
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug, file, clickhouse, awss3/archive]
+    logs:
+      receivers: [otlp]
+      exporters: [debug, file, clickhouse, awss3/archive]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug, file, clickhouse, awss3/archive]

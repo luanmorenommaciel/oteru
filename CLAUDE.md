@@ -46,6 +46,8 @@ make up-clickstack  # collector + forward to ClickStack (needs CLICKSTACK_ENDPOI
 make up-hyperdx # collector + ClickHouse + the local HyperDX UI on :8080 (no API key)
 make up-direct  # local ClickStack all-in-one + API-key bootstrap; `make ingest` replays into it
 make up-clickstack-local  # collector forwarding to a local ClickStack all-in-one
+make up-archive # dual retention (#44): collector + ClickHouse (hot) + MinIO Object Lock bucket (cold)
+make e2e-archive # asserts a replay lands in hot and cold, and the cold copy cannot be deleted
 make up-ingestor IMPL=python # one POD-of-3 ingestor (oteru-ingestor/, #24-#26) on :14318/:24318/:34318
 make ingestor-check IMPL=python # conformance suite every ingestor must pass (scripts/check_ingestor.sh)
 make demo       # up + 5 batches over HTTP + collector logs
