@@ -41,7 +41,7 @@ export OTERU_USER_ID=your-handle                    # optional, see "Identity"
 |---|---|---|---|
 | **Cursor** | `generation_id`: `beforeSubmitPrompt` → `stop` (`status: error` → span error) | `postToolUse` / `postToolUseFailure` (`tool_use_id`, `failure_type` → `error.type`) | from Cursor's own `duration` — stateless |
 | **Windsurf** | `execution_id`: `pre_user_prompt` → `post_cascade_response` | `pre_/post_run_command`, `_read_code`, `_write_code`, `_mcp_tool_use` (MCP → `tools/call`) | pre/post paired in order through local state |
-| **Antigravity** | `invocationNum`: `PreInvocation` → `PostInvocation` | `PostToolUse` (`error` → `error.type=tool_error`) | **none** — tools are point-in-time |
+| **Antigravity** | one execution: first event → `Stop` (`terminationReason`); each `PreInvocation` → `PostInvocation` is a `model_call` child | `PostToolUse` (`error` → `error.type=tool_error`) | **none** — tools are point-in-time |
 
 Limits, all from the vendors' docs (2026-10-06):
 
@@ -66,7 +66,7 @@ Limits, all from the vendors' docs (2026-10-06):
   `{"continue":true}`; Antigravity's `PostInvocation` gets an empty
   `injectSteps`; Windsurf gets nothing (exit code only).
 - Sends with a 1 s timeout (`OTERU_HOOK_TIMEOUT`), no retries; a down
-  collector is silently skipped.
+  collector — or a malformed `OTERU_OTLP_ENDPOINT` — is silently skipped.
 
 ## Identity and content
 
@@ -75,8 +75,9 @@ Limits, all from the vendors' docs (2026-10-06):
   bridge never invents one: `OTERU_USER_ID` becomes the resource
   `enduser.id`, otherwise no identity is sent. Cursor's `user_email` is never
   forwarded.
-- **Content is opt-in.** Prompts, tool arguments and tool outputs are dropped
-  unless `OTERU_CAPTURE_CONTENT=1`, which adds `gen_ai.tool.call.arguments` /
+- **Content is opt-in.** Prompts, tool arguments, tool outputs **and error
+  text** are dropped unless `OTERU_CAPTURE_CONTENT=1` — a failed span always
+  keeps its error status and `error.type`, never the free-text detail, which adds `gen_ai.tool.call.arguments` /
   `gen_ai.tool.call.result` (PII strategy: ADR-003, #9).
 
 Resource: `service.name` = `cursor-hooks` / `windsurf-hooks` /

@@ -25,6 +25,13 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python3 /path/to/oteru-hooks/oteru_hook.py antigravity Stop",
+        "timeout": 5
+      }
     ]
   }
 }
