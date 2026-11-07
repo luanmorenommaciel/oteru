@@ -100,15 +100,17 @@ case_emit_rejects() {
   fi
 }
 
-# case <description> <capture> <emit> <expect-logs> <expect-traces> <expect-metrics>
+# case <description> <capture> <emit> <expect-logs> <expect-traces> <expect-metrics> [transport]
+# transport defaults to http; pass grpc to exercise the :4317 receiver instead.
 case_emit() {
   local desc="$1" capture="$2" emit="$3" exp_l="$4" exp_t="$5" exp_m="$6"
+  local transport="${7:-http}"
   local before after
   before="$(counts)" || { fail "$desc: ClickHouse unreachable at $CH"; return; }
   IFS=$'\t' read -r l0 t0 m0 <<<"$before"
 
   if ! "$PY" -m oteru_emitter.cli replay "$capture" \
-      --transport http --max-gap 0.2 --emit "$emit" >/dev/null 2>&1; then
+      --transport "$transport" --max-gap 0.2 --emit "$emit" >/dev/null 2>&1; then
     fail "$desc: emitter exited non-zero"
     return
   fi
@@ -119,13 +121,13 @@ case_emit() {
   local got="$((l1 - l0))/$((t1 - t0))/$((m1 - m0))"
   local want="$exp_l/$exp_t/$exp_m"
   if [ "$got" = "$want" ]; then
-    echo "  ok   --emit $emit -> logs/traces/metrics +$got"
+    echo "  ok   [$transport] --emit $emit -> logs/traces/metrics +$got"
   else
-    fail "--emit $emit expected +$want, got +$got"
+    fail "[$transport] --emit $emit expected +$want, got +$got"
   fi
 }
 
-echo "signal-selection e2e ($OTLP, ClickHouse)"
+echo "signal-selection e2e ($OTLP + gRPC :4317, ClickHouse)"
 cd "$EMITTER" || exit 1
 
 "$PY" - "$TRACES" <<'PY' || { echo "  FAIL: could not build the traces capture"; exit 1; }
@@ -148,6 +150,13 @@ case_emit "metrics only" "$SCOPED_TINY"   "metric"     0 0 1
 case_emit "traces only"  "$SCOPED_TRACES" "trace"      0 6 0
 case_emit "combined"     "$SCOPED_TINY"   "log,metric" 3 0 1
 case_emit_rejects "partially absent" "$SCOPED_TINY" "log,trace"
+
+# Same signals over gRPC (:4317). Both receivers feed the same per-signal
+# pipelines, so the deltas must match the HTTP cases exactly (#40).
+case_emit "logs only (grpc)"    "$SCOPED_TINY"   "log"        3 0 0 grpc
+case_emit "metrics only (grpc)" "$SCOPED_TINY"   "metric"     0 0 1 grpc
+case_emit "traces only (grpc)"  "$SCOPED_TRACES" "trace"      0 6 0 grpc
+case_emit "combined (grpc)"     "$SCOPED_TINY"   "log,metric" 3 0 1 grpc
 
 # Replaying the same capture twice must yield two distinct traces. Trace/span
 # IDs are structural OTLP fields, so nothing rotated them before and every
