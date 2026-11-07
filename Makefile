@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals views views-compat up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -65,6 +65,16 @@ pii-guard: ## scan committed captures for PII (system python)
 
 e2e-signals: ## verify every --emit combination lands in ClickHouse (needs `make up-clickhouse`)
 	bash scripts/check_signals_e2e.sh
+
+CLICKHOUSE_URL ?= http://localhost:8123/?user=otel&password=otel
+
+views: ## (re)apply the ClickHouse views in oteru-collector/clickhouse/views (needs `make up-clickhouse`)
+	@for f in $(COLLECTOR)/clickhouse/views/*.sql; do \
+		curl -sSf '$(CLICKHOUSE_URL)' --data-binary @"$$f" >/dev/null && echo "  view applied: $$f"; \
+	done
+
+views-compat: ## every view must CREATE on a bare ClickHouse with default settings (26.6 + latest, Docker)
+	bash scripts/check_views_compat.sh
 
 up: ## start the collector (docker compose, detached)
 	cd $(COLLECTOR) && docker compose up -d

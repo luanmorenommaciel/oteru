@@ -235,3 +235,202 @@ def logs_sharing_trace_context() -> list[dict]:
             ]
         }
     ]
+
+
+# --- MCP (#42) -----------------------------------------------------------------
+#
+# An agent calling an MCP server, shaped by the OTel MCP semantic conventions
+# (open-telemetry/semantic-conventions-genai, model/mcp, read 2026-10-06):
+# span name `{mcp.method.name} {target}`, CLIENT on the caller, SERVER on the
+# MCP server, `gen_ai.operation.name = execute_tool` on tools/call. Unlike the
+# Claude Code trace above, this is not read off a real capture — it is the
+# conventions written out, so the MCP view has something conforming to query.
+
+MCP_TRACE_1 = "1c9e7b52d04a4f3e8a6b2d0c5e7f9a13"
+MCP_TRACE_2 = "7a3f5c1e9b2d4086a4c8e0f2b6d1a5c9"
+
+MCP_AGENT_RESOURCE = {
+    "attributes": [
+        {"key": "service.name", "value": {"stringValue": "support-agent"}},
+        {"key": "service.version", "value": {"stringValue": "0.1.0"}},
+    ]
+}
+MCP_SERVER_RESOURCE = {
+    "attributes": [
+        {"key": "service.name", "value": {"stringValue": "orders-mcp-server"}},
+        {"key": "service.version", "value": {"stringValue": "0.1.0"}},
+    ]
+}
+MCP_SCOPE = {"name": "oteru.fixture.mcp", "version": "0.1.0"}
+
+# What `mcp_capture()` holds per method — asserted by the fixture test and by
+# `make e2e-signals` against the otel.mcp_calls view.
+MCP_EXPECTED_METHODS = {
+    "tools/call": 3,  # client + server of a success, client of a failure
+    "resources/read": 1,
+    "prompts/get": 1,
+    "notifications/progress": 1,
+}
+
+
+def _mcp_span(
+    name: str,
+    span_id: str,
+    start_ms: int,
+    end_ms: int,
+    attributes: list[dict],
+    *,
+    trace_id: str,
+    kind: int = 3,  # CLIENT
+    parent_span_id: str | None = None,
+    status: dict | None = None,
+) -> dict:
+    out = {
+        "traceId": trace_id,
+        "spanId": span_id,
+        "name": name,
+        "kind": kind,
+        "startTimeUnixNano": str(BASE_NS + start_ms * MS),
+        "endTimeUnixNano": str(BASE_NS + end_ms * MS),
+        "attributes": attributes,
+        "status": status or {"code": 1},
+    }
+    if parent_span_id is not None:
+        out["parentSpanId"] = parent_span_id
+    return out
+
+
+def _resource_spans(resource: dict, spans: list[dict]) -> dict:
+    return {"resource": resource, "scopeSpans": [{"scope": MCP_SCOPE, "spans": spans}]}
+
+
+def mcp_capture() -> list[dict]:
+    """Two OTLP trace batches of an agent using an MCP server.
+
+    Trace 1: invoke_agent -> chat -> prompts/get -> resources/read ->
+    tools/call (client, agent side) -> tools/call (server, MCP-server side),
+    plus a notifications/progress. Trace 2: a tools/call that fails with a
+    tool error (CallToolResult.isError -> error.type "tool_error").
+    """
+    t1, t2 = MCP_TRACE_1, MCP_TRACE_2
+    session = s("mcp.session.id", "mcp-session-0001")
+    proto = s("mcp.protocol.version", "2025-11-25")
+
+    agent = _mcp_span(
+        "invoke_agent support-agent",
+        "1a2b3c4d5e6f7081",
+        0,
+        2_400,
+        [s("gen_ai.operation.name", "invoke_agent"), s("gen_ai.agent.name", "support-agent")],
+        trace_id=t1,
+        kind=1,
+    )
+    chat = _mcp_span(
+        "chat claude-sonnet-5-5",
+        "2b3c4d5e6f708192",
+        20,
+        900,
+        [
+            s("gen_ai.operation.name", "chat"),
+            s("gen_ai.provider.name", "anthropic"),
+            s("gen_ai.request.model", "claude-sonnet-5-5"),
+            i("gen_ai.usage.input_tokens", 1830),
+            i("gen_ai.usage.output_tokens", 142),
+        ],
+        trace_id=t1,
+        parent_span_id=agent["spanId"],
+    )
+    prompt = _mcp_span(
+        "prompts/get triage",
+        "3c4d5e6f708192a3",
+        905,
+        930,
+        [
+            s("mcp.method.name", "prompts/get"),
+            s("gen_ai.prompt.name", "triage"),
+            s("jsonrpc.request.id", "1"),
+            session,
+            proto,
+        ],
+        trace_id=t1,
+        parent_span_id=agent["spanId"],
+    )
+    resource = _mcp_span(
+        "resources/read",
+        "4d5e6f708192a3b4",
+        935,
+        990,
+        [
+            s("mcp.method.name", "resources/read"),
+            s("mcp.resource.uri", "orders://policies/refunds"),
+            s("jsonrpc.request.id", "2"),
+            session,
+            proto,
+        ],
+        trace_id=t1,
+        parent_span_id=agent["spanId"],
+    )
+    tool_attrs = [
+        s("mcp.method.name", "tools/call"),
+        s("gen_ai.operation.name", "execute_tool"),
+        s("gen_ai.tool.name", "get_order_status"),
+        s("jsonrpc.request.id", "3"),
+        session,
+        proto,
+    ]
+    tool_client = _mcp_span(
+        "tools/call get_order_status",
+        "5e6f708192a3b4c5",
+        1_000,
+        1_610,
+        tool_attrs,
+        trace_id=t1,
+        parent_span_id=agent["spanId"],
+    )
+    tool_server = _mcp_span(
+        "tools/call get_order_status",
+        "6f708192a3b4c5d6",
+        1_010,
+        1_600,
+        tool_attrs,
+        trace_id=t1,
+        kind=2,  # SERVER
+        parent_span_id=tool_client["spanId"],
+    )
+    # Sent by the MCP server while it works: the server initiates this one, so
+    # per the conventions it is a CLIENT span on the server side.
+    progress = _mcp_span(
+        "notifications/progress",
+        "708192a3b4c5d6e7",
+        1_300,
+        1_301,
+        [s("mcp.method.name", "notifications/progress"), session, proto],
+        trace_id=t1,
+        parent_span_id=tool_server["spanId"],
+    )
+    failed = _mcp_span(
+        "tools/call refund_order",
+        "8192a3b4c5d6e7f8",
+        3_000,
+        3_650,
+        [
+            s("mcp.method.name", "tools/call"),
+            s("gen_ai.operation.name", "execute_tool"),
+            s("gen_ai.tool.name", "refund_order"),
+            s("jsonrpc.request.id", "4"),
+            s("error.type", "tool_error"),
+            session,
+            proto,
+        ],
+        trace_id=t2,
+        status={"code": 2, "message": "refund window closed"},
+    )
+    return [
+        {
+            "resourceSpans": [
+                _resource_spans(MCP_AGENT_RESOURCE, [agent, chat, prompt, resource, tool_client]),
+                _resource_spans(MCP_SERVER_RESOURCE, [tool_server, progress]),
+            ]
+        },
+        {"resourceSpans": [_resource_spans(MCP_AGENT_RESOURCE, [failed])]},
+    ]

@@ -13,6 +13,7 @@ on:
     paths:
       - "oteru-emitter/**"
       - "oteru-ingestor/**"
+      - "oteru-collector/clickhouse/**"
       - "oteru-hooks/**"
       - "scripts/**"
       - "scripts/check_ingestor.sh"
@@ -23,6 +24,7 @@ on:
     paths:
       - "oteru-emitter/**"
       - "oteru-ingestor/**"
+      - "oteru-collector/clickhouse/**"
       - "oteru-hooks/**"
       - "scripts/**"
       - "scripts/check_ingestor.sh"
@@ -89,6 +91,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: PII guard (committed captures)
         run: python scripts/check_pii.py
+
+  views-compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Views create on a default-settings ClickHouse (26.6 + latest)
+        run: make views-compat
 
   ingestor-check:
     runs-on: ubuntu-latest
