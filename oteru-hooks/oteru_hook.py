@@ -47,7 +47,7 @@ STATUS_UNSET, STATUS_ERROR = 0, 2
 # Events each IDE should register. Antigravity's PreToolUse is left out on
 # purpose: every legal answer to it changes the agent's permissions.
 HANDLED = {
-    "antigravity": {"PreInvocation", "PostInvocation", "PostToolUse"},
+    "antigravity": {"PreInvocation", "PostInvocation", "PostToolUse", "Stop"},
     "windsurf": {
         "pre_user_prompt",
         "post_cascade_response",
@@ -189,7 +189,9 @@ def _span(
         span["parentSpanId"] = parent
     if error:
         error_type, message = error
-        span["status"] = {"code": STATUS_ERROR, "message": message}
+        span["status"] = {"code": STATUS_ERROR}
+        if message:  # callers pass a message only under OTERU_CAPTURE_CONTENT
+            span["status"]["message"] = message
         span["attributes"].append(_attr("error.type", error_type))
     return span
 
@@ -230,10 +232,18 @@ class Ctx:
     def turn_id(self) -> str:
         return turn_span_id(self.ide, self.conv, self.turn)
 
+    def _error(self, error: tuple[str, str] | None) -> tuple[str, str] | None:
+        """Error status + classification always; the free-text detail can hold
+        tool output, arguments or personal data, so it is content (opt-in)."""
+        if not error:
+            return None
+        error_type, message = error
+        return (error_type, message if self.capture else "")
+
     def turn_start(self) -> None:
         self.state.put("turn:" + self.turn, self.now_ns)
 
-    def turn_end(self, error: tuple[str, str] | None = None) -> dict:
+    def turn_end(self, error: tuple[str, str] | None = None, extra: dict | None = None) -> dict:
         start = self.state.pop("turn:" + self.turn) or self.now_ns
         model = self.model if self.model and self.model != "Unknown" else None
         attrs = {
@@ -242,8 +252,9 @@ class Ctx:
             "gen_ai.conversation.id": self.conv,
             "gen_ai.request.model": model,
         }
+        attrs.update(extra or {})
         name = f"invoke_agent {self.ide}"
-        return _span(name, self.trace, self.turn_id, start, self.now_ns, attrs, error=error)
+        return _span(name, self.trace, self.turn_id, start, self.now_ns, attrs, error=self._error(error))
 
     def tool(
         self,
@@ -283,7 +294,7 @@ class Ctx:
             attrs,
             parent=self.turn_id,
             kind=KIND_CLIENT if mcp_server is not None else KIND_INTERNAL,
-            error=error,
+            error=self._error(error),
         )
 
 
@@ -350,12 +361,35 @@ def _windsurf(event: str, p: dict, ctx: Ctx) -> list[dict]:
 
 
 def _antigravity(event: str, p: dict, ctx: Ctx) -> list[dict]:
+    """antigravity.google/docs/hooks: Pre/PostInvocation bound ONE model call;
+    Stop ends the execution loop. A turn (invoke_agent) is one execution — from
+    its first event to Stop — and holds the model calls and tool calls."""
+    if ctx.state.get("turn:" + ctx.turn) is None and event != "Stop":
+        ctx.turn_start()  # first event of a new execution opens its turn
     if event == "PreInvocation":
-        ctx.state.put("current-turn", ctx.turn)
-        ctx.turn_start()
+        ctx.state.put(f"inv:{ctx.turn}:{p.get('invocationNum')}", ctx.now_ns)
         return []
     if event == "PostInvocation":
-        return [ctx.turn_end()]
+        num = p.get("invocationNum")
+        start = ctx.state.pop(f"inv:{ctx.turn}:{num}") or ctx.now_ns
+        model = ctx.model if ctx.model else None
+        attrs = {
+            "antigravity.invocation.num": None if num is None else str(num),
+            "gen_ai.request.model": model,
+            "gen_ai.conversation.id": ctx.conv,
+        }
+        return [
+            _span(
+                f"model_call {ctx.ide}",
+                ctx.trace,
+                os.urandom(8).hex(),
+                start,
+                ctx.now_ns,
+                attrs,
+                parent=ctx.turn_id,
+                kind=KIND_CLIENT,
+            )
+        ]
     if event == "PostToolUse":
         call = p.get("toolCall") or {}
         error = p.get("error")
@@ -367,6 +401,14 @@ def _antigravity(event: str, p: dict, ctx: Ctx) -> list[dict]:
                 error=("tool_error", error) if error else None,
             )
         ]
+    if event == "Stop":
+        error = p.get("error")
+        turn = ctx.turn_end(
+            error=("agent_error", error) if error else None,
+            extra={"antigravity.termination_reason": p.get("terminationReason")},
+        )
+        ctx.state.pop("execution")  # the next event opens a new execution
+        return [turn]
     return []
 
 
@@ -380,10 +422,14 @@ def _identity(ide: str, event: str, p: dict, state_root: Path) -> tuple[str, str
     if ide == "windsurf":
         return p.get("trajectory_id") or "", p.get("execution_id") or "", p.get("model_name") or ""
     conv = p.get("conversationId") or ""
-    if "invocationNum" in p:
-        turn = str(p["invocationNum"])
-    else:  # tool events carry no invocation number: use the one in progress
-        turn = State(state_root, ide, conv).get("current-turn", "") or ""
+    # A turn is one execution, closed by Stop. Hook payloads carry no execution
+    # id before Stop, so the open one is remembered per conversation.
+    state = State(state_root, ide, conv)
+    turn = state.get("execution")
+    if not turn:
+        turn = str(int(state.get("execution-counter", 0) or 0) + 1)
+        state.put("execution-counter", int(turn))
+        state.put("execution", turn)
     return conv, turn, p.get("modelName") or ""
 
 
@@ -401,18 +447,19 @@ def handle(
 
 
 def send(request: dict, timeout: float = 1.0) -> None:
-    base = (
-        os.environ.get("OTERU_OTLP_ENDPOINT")
-        or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
-        or "http://localhost:4318"
-    ).rstrip("/")
-    req = urllib.request.Request(
-        base + "/v1/traces",
-        data=json.dumps(request).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
+    try:  # building the request is inside the guard too: a malformed endpoint
+        # (`not-a-url`) raises in Request(), and must not cost the agent anything
+        base = (
+            os.environ.get("OTERU_OTLP_ENDPOINT")
+            or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+            or "http://localhost:4318"
+        ).rstrip("/")
+        req = urllib.request.Request(
+            base + "/v1/traces",
+            data=json.dumps(request).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         urllib.request.urlopen(req, timeout=timeout).close()
     except Exception:  # noqa: BLE001 — telemetry must never hurt the agent
         pass
