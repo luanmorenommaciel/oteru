@@ -85,6 +85,12 @@ Key design decisions:
   nothing. Synthetic *generation* of signals is Phase 2 — do not grow `--emit`
   into a generator. The three signals are independent by design: no combination
   is rejected and none implies another.
+- **`forge` is a source, not a sender** (`sources/manual.py`, #43). It turns a
+  hand-written spec into the same OTLP/JSON capture format `replay` reads (hex
+  IDs, one traces batch per trace) and stops there — sending, restamp and
+  pacing stay in the replay pipeline. Stdlib-only, like dry-run. It is manual
+  registration, not the Phase 2 stochastic generator: no distributions, no
+  state machine; the spec states exactly what is emitted.
 
 ## Conventions / gotchas
 
