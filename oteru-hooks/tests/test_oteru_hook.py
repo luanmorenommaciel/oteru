@@ -100,6 +100,7 @@ NEUTRAL = [
     ("antigravity", "PreInvocation", {}),
     ("antigravity", "PostToolUse", {}),
     ("antigravity", "PostInvocation", {"injectSteps": [], "terminationBehavior": ""}),
+    ("antigravity", "Stop", {}),
 ]
 
 
@@ -177,7 +178,8 @@ def test_cursor_failure_carries_error_type(run):
             duration=30000,
         ),
     )
-    assert span["status"] == {"code": 2, "message": "Command timed out after 30s"}
+    # error status + classification always; the free-text message is content
+    assert span["status"] == {"code": 2}
     assert span["_attrs"]["error.type"] == "timeout"
 
 
@@ -280,25 +282,65 @@ def test_windsurf_turn_from_prompt_to_response(run):
     assert turn["_attrs"]["gen_ai.request.model"] == "Claude Sonnet 4"
 
 
-# --- Antigravity: invocations through state, tools point-in-time ------------------------
+# --- Antigravity: a turn is one execution, PreInvocation..Stop ----------------------------
+#
+# Review on #91 (silmarahp), from antigravity.google/docs/hooks: Pre/PostInvocation
+# bound ONE model call; Stop ends the execution loop. A turn (invoke_agent) therefore
+# runs from the first event of an execution to Stop, holding its model calls and tools.
 
 
-def test_antigravity_invocation_and_tool_share_a_trace(run):
-    run("antigravity", "PreInvocation", dict(AG_COMMON, invocationNum=3, initialNumSteps=10))
-    _, (tool,) = run(
+def _ag_turn(run, invocations=2):
+    """PreInvocation/PostToolUse/PostInvocation x N, then Stop; returns all spans."""
+    spans, t = [], 0
+    for n in range(invocations):
+        spans += run("antigravity", "PreInvocation", dict(AG_COMMON, invocationNum=n), at_ms=t)[1]
+        spans += run(
+            "antigravity",
+            "PostToolUse",
+            dict(AG_COMMON, toolCall={"name": "run_command", "args": {}}, stepIdx=n),
+            at_ms=t + 200,
+        )[1]
+        spans += run("antigravity", "PostInvocation", dict(AG_COMMON, invocationNum=n), at_ms=t + 900)[1]
+        t += 1_000
+    spans += run(
         "antigravity",
-        "PostToolUse",
-        dict(AG_COMMON, toolCall={"name": "run_command", "args": {"CommandLine": "npm test"}}, stepIdx=19),
-        at_ms=1_200,
-    )
-    _, (turn,) = run(
-        "antigravity", "PostInvocation", dict(AG_COMMON, invocationNum=3, initialNumSteps=10), at_ms=3_000
-    )
-    assert turn["name"] == "invoke_agent antigravity"
-    assert duration_ms(turn) == 3_000
-    assert tool["name"] == "execute_tool run_command"
-    assert tool["traceId"] == turn["traceId"] and tool["parentSpanId"] == turn["spanId"]
-    assert duration_ms(tool) == 0  # documented limit: no PreToolUse -> point-in-time
+        "Stop",
+        dict(AG_COMMON, executionNum=1, terminationReason="model_stop", fullyIdle=True),
+        at_ms=t + 100,
+    )[1]
+    return spans
+
+
+def test_antigravity_turn_runs_from_first_invocation_to_stop(run):
+    spans = _ag_turn(run, invocations=2)
+    (turn,) = [s for s in spans if s["name"] == "invoke_agent antigravity"]
+    assert duration_ms(turn) == 2_100  # 0 .. Stop at 2_100, not one invocation
+    assert turn["_attrs"]["antigravity.termination_reason"] == "model_stop"
+    assert "parentSpanId" not in turn
+
+
+def test_antigravity_model_calls_and_tools_are_children_of_the_turn(run):
+    spans = _ag_turn(run, invocations=2)
+    (turn,) = [s for s in spans if s["name"] == "invoke_agent antigravity"]
+    calls = [s for s in spans if s["name"] == "model_call antigravity"]
+    tools = [s for s in spans if s["name"] == "execute_tool run_command"]
+    assert len(calls) == 2 and [duration_ms(c) for c in calls] == [900, 900]
+    assert [c["_attrs"]["antigravity.invocation.num"] for c in calls] == ["0", "1"]
+    assert len(tools) == 2 and all(duration_ms(x) == 0 for x in tools)  # no PreToolUse
+    for child in calls + tools:
+        assert child["traceId"] == turn["traceId"] and child["parentSpanId"] == turn["spanId"]
+
+
+def test_antigravity_a_new_execution_after_stop_is_a_new_trace(run):
+    first = _ag_turn(run, invocations=1)
+    second = _ag_turn(run, invocations=1)
+    assert {s["traceId"] for s in first}.isdisjoint({s["traceId"] for s in second})
+
+
+def test_antigravity_postinvocation_alone_does_not_end_the_turn(run):
+    run("antigravity", "PreInvocation", dict(AG_COMMON, invocationNum=0))
+    _, spans = run("antigravity", "PostInvocation", dict(AG_COMMON, invocationNum=0), at_ms=500)
+    assert [s["name"] for s in spans] == ["model_call antigravity"]
 
 
 def test_antigravity_tool_error_marks_the_span(run):
@@ -308,8 +350,72 @@ def test_antigravity_tool_error_marks_the_span(run):
         "PostToolUse",
         dict(AG_COMMON, toolCall={"name": "run_command", "args": {}}, stepIdx=5, error="exit status 1"),
     )
-    assert tool["status"] == {"code": 2, "message": "exit status 1"}
+    assert tool["status"] == {"code": 2}
     assert tool["_attrs"]["error.type"] == "tool_error"
+
+
+# --- error details are content: opt-in (review on #91) ------------------------------------
+
+SECRET_ERR = "cat /home/someone/.ssh/id_rsa failed: Permission denied"
+
+
+def _cursor_failure(run, env=None):
+    _, (span,) = run(
+        "cursor",
+        "postToolUseFailure",
+        dict(
+            CU_COMMON,
+            hook_event_name="postToolUseFailure",
+            tool_name="Shell",
+            error_message=SECRET_ERR,
+            failure_type="error",
+            duration=5,
+        ),
+        env=env,
+    )
+    return span
+
+
+def _antigravity_failure(run, env=None):
+    _, (span,) = run(
+        "antigravity",
+        "PostToolUse",
+        dict(AG_COMMON, toolCall={"name": "run_command", "args": {}}, stepIdx=1, error=SECRET_ERR),
+        env=env,
+    )
+    return span
+
+
+@pytest.mark.parametrize("failure", [_cursor_failure, _antigravity_failure], ids=["cursor", "antigravity"])
+def test_error_text_stays_out_unless_content_capture_is_on(run, failure):
+    off = failure(run)
+    assert off["status"] == {"code": 2} and off["_attrs"]["error.type"]
+    assert "id_rsa" not in json.dumps(off)
+    on = failure(run, env={"OTERU_CAPTURE_CONTENT": "1"})
+    assert on["status"] == {"code": 2, "message": SECRET_ERR}
+
+
+# --- the real process survives a malformed endpoint (review on #91) -----------------------
+
+
+@pytest.mark.parametrize("endpoint", ["not-a-url", "ftp://[::1", "http://"])
+def test_invalid_endpoint_keeps_neutral_stdout_and_exit_zero(tmp_path, endpoint):
+    import os
+    import subprocess
+
+    script = Path(__file__).resolve().parent.parent / "oteru_hook.py"
+    payload = dict(CU_COMMON, hook_event_name="postToolUse", tool_name="Shell", duration=1)
+    proc = subprocess.run(
+        [sys.executable, str(script), "cursor"],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=dict(os.environ, OTERU_OTLP_ENDPOINT=endpoint, OTERU_HOOK_STATE=str(tmp_path)),
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == {}
+    assert "Traceback" not in proc.stderr
 
 
 # --- 4. identity and content are opt-in ---------------------------------------------------
