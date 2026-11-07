@@ -132,6 +132,27 @@ Main flags: `--transport http|grpc`, `--endpoint`, `--header NAME=VALUE`
 `--seed`, `--no-restamp`, `--dry-run`. Full help:
 `oteru-emitter replay --help`.
 
+## Telling synthetic traffic from real (`--mark-synthetic`)
+
+A live Claude Code session and a replay pointed at the same collector look
+identical: the replay is byte-faithful down to the `Resource` block. Mark the
+replay and every resource gets one extra attribute — nothing else changes:
+
+```bash
+oteru-emitter replay samples/telemetry-sample.json --mark-synthetic
+```
+
+```sql
+-- cost / usage without test traffic
+SELECT count() FROM otel.otel_logs
+WHERE ResourceAttributes['oteru.traffic'] != 'synthetic'
+```
+
+The attribute is `oteru.traffic = "synthetic"`, on every resource of every
+batch, all signals; re-marking replaces it rather than adding a second one.
+It is **opt-in**: without the flag a replay sends exactly what it always did,
+so use it whenever the collector also receives real traffic.
+
 ## Choosing which signals to send (`--emit`)
 
 By default the emitter replays **every signal the capture holds**. `--emit`
