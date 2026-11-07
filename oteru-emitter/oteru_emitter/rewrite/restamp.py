@@ -51,6 +51,8 @@ STRUCTURAL_ID_BYTES = {
 
 IdGen = Callable[[str, str], str]
 
+RESOURCE_SECTIONS = ("resourceLogs", "resourceMetrics", "resourceSpans")
+
 
 def _shift_timestamps(node: object, offset_ns: int) -> None:
     if isinstance(node, dict):
@@ -72,6 +74,7 @@ def _rotate_ids(
     keys: set[str],
     mapping: dict[tuple[str, str], str],
     gen: IdGen,
+    aliases: dict[str, str] | None = None,
 ) -> None:
     if isinstance(node, dict):
         # OTLP attribute entry: {"key": <str>, "value": {"stringValue": ...}}
@@ -83,15 +86,18 @@ def _rotate_ids(
             and isinstance(value.get("stringValue"), str)
         ):
             old = value["stringValue"]
-            map_key = (attr_key, old)
+            # Aliased keys share one namespace: the same old value maps to the
+            # same new one (Codex conversation.id == thread.id; a child's
+            # parent_chat_session_id == its parent's chat_session_id).
+            map_key = ((aliases or {}).get(attr_key, attr_key), old)
             if map_key not in mapping:
                 mapping[map_key] = gen(attr_key, old)
             value["stringValue"] = mapping[map_key]
         for child in node.values():
-            _rotate_ids(child, keys, mapping, gen)
+            _rotate_ids(child, keys, mapping, gen, aliases)
     elif isinstance(node, list):
         for item in node:
-            _rotate_ids(item, keys, mapping, gen)
+            _rotate_ids(item, keys, mapping, gen, aliases)
 
 
 def _is_hex(value: str, byte_length: int) -> bool:
@@ -161,12 +167,20 @@ def restamp(
     rotate_trace_ids: bool = True,
     seed: int | None = None,
     now_ns: int | None = None,
+    rotate_keys_for: Callable[[dict], Iterable[str]] | None = None,
+    id_aliases: dict[str, str] | None = None,
 ) -> int:
     """Applies the restamp in-place. Returns the time offset applied (ns).
 
     ``rotate_keys`` is profile-specific identity (which attributes count as
     per-run correlation); ``rotate_trace_ids`` covers the structural trace/span
     IDs, which are universal to OTLP and so are not profile-driven.
+
+    ``rotate_keys_for`` (``--profile auto``) resolves the keys per resource
+    instead — given a resource's attributes, the keys of the profile claiming
+    it — so a resource no profile claims is never rotated by another tool's
+    rules. ``id_aliases`` maps keys that share one ID namespace to a common
+    name, so equivalent IDs rotate to the same new value.
     """
     batches = list(batches)
     offset_ns = 0
@@ -184,11 +198,19 @@ def restamp(
     rnd = random.Random(seed)
 
     rotate_set = {k for k in (rotate_keys or [])}
-    if rotate_set:
-        gen = _make_id_gen(rnd)
-        mapping: dict[tuple[str, str], str] = {}
+    gen = _make_id_gen(rnd)
+    mapping: dict[tuple[str, str], str] = {}
+    if rotate_keys_for is not None:
         for batch in batches:
-            _rotate_ids(batch.payload, rotate_set, mapping, gen)
+            for section in RESOURCE_SECTIONS:
+                for entry in batch.payload.get(section, []):
+                    resource = (entry.get("resource") or {}).get("attributes", [])
+                    keys = set(rotate_keys_for(resource))
+                    if keys:
+                        _rotate_ids(entry, keys, mapping, gen, id_aliases)
+    elif rotate_set:
+        for batch in batches:
+            _rotate_ids(batch.payload, rotate_set, mapping, gen, id_aliases)
 
     if rotate_trace_ids:
         # One mapping for every batch, so IDs stay consistent across signals.
