@@ -99,6 +99,18 @@ impl App {
         Ok(())
     }
 
+    /// Readiness probe: ClickHouse answers `SELECT 1` within 2 s.
+    async fn alive(&self) -> bool {
+        self.http
+            .post(&self.ch_url)
+            .basic_auth(&self.ch_user, Some(&self.ch_password))
+            .body("SELECT 1")
+            .timeout(Duration::from_secs(2))
+            .send()
+            .await
+            .is_ok_and(|r| r.status() == reqwest::StatusCode::OK)
+    }
+
     async fn apply_schema(&self) -> Result<(), Fail> {
         for stmt in self.schema.replace("{db}", &self.db).split("\n;\n") {
             let sql: Vec<&str> = stmt.lines().filter(|l| !l.trim_start().starts_with("--")).collect();
@@ -344,6 +356,10 @@ fn decode<T: Message + Default + serde::de::DeserializeOwned>(is_json: bool, raw
         return Ok(T::default());
     }
     if is_json {
+        // `null`, arrays and scalars are valid JSON but not an OTLP request.
+        if raw.iter().find(|b| !b.is_ascii_whitespace()) != Some(&b'{') {
+            return Err(Fail::Decode("JSON root must be an object".into()));
+        }
         serde_json::from_slice(raw).map_err(|e| Fail::Decode(e.to_string()))
     } else {
         T::decode(raw).map_err(|e| Fail::Decode(e.to_string()))
@@ -390,11 +406,14 @@ async fn metrics(State(app): State<Arc<App>>, headers: HeaderMap, body: Bytes) -
 }
 
 async fn healthz(State(app): State<Arc<App>>) -> Response {
-    if app.ready.load(Ordering::Acquire) {
-        "ok".into_response()
-    } else {
-        (StatusCode::SERVICE_UNAVAILABLE, "starting").into_response()
+    // Readiness, per SPEC: schema applied AND ClickHouse answering now.
+    if !app.ready.load(Ordering::Acquire) {
+        return (StatusCode::SERVICE_UNAVAILABLE, "starting").into_response();
     }
+    if !app.alive().await {
+        return (StatusCode::SERVICE_UNAVAILABLE, "clickhouse unavailable").into_response();
+    }
+    "ok".into_response()
 }
 
 #[tokio::main]
