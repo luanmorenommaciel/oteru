@@ -15,6 +15,11 @@ you are working in:
   `SPEC.md` + `schema.sql`, implementations in `python/` (#24), `go/` (#25),
   `rust/` (#26), each built in Docker and held to `scripts/check_ingestor.sh`.
   Never edit the suite to fit one implementation — fix the spec for all three.
+- **`oteru-hooks/`** — `oteru_hook.py`, a stdlib-only hook → OTLP bridge for
+  agent IDEs without native OTel (Antigravity, Windsurf, Cursor hooks; #90).
+  Turns each agent turn into an `invoke_agent` trace with `execute_tool` /
+  `tools/call` children on the integration surface. Must never block the
+  agent: exit 0, neutral stdout per IDE, swallow send errors. `make test-hooks`.
 - **`oteru-collector/`** — OpenTelemetry Collector (contrib) sandbox via Docker
   Compose. Receives OTLP, prints to stdout (`debug`) and persists to
   `telemetry/telemetry.json` (`file`). See

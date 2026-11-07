@@ -9,7 +9,7 @@ x-ingestor: &ingestor
   environment:
     CLICKHOUSE_URL: http://clickhouse:8123
     CLICKHOUSE_USER: otel
-    CLICKHOUSE_PASSWORD: otel
+    CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-otel}"
   depends_on:
     clickhouse:
       condition: service_healthy
@@ -23,3 +23,21 @@ services:
       dockerfile: python/Dockerfile
     ports:
       - "14318:4318"
+
+  ingestor-go:
+    <<: *ingestor
+    profiles: ["go"]
+    build:
+      context: ../oteru-ingestor
+      dockerfile: go/Dockerfile
+    ports:
+      - "24318:4318"
+
+  ingestor-rust:
+    <<: *ingestor
+    profiles: ["rust"]
+    build:
+      context: ../oteru-ingestor
+      dockerfile: rust/Dockerfile
+    ports:
+      - "34318:4318"
