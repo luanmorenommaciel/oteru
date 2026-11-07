@@ -28,7 +28,7 @@ import sys
 from collections import Counter
 
 from . import __version__
-from .profiles import get_profile, list_profiles
+from .profiles import get_profile, list_profiles, profile_for_service
 from .rewrite.restamp import restamp
 from .scheduler.realtime import run_realtime
 from .sources.replay import (
@@ -36,10 +36,51 @@ from .sources.replay import (
     SIGNAL_BY_CLI_NAME,
     Batch,
     iter_scope_names,
+    iter_service_names,
     load_batches,
     select_signals,
 )
 from .transport.base import DEFAULT_GRPC_ENDPOINT, DEFAULT_HTTP_ENDPOINT
+
+AUTO_PROFILE = "auto"
+
+
+def resolve_auto_profiles(
+    batches: list[Batch],
+) -> tuple[tuple[str, ...], frozenset[str], list[str]]:
+    """--profile auto: per service.name in the capture, the profile claiming it.
+
+    Returns the union of the detected profiles' rotate keys, the union of
+    their known scopes, and the service names no profile claims. Unioning is
+    safe because no profile rotates a key any profile preserves (asserted in
+    tests/test_emitter_profiles.py). Unclaimed services get no attribute
+    rotation — only the structural IDs and timestamps every replay rewrites.
+    """
+    services = sorted({name for b in batches for name in iter_service_names(b)})
+    detected = {name: profile_for_service(name) for name in services}
+    profiles = sorted({p.name: p for p in detected.values() if p}.values(), key=lambda p: p.name)
+    rotate = tuple(sorted({k for p in profiles for k in p.rotate_id_keys}))
+    scopes = frozenset(s for p in profiles for s in p.known_scopes)
+    unknown = [name for name, p in detected.items() if p is None]
+    return rotate, scopes, unknown
+
+
+def _service_of(resource_attributes: list[dict]) -> str | None:
+    for attr in resource_attributes:
+        if attr.get("key") == "service.name":
+            return (attr.get("value") or {}).get("stringValue")
+    return None
+
+
+def _rotate_keys_for_resource(resource_attributes: list[dict]) -> tuple[str, ...]:
+    """--profile auto: the rotate keys of the profile claiming this resource."""
+    profile = profile_for_service(_service_of(resource_attributes) or "")
+    return profile.rotate_id_keys if profile else ()
+
+
+def _profiles_in(batches: list[Batch]):
+    names = {n for b in batches for n in iter_service_names(b)}
+    return {p.name: p for n in names if (p := profile_for_service(n))}.values()
 
 
 def _event_names(batch: Batch) -> list[str]:
@@ -123,7 +164,7 @@ def _build_transport(args):
 
 
 def cmd_replay(args) -> int:
-    profile = get_profile(args.profile)
+    profile = None if args.profile == AUTO_PROFILE else get_profile(args.profile)
     try:
         batches = load_batches(args.file)
     except OSError as exc:
@@ -158,11 +199,32 @@ def cmd_replay(args) -> int:
     # A scope the profile does not recognise usually means the upstream tool
     # renamed or added one. Warn, never fail: a new scope is information, not a
     # broken capture — and replay stays faithful either way.
-    if profile.known_scopes:
-        unknown = sorted({n for b in batches for n in iter_scope_names(b)} - profile.known_scopes)
+    if profile is None:
+        auto_rotate, known_scopes, unclaimed = resolve_auto_profiles(batches)
+        detected = sorted(
+            {
+                p.name
+                for b in batches
+                for n in iter_service_names(b)
+                if (p := profile_for_service(n)) is not None
+            }
+        )
+        profile_label = f"auto ({', '.join(detected) or 'no known tool'})"
+        for name in unclaimed:
+            print(
+                f"warning: no profile claims service.name '{name}' — replayed literally "
+                "(only trace/span IDs and timestamps rewritten). Add one in profiles/base.py.",
+                file=sys.stderr,
+            )
+    else:
+        auto_rotate, known_scopes = (), profile.known_scopes
+        profile_label = f"{profile.name} ({profile.description})"
+
+    if known_scopes:
+        unknown = sorted({n for b in batches for n in iter_scope_names(b)} - known_scopes)
         if unknown:
             print(
-                f"warning: scope(s) unknown to profile '{profile.name}': "
+                f"warning: scope(s) unknown to profile '{args.profile}': "
                 f"{', '.join(unknown)}. Queries filtering on ScopeName may return "
                 f"nothing without erroring — check profiles/base.py.",
                 file=sys.stderr,
@@ -171,18 +233,28 @@ def cmd_replay(args) -> int:
     if args.limit:
         batches = batches[: args.limit]
 
-    rotate_keys = () if args.no_restamp else profile.rotate_id_keys
+    if args.no_restamp:
+        rotate_keys, keys_for, aliases = (), None, {}
+    elif profile is None:
+        # auto: each resource rotates only its own tool's keys (an unclaimed
+        # resource rotates none); aliases of every claimed tool apply.
+        rotate_keys, keys_for = auto_rotate, _rotate_keys_for_resource
+        aliases = {k: v for p in _profiles_in(batches) for k, v in p.alias_map.items()}
+    else:
+        rotate_keys, keys_for, aliases = profile.rotate_id_keys, None, profile.alias_map
     offset_ns = restamp(
         batches,
         shift_time=not args.no_restamp,
         rotate_keys=rotate_keys,
         rotate_trace_ids=not args.no_restamp,
         seed=args.seed,
+        rotate_keys_for=keys_for,
+        id_aliases=aliases,
     )
 
     print(f"oteru-emitter {__version__} — replay")
     print(f"  file:      {args.file}")
-    print(f"  profile:   {profile.name} ({profile.description})")
+    print(f"  profile:   {profile_label}")
     print(
         "  emit:      "
         + (",".join(_cli_names(selected)) if selected else "all signals in the capture")
@@ -318,9 +390,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     r.add_argument(
         "--profile",
-        choices=list_profiles(),
+        choices=[*list_profiles(), AUTO_PROFILE],
         default="claude_code",
-        help="emitter profile (defines which IDs to rotate). Default: claude_code",
+        help="emitter profile (defines which IDs to rotate). 'auto' picks one per "
+        "service.name in the capture — use it for mixed collector captures. "
+        "Default: claude_code",
     )
     r.add_argument(
         "--emit",
