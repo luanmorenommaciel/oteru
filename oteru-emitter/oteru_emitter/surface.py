@@ -52,9 +52,15 @@ class Report:
         return [f for f in self.findings if f.level == "warning"]
 
 
+def _present(value: object) -> bool:
+    """A value that identifies something: not missing, not an empty string.
+    (Review on #83: `service.name=""` used to satisfy the rule.)"""
+    return value is not None and value != ""
+
+
 def _attr_map(attributes: list[dict]) -> dict[str, object]:
-    """OTLP attribute list -> {key: raw AnyValue content}. Presence is what
-    the rules check; the value only matters for the two discriminators."""
+    """OTLP attribute list -> {key: raw AnyValue content}. A rule is met only
+    when its value is present (see `_present`), not merely when the key is."""
     out: dict[str, object] = {}
     for entry in attributes or []:
         value = entry.get("value") or {}
@@ -67,13 +73,15 @@ def _check_span(span: dict, report: Report) -> None:
     name = span.get("name", "<unnamed>")
     operation = attrs.get("gen_ai.operation.name")
     method = attrs.get("mcp.method.name")
+    operation = operation if _present(operation) else None
+    method = method if _present(method) else None
     if operation is None and method is None:
         report.outside += 1
         return
     report.on_surface += 1
 
     def need(attribute: str, level: str, why: str) -> None:
-        if attribute not in attrs:
+        if not _present(attrs.get(attribute)):
             report.findings.append(Finding(level, name, attribute, why))
 
     if operation in INFERENCE_OPERATIONS:
@@ -91,7 +99,16 @@ def _check_span(span: dict, report: Report) -> None:
         if method == "tools/call":
             need("gen_ai.tool.name", "error", "required on MCP tools/call spans")
             if operation != "execute_tool":
-                need("gen_ai.operation.name", "warning", "should be execute_tool on tools/call")
+                # A wrong value (invoke_agent, chat…) is flagged too, not only a
+                # missing one: such a call is not counted with the tool calls.
+                report.findings.append(
+                    Finding(
+                        "warning",
+                        name,
+                        "gen_ai.operation.name",
+                        f"should be execute_tool on tools/call (got {operation!r})",
+                    )
+                )
         elif method in MCP_RESOURCE_METHODS:
             need("mcp.resource.uri", "error", f"required on MCP {method} spans")
         elif method in MCP_PROMPT_METHODS:
@@ -109,7 +126,7 @@ def check_payloads(payloads: list[dict]) -> Report:
     for payload in payloads:
         for resource_spans in payload.get("resourceSpans", []):
             resource = _attr_map((resource_spans.get("resource") or {}).get("attributes", []))
-            if "service.name" not in resource:
+            if not _present(resource.get("service.name")):
                 report.findings.append(
                     Finding(
                         "error",

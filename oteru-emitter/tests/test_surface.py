@@ -202,3 +202,78 @@ def test_cli_check_committed_sample_has_no_spans(sample_path, capsys):
 def test_cli_check_factory_traces_are_outside_the_surface(traces_path, capsys):
     assert main(["check", str(traces_path)]) == 1
     assert "6 outside" in capsys.readouterr().out
+
+
+# --- values, not just keys (review on #83, silmarahp) ---------------------------------
+#
+# A required attribute that is present but EMPTY identifies nothing, and a
+# `tools/call` declaring the wrong operation is not counted with the other tool
+# calls. Both used to pass `check --strict`.
+
+
+EMPTY_REQUIRED = [
+    ("service.name", INFERENCE_OK, {"resource": {}}, "service.name"),
+    ("provider", dict(INFERENCE_OK, **{"gen_ai.provider.name": ""}), {}, "gen_ai.provider.name"),
+    (
+        "tool on execute_tool",
+        {"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": ""},
+        {},
+        "gen_ai.tool.name",
+    ),
+    ("tool on tools/call", dict(TOOL_CALL_OK, **{"gen_ai.tool.name": ""}), {}, "gen_ai.tool.name"),
+    (
+        "resource uri",
+        {"mcp.method.name": "resources/read", "mcp.resource.uri": "", "jsonrpc.request.id": 1},
+        {},
+        "mcp.resource.uri",
+    ),
+    ("error.type", dict(INFERENCE_OK, **{"error.type": ""}), {"status": 2}, "error.type"),
+]
+
+
+@pytest.mark.parametrize(
+    ("span_attrs", "kwargs", "attribute"),
+    [t[1:] for t in EMPTY_REQUIRED],
+    ids=[t[0] for t in EMPTY_REQUIRED],
+)
+def test_an_empty_required_value_counts_as_missing(span_attrs, kwargs, attribute):
+    if attribute == "service.name":
+        kwargs = {"resource": {"service.name": ""}}
+    assert ("error", attribute) in _findings(span_attrs, **kwargs)
+
+
+def test_an_empty_operation_does_not_put_a_span_on_the_surface():
+    report = check_payloads([_payload({"gen_ai.operation.name": ""})])
+    assert (report.on_surface, report.outside) == (0, 1)
+
+
+def test_an_empty_mcp_method_does_not_put_a_span_on_the_surface():
+    report = check_payloads([_payload({"mcp.method.name": ""})])
+    assert (report.on_surface, report.outside) == (0, 1)
+
+
+@pytest.mark.parametrize("wrong", ["invoke_agent", "chat", ""])
+def test_tools_call_with_another_operation_is_flagged(wrong):
+    attrs = dict(TOOL_CALL_OK, **{"gen_ai.operation.name": wrong})
+    assert ("warning", "gen_ai.operation.name") in _findings(attrs)
+
+
+def test_tools_call_with_execute_tool_is_clean():
+    assert _findings(TOOL_CALL_OK) == set()
+
+
+@pytest.mark.parametrize(
+    "span_attrs",
+    [
+        dict(TOOL_CALL_OK, **{"gen_ai.operation.name": "invoke_agent"}),
+        dict(INFERENCE_OK, **{"gen_ai.provider.name": ""}),
+    ],
+    ids=["wrong-operation", "empty-provider"],
+)
+def test_cli_strict_fails_on_wrong_or_empty_values(tmp_path, span_attrs):
+    assert main(["check", _write(tmp_path, [_payload(span_attrs)]), "--strict"]) == 1
+
+
+def test_cli_strict_fails_on_an_empty_service_name(tmp_path):
+    path = _write(tmp_path, [_payload(INFERENCE_OK, resource={"service.name": ""})])
+    assert main(["check", path, "--strict"]) == 1

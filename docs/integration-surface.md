@@ -52,6 +52,11 @@ Rules
 `error` = the contract is broken; `warning` = recommended upstream and needed
 by an Oteru feature, but absent.
 
+A rule is met by a **value**, not by a key: an attribute whose value is empty
+(`""`) counts as absent, and an empty `gen_ai.operation.name` /
+`mcp.method.name` does not put a span on the surface. Where a rule names a
+value (`execute_tool` on `tools/call`), any other value is flagged too.
+
 | Span | Attribute | Level | Why Oteru needs it |
 |---|---|---|---|
 | *(resource)* | `service.name` | error | which agent/service — every grouping starts here |
