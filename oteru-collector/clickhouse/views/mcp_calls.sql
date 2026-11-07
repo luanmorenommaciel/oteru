@@ -23,7 +23,7 @@ SELECT
     SpanAttributes['mcp.session.id']            AS session_id,
     SpanAttributes['jsonrpc.request.id']        AS request_id,
     SpanAttributes['mcp.protocol.version']      AS protocol_version,
-    StatusCode = 'Error'                        AS failed,
+    CAST(StatusCode = 'Error' AS UInt8)         AS failed,
     SpanAttributes['error.type']                AS error_type,
     StatusMessage                               AS error_message,
     Duration / 1e6                              AS duration_ms,
