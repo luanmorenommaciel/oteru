@@ -86,6 +86,13 @@ Surface** ([`docs/integration-surface.md`](docs/integration-surface.md),
 proposal v0). Check a capture against it with
 `oteru-emitter check <capture.json>`.
 
+## Which agent tools can Oteru observe?
+
+[`docs/emitter-coverage.md`](docs/emitter-coverage.md) maps ~40 coding agents,
+IDEs, agent frameworks and the Microsoft Copilot family to how each reaches
+Oteru: natively on the integration surface, via a mapping, an emitter profile,
+a hook bridge — or not at all (research snapshot 2026-10-06, sources inline).
+
 ## Development
 
 ```bash
