@@ -61,6 +61,24 @@ def resolve_auto_profiles(
     return rotate, scopes, unknown
 
 
+def _service_of(resource_attributes: list[dict]) -> str | None:
+    for attr in resource_attributes:
+        if attr.get("key") == "service.name":
+            return (attr.get("value") or {}).get("stringValue")
+    return None
+
+
+def _rotate_keys_for_resource(resource_attributes: list[dict]) -> tuple[str, ...]:
+    """--profile auto: the rotate keys of the profile claiming this resource."""
+    profile = profile_for_service(_service_of(resource_attributes) or "")
+    return profile.rotate_id_keys if profile else ()
+
+
+def _profiles_in(batches: list[Batch]):
+    names = {n for b in batches for n in iter_service_names(b)}
+    return {p.name: p for n in names if (p := profile_for_service(n))}.values()
+
+
 def _event_names(batch: Batch) -> list[str]:
     """Extracts the event names (body.stringValue) from a logs batch."""
     names: list[str] = []
@@ -212,15 +230,22 @@ def cmd_replay(args) -> int:
         batches = batches[: args.limit]
 
     if args.no_restamp:
-        rotate_keys = ()
+        rotate_keys, keys_for, aliases = (), None, {}
+    elif profile is None:
+        # auto: each resource rotates only its own tool's keys (an unclaimed
+        # resource rotates none); aliases of every claimed tool apply.
+        rotate_keys, keys_for = auto_rotate, _rotate_keys_for_resource
+        aliases = {k: v for p in _profiles_in(batches) for k, v in p.alias_map.items()}
     else:
-        rotate_keys = auto_rotate if profile is None else profile.rotate_id_keys
+        rotate_keys, keys_for, aliases = profile.rotate_id_keys, None, profile.alias_map
     offset_ns = restamp(
         batches,
         shift_time=not args.no_restamp,
         rotate_keys=rotate_keys,
         rotate_trace_ids=not args.no_restamp,
         seed=args.seed,
+        rotate_keys_for=keys_for,
+        id_aliases=aliases,
     )
 
     print(f"oteru-emitter {__version__} — replay")

@@ -504,7 +504,9 @@ def copilot_chat_capture() -> list[dict]:
     )
     trace = "2c4e6a8c0e2a4c6e8a0c2e4a6c8e0a2c"
     conversation = s("gen_ai.conversation.id", "9a1c3e5b-7d9f-4b1d-8f3a-5c7e9b1d3f5a")
-    session = s("copilot_chat.chat_session_id", "1e3a5c7e-9b2d-4f6a-8c0e-2a4c6e8a0c2e")
+    chat_session_id = "1e3a5c7e-9b2d-4f6a-8c0e-2a4c6e8a0c2e"
+    session = s("copilot_chat.chat_session_id", chat_session_id)
+    window = s("copilot_chat.session_id", "3c5e7a9b-1d3f-4b5d-9f1a-3c5e7a9b1d3f")
     agent = _profile_span(
         "invoke_agent GitHub Copilot Chat",
         "b1c2d3e4f5a6b7c8",
@@ -517,9 +519,27 @@ def copilot_chat_capture() -> list[dict]:
             s("user.name", "user_REDACTED_0003"),
             conversation,
             session,
+            window,
         ],
         trace_id=trace,
         kind=1,
+    )
+    # A child session (Copilot titles each conversation in its own chat
+    # session) names its parent through parent_chat_session_id.
+    title = _profile_span(
+        "chat gpt-5-mini",
+        "b1c2d3e4f5a6b7d1",
+        3_210,
+        3_600,
+        [
+            s("gen_ai.operation.name", "chat"),
+            s("gen_ai.provider.name", "github"),
+            s("gen_ai.request.model", "gpt-5-mini"),
+            s("copilot_chat.chat_session_id", "5a7c9e1b-3d5f-4a7c-9e1b-3d5f7a9c1e5b"),
+            s("copilot_chat.parent_chat_session_id", chat_session_id),
+            window,
+        ],
+        trace_id="2c4e6a8c0e2a4c6e8a0c2e4a6c8e0a2d",
     )
     chat = _profile_span(
         "chat gpt-5",
@@ -555,7 +575,9 @@ def copilot_chat_capture() -> list[dict]:
         parent_span_id=agent["spanId"],
     )
     return [
-        _traces_batch(resource, {"name": "copilot-chat", "version": "0.42.0"}, [agent, chat, tool])
+        _traces_batch(
+            resource, {"name": "copilot-chat", "version": "0.42.0"}, [agent, chat, tool, title]
+        )
     ]
 
 

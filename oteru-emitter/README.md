@@ -291,7 +291,13 @@ docs — `Profile.source` records where and when.
 `--profile auto` picks the profile **per `service.name`** found in the
 capture — the right choice for the collector's `telemetry.json`, which mixes
 every tool pointed at it. A service no profile claims is replayed literally
-(only trace/span IDs and timestamps rewritten) with a warning, never an error:
+(only trace/span IDs and timestamps rewritten) with a warning, never an error.
+Rotation is applied **per resource**: each resource rotates only the keys of
+the profile that claims it, so one tool's rules never touch another's
+records. Keys a profile declares as the same identifier (`id_aliases` — Codex's
+`conversation.id` on logs and `thread.id` on spans; Copilot's
+`chat_session_id` and a child's `parent_chat_session_id`) rotate to the same
+new value, so correlation survives the replay:
 
 ```bash
 oteru-emitter replay ../oteru-collector/telemetry/telemetry.json --profile auto

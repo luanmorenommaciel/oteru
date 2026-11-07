@@ -81,8 +81,11 @@ Key design decisions:
   `service.name`s it announces and the `source` it was read from: `claude_code`,
   `codex`, `copilot_chat`, `cursor`, `litellm`, `crewai`, `generic` (#41).
   `--profile auto` resolves one per `service.name` and unions their rotate
-  keys — safe only because **no profile may rotate a key any profile
-  preserves** (`test_no_profile_rotates_what_any_profile_preserves`). A new
+  keys per RESOURCE (an unclaimed resource rotates nothing) — and no
+  profile may rotate a key any profile preserves
+  (`test_no_profile_rotates_what_any_profile_preserves`). `Profile.id_aliases`
+  groups keys holding the same identifier; `restamp(id_aliases=…)` rotates each
+  group as one namespace. A new
   profile needs a fixture in `factories.PROFILE_FIXTURES`; the registry tests
   enumerate it. Profiles are observed fact: re-read the upstream source when a
   tool changes its telemetry, do not extrapolate.

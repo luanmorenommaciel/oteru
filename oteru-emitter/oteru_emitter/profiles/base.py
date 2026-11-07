@@ -37,6 +37,14 @@ class Profile:
     # Where the shape above was read from (commit / doc URL + date). Profiles
     # are observed fact, not guesses: re-read the source when upstream changes.
     source: str = ""
+    # Groups of keys that hold the SAME identifier under different names; on
+    # replay each group rotates as one, so equal values stay equal.
+    id_aliases: tuple[tuple[str, ...], ...] = ()
+
+    @property
+    def alias_map(self) -> dict[str, str]:
+        """key -> the group's first key (its shared rotation namespace)."""
+        return {key: group[0] for group in self.id_aliases for key in group}
 
     def trace_scope_for(self, version: str) -> str | None:
         """The trace scope a given emitting version is expected to use."""
@@ -86,6 +94,8 @@ CODEX = Profile(
     description="OpenAI Codex CLI — codex.* events/metrics + spans; [otel] in config.toml.",
     rotate_id_keys=("conversation.id", "turn.id", "call_id", "thread.id", "submission.id"),
     preserve_id_keys=("user.email", "user.account_id"),
+    # Spans carry the conversation as thread.id, logs as conversation.id.
+    id_aliases=(("conversation.id", "thread.id"),),
     # "codex" is the meter scope, the tracer scope is the service name. The log
     # scope (tracing target codex_otel.log_only) is unverified upstream — if it
     # differs, replay warns and stays faithful.
@@ -120,11 +130,16 @@ COPILOT_CHAT = Profile(
     "github.copilot.chat.otel.* settings.",
     rotate_id_keys=(
         "gen_ai.conversation.id",
+        "copilot_chat.session_id",
         "copilot_chat.chat_session_id",
+        "copilot_chat.parent_chat_session_id",
         "gen_ai.response.id",
         "gen_ai.tool.call.id",
         "session.id",
     ),
+    # A child session (title, categorization, subagent) names its parent's
+    # chat_session_id in parent_chat_session_id: one namespace.
+    id_aliases=(("copilot_chat.chat_session_id", "copilot_chat.parent_chat_session_id"),),
     preserve_id_keys=("user.name", "process.user.name"),
     # The Copilot CLI shares the extension's OTel pipeline under its own
     # service.name; its scope is assumed to follow the same name = service

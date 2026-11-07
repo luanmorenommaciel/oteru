@@ -183,3 +183,111 @@ def test_auto_rotates_each_tools_ids_in_a_mixed_capture(tmp_path):
     assert unknown == []
     for name in NATIVE:
         assert set(get_profile(name).rotate_id_keys) <= set(rotate_keys)
+
+
+# --- correlation on the FINAL replayed payloads (review on #86, silmarahp) ----------
+#
+# Selecting the right keys is not enough: what goes on the wire must keep each
+# tool's correlation intact. Three scenarios, checked on the payloads replay sends.
+
+import copy  # noqa: E402
+
+import oteru_emitter.model.otlp as otlp_model  # noqa: E402
+from oteru_emitter import cli as cli_module  # noqa: E402
+
+
+@pytest.fixture
+def wire(monkeypatch):
+    sent: list[dict] = []
+
+    class FakeTransport:
+        def send(self, signal, request):
+            sent.append(request)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(cli_module, "_build_transport", lambda args: (FakeTransport(), "fake://"))
+    monkeypatch.setattr(otlp_model, "to_request", lambda signal, payload: copy.deepcopy(payload))
+    return sent
+
+
+def _replay_payloads(tmp_path, payloads, profile, wire):
+    path = _write(tmp_path, payloads, name=f"cap-{profile}.json")
+    assert main(["replay", path, "--profile", profile, "--max-gap", "0", "--seed", "3"]) == 0
+    return list(wire)
+
+
+def _resource_attr(payloads, service, key):
+    """Values of `key` on records/spans under resources announcing `service`."""
+    out = []
+    for p in payloads:
+        for section in ("resourceLogs", "resourceMetrics", "resourceSpans"):
+            for r in p.get(section, []):
+                svc = {a["key"]: a["value"].get("stringValue") for a in r["resource"]["attributes"]}
+                if svc.get("service.name") == service:
+                    out.extend(_attr_values(r, key))
+    return out
+
+
+STRANGER_ID = "11111111-2222-4333-8444-555555555555"
+
+
+def _stranger():
+    return {
+        "resourceLogs": [
+            {
+                "resource": {
+                    "attributes": [{"key": "service.name", "value": {"stringValue": "new-agent"}}]
+                },
+                "scopeLogs": [
+                    {
+                        "scope": {"name": "x"},
+                        "logRecords": [
+                            {
+                                "timeUnixNano": "1752620000000000000",
+                                "body": {"stringValue": "e"},
+                                "attributes": [
+                                    {
+                                        "key": "conversation.id",
+                                        "value": {"stringValue": STRANGER_ID},
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+
+@pytest.mark.parametrize("mixed", [False, True], ids=["alone", "mixed-with-codex"])
+def test_auto_never_rotates_an_unclaimed_resource(tmp_path, wire, mixed):
+    payloads = [_stranger(), *(PROFILE_FIXTURES["codex"]() if mixed else [])]
+    sent = _replay_payloads(tmp_path, payloads, "auto", wire)
+    assert _resource_attr(sent, "new-agent", "conversation.id") == [STRANGER_ID]
+    if mixed:  # ...while codex's own conversation.id still rotates
+        original = set(_attr_values(PROFILE_FIXTURES["codex"](), "conversation.id"))
+        assert original.isdisjoint(_resource_attr(sent, "codex_cli_rs", "conversation.id"))
+
+
+@pytest.mark.parametrize("profile", ["codex", "auto"])
+def test_codex_conversation_and_thread_ids_rotate_to_the_same_value(tmp_path, wire, profile):
+    fixture = PROFILE_FIXTURES["codex"]()
+    assert set(_attr_values(fixture, "conversation.id")) == set(_attr_values(fixture, "thread.id"))
+    sent = _replay_payloads(tmp_path, fixture, profile, wire)
+    conv, thread = set(_attr_values(sent, "conversation.id")), set(_attr_values(sent, "thread.id"))
+    assert conv == thread and conv.isdisjoint(_attr_values(fixture, "conversation.id"))
+
+
+@pytest.mark.parametrize("profile", ["copilot_chat", "auto"])
+def test_copilot_sessions_rotate_and_parent_links_survive(tmp_path, wire, profile):
+    fixture = PROFILE_FIXTURES["copilot_chat"]()
+    sent = _replay_payloads(tmp_path, fixture, profile, wire)
+    for key in ("copilot_chat.session_id", "copilot_chat.chat_session_id"):
+        before, after = set(_attr_values(fixture, key)), set(_attr_values(sent, key))
+        assert before and before.isdisjoint(after), key
+    # the child's parent_chat_session_id still names its parent's (new) chat_session_id
+    parents = set(_attr_values(sent, "copilot_chat.parent_chat_session_id"))
+    assert parents and parents <= set(_attr_values(sent, "copilot_chat.chat_session_id"))
