@@ -116,6 +116,8 @@ jobs:
         run: make up-ingestor
       - name: make ingestor-check
         run: make ingestor-check
+      - name: make ingestor-crlf-check
+        run: make ingestor-crlf-check
       - name: make down-ingestor
         if: always()
         run: make down-ingestor

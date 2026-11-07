@@ -100,7 +100,10 @@ impl App {
     }
 
     async fn apply_schema(&self) -> Result<(), Fail> {
-        for stmt in self.schema.replace("{db}", &self.db).split("\n;\n") {
+        // A Windows checkout can bring the file with \r\n; normalise before
+        // splitting on the "\n;\n" statement separator (SPEC.md, "Storage").
+        let schema = self.schema.replace("\r\n", "\n").replace("{db}", &self.db);
+        for stmt in schema.split("\n;\n") {
             let sql: Vec<&str> = stmt.lines().filter(|l| !l.trim_start().starts_with("--")).collect();
             let sql = sql.join("\n");
             if !sql.trim().is_empty() {

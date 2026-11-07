@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
+.PHONY: help setup test lint format dry-run pii-guard e2e-signals up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check ingestor-crlf-check test-hooks
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -102,6 +102,9 @@ down-ingestor: ## stop the ingestor stack (keeps the ClickHouse volume)
 
 ingestor-check: ## run the conformance suite against one ingestor (IMPL=python|go|rust)
 	bash scripts/check_ingestor.sh $(IMPL)
+
+ingestor-crlf-check: ## every ingestor must apply a CRLF (Windows checkout) schema.sql (needs ClickHouse up)
+	bash scripts/check_ingestor_crlf.sh
 
 up-direct: ## start ClickStack alone (persistent volumes) + bootstrap the API key into .env
 	cd $(COLLECTOR) && docker compose -f docker-compose.hyperdx-direct.yml up -d
