@@ -18,6 +18,7 @@ import math
 import os
 import threading
 import time
+import zlib
 from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -82,6 +83,15 @@ def clickhouse(sql: str, body: bytes | None = None) -> None:
         raise IngestError(f"clickhouse unreachable: {exc}") from exc
     if resp.status_code != 200:
         raise IngestError(f"clickhouse {resp.status_code}: {resp.text.strip()[:300]}")
+
+
+def clickhouse_alive() -> bool:
+    """Readiness probe: ClickHouse answers `SELECT 1` within 2 s."""
+    try:
+        resp = requests.post(CLICKHOUSE_URL, data=b"SELECT 1", auth=CLICKHOUSE_AUTH, timeout=2)
+    except requests.RequestException:
+        return False
+    return resp.status_code == 200
 
 
 def apply_schema() -> None:
@@ -304,7 +314,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/healthz":
-            self.reply(200, b"ok") if ready.is_set() else self.reply(503, b"starting")
+            # Readiness, per SPEC: schema applied AND ClickHouse answering now —
+            # not just "bootstrapped once" (review on #87).
+            if not ready.is_set():
+                self.reply(503, b"starting")
+            elif not clickhouse_alive():
+                self.reply(503, b"clickhouse unavailable")
+            else:
+                self.reply(200, b"ok")
         else:
             self.reply(404, b"not found")
 
@@ -326,12 +343,14 @@ class Handler(BaseHTTPRequestHandler):
             req = request_cls()
             if ctype == "application/json":
                 if raw.strip():
-                    json_format.ParseDict(
-                        hex_to_b64(json.loads(raw)), req, ignore_unknown_fields=True
-                    )
+                    body = json.loads(raw)
+                    if not isinstance(body, dict):
+                        raise ValueError("JSON root must be an object")
+                    json_format.ParseDict(hex_to_b64(body), req, ignore_unknown_fields=True)
             else:
                 req.ParseFromString(raw)
-        except (DecodeError, json_format.ParseError, ValueError, OSError) as exc:
+        except (DecodeError, json_format.ParseError, ValueError, OSError, EOFError, zlib.error) as exc:
+            # EOFError / zlib.error: a truncated or corrupt gzip stream
             return self.reply(400, f"cannot decode body: {exc}".encode())
 
         resp = response_cls()

@@ -23,7 +23,7 @@ Contract
 | Content types | `application/x-protobuf` and `application/json` (OTLP/JSON: hex trace/span IDs, int64 as strings) |
 | gzip | `Content-Encoding: gzip` accepted |
 | Port | `4318` inside the container; published as **14318** (python), **24318** (go), **34318** (rust) |
-| Health | `GET /healthz` → `200 ok` once the schema is applied and ClickHouse answers |
+| Health | `GET /healthz` is **readiness**: `200 ok` while the schema is applied **and** ClickHouse answers `SELECT 1` right now; `503` before bootstrap or while ClickHouse is down |
 | gRPC | out of scope for v0 — front it with the collector if needed |
 
 ### Responses (OTLP/HTTP spec)
@@ -32,7 +32,7 @@ Contract
 |---|---|---|
 | accepted (also: empty body / no records) | `200` | `Export<Signal>ServiceResponse`, same encoding as the request |
 | some points of an unsupported metric type | `200` | `partialSuccess.rejectedDataPoints` = count, `errorMessage` names the types |
-| undecodable body | `400` | plain-text reason |
+| undecodable body — incl. JSON whose root is not an object (`null`, `[]`, scalars) and a truncated/corrupt gzip stream | `400` | plain-text reason; the connection stays usable |
 | unsupported `Content-Type` | `415` | plain-text reason |
 | unknown path / method | `404` / `405` | |
 | ClickHouse down / insert failed | `503` | plain-text reason (OTLP clients retry 503) |
