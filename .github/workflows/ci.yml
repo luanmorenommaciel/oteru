@@ -12,14 +12,22 @@ on:
     branches: [main]
     paths:
       - "oteru-emitter/**"
+      - "oteru-ingestor/**"
       - "oteru-hooks/**"
       - "scripts/**"
+      - "scripts/check_ingestor.sh"
+      - "oteru-collector/docker-compose.ingestor.yml"
+      - "Makefile"
       - ".github/workflows/ci.yml"
   pull_request:
     paths:
       - "oteru-emitter/**"
+      - "oteru-ingestor/**"
       - "oteru-hooks/**"
       - "scripts/**"
+      - "scripts/check_ingestor.sh"
+      - "oteru-collector/docker-compose.ingestor.yml"
+      - "Makefile"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
   schedule:
@@ -81,3 +89,33 @@ jobs:
       - uses: actions/checkout@v4
       - name: PII guard (committed captures)
         run: python scripts/check_pii.py
+
+  ingestor-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: oteru-emitter/pyproject.toml
+      - name: Install emitter venv
+        run: make setup
+      - name: Ephemeral ClickHouse password
+        run: |
+          pw="$(openssl rand -hex 24)"
+          echo "::add-mask::${pw}"
+          {
+            printf 'CLICKHOUSE_PASSWORD=%s\n' "${pw}"
+            printf 'CLICKHOUSE_URL=http://localhost:8123/?user=otel&password=%s\n' "${pw}"
+          } >> "${GITHUB_ENV}"
+      - name: make up-ingestor
+        run: make up-ingestor
+      - name: make ingestor-check
+        run: make ingestor-check
+      - name: make down-ingestor
+        if: always()
+        run: make down-ingestor
