@@ -13,10 +13,15 @@ OCB has no `requires` field; floors are explicit `replaces` in
 | `golang.org/x/net` | v0.60.0 | GO-2026-6617 / 6612 / 6611 / 6610 / 6603 |
 | `google.golang.org/grpc` | v1.83.2 | GO-2026-6443 (needs 1.83.2), 6348, 6061 |
 | `golang.org/x/text` | v0.41.0 | GO-2026-5970 (@0.39.0), GO-2026-6629 (@0.41.0) |
-| `github.com/klauspost/compress` | v1.18.7 | GO-2026-5841 / CVE-2026-63209 |
+| `github.com/klauspost/compress` | v1.20.2 | GO-2026-5841 / CVE-2026-63209; GO-2026-6865 / CVE-2026-116591 |
+| `github.com/andybalholm/brotli` | v1.2.7 | GO-2026-6888 |
 
 `compress` is pulled by `fileexporter` → `klauspost/compress/zstd`
-(`go mod why`). v1.18.7 is a patch on the same minor.
+(`go mod why`). v1.18.7 closed GO-2026-5841; GO-2026-6865 (published
+on vuln.go.dev 2026-11-05, after the Nov 3 local proof) needs
+v1.20.2. `brotli` is pulled by `clickhouseexporter` →
+`clickhouse-go/v2` (`go mod why`); GO-2026-6888 (same advisory date)
+needs v1.2.7. Both are `replace` floors, not allowlist entries.
 
 ## GO-2026-5932 — `golang.org/x/crypto/openpgp` (no upstream fix)
 
