@@ -1,6 +1,10 @@
 name: Validate issue against PR
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/pr-issue-validator.yml"
+      - "tools/pr_issue_validator/**"
   workflow_dispatch:
     inputs:
       pr:
@@ -19,7 +23,7 @@ permissions:
   checks: read
 
 jobs:
-  validate:
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -33,6 +37,18 @@ jobs:
         run: python -m pip install pytest
       - name: Unit tests
         run: python -m pytest -q tools/pr_issue_validator/tests
+  validate:
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
       - name: Build evidence report
         env:
           GITHUB_TOKEN: ${{ github.token }}
