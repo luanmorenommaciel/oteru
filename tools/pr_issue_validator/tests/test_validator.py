@@ -1,3 +1,4 @@
+from tools.pr_issue_validator.runner import run_test
 from tools.pr_issue_validator.validator import (
     Status,
     build_report,
@@ -75,3 +76,36 @@ def test_report_redacts_secrets_and_is_deterministic() -> None:
     assert first == build_report(data)
     assert "super-secret" not in first
     assert "<redacted>" in first
+
+
+def test_comments_and_stacked_dependency_are_reported() -> None:
+    data = {
+        "issue": {
+            "body": "- [ ] live alert",
+            "comments": [
+                {"body": "live alert is pending", "user": {"login": "reviewer"}}
+            ],
+        },
+        "pr": {
+            "base": "feature-parent",
+            "body": "Depends on #10",
+            "files": [],
+            "checks": [],
+            "comments": [],
+            "review_comments": [],
+            "reviews": [],
+        },
+        "tests": [],
+        "evidence": [],
+    }
+    report = build_report(data)
+    assert "Issue comments: 1" in report
+    assert "stacked on open branch" in report
+    assert "declares a dependency" in report
+
+
+def test_runner_records_command_exit_and_bounded_output() -> None:
+    result = run_test('python -c "print(123)"', timeout=10)
+    assert result["command"].startswith("python -c")
+    assert result["exit_code"] == 0
+    assert "123" in result["stdout"]

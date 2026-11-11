@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from .github import GitHubClient
+from .runner import run_test
 from .validator import build_report
 
 
@@ -19,6 +20,8 @@ def main() -> int:
     parser.add_argument("--repo", help="owner/name; required with --pr")
     parser.add_argument("--token-env", default="GITHUB_TOKEN")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--test-command", action="append", default=[])
+    parser.add_argument("--test-timeout", type=int, default=300)
     args = parser.parse_args()
 
     if args.input:
@@ -30,6 +33,8 @@ def main() -> int:
         if not token:
             parser.error(f"{args.token_env} is not set")
         data = GitHubClient(token).collect(args.repo, args.pr)
+    for command in args.test_command:
+        data.setdefault("tests", []).append(run_test(command, args.test_timeout))
     args.output.write_text(build_report(data), encoding="utf-8")
     return 0
 

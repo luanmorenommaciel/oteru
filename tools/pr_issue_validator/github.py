@@ -60,6 +60,7 @@ class GitHubClient:
                 "commits": self.get(f"{base}/pulls/{pr_number}/commits"),
                 "comments": self.get(f"{base}/issues/{pr_number}/comments"),
                 "review_comments": self.get(f"{base}/pulls/{pr_number}/comments"),
+                "reviews": self.get(f"{base}/pulls/{pr_number}/reviews"),
                 "checks": [
                     {
                         "name": item.get("name"),

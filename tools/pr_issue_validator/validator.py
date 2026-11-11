@@ -94,6 +94,17 @@ def detect_review_gaps(data: dict[str, Any]) -> list[str]:
             "diff spans more than three top-level areas; verify unrelated scope"
         )
 
+    pr = data.get("pr", {})
+    base = str(pr.get("base", ""))
+    if base and base not in {"main", "master"}:
+        gaps.append(
+            f"PR is stacked on open branch `{base}`; verify dependency and merge order"
+        )
+
+    body = str(pr.get("body", ""))
+    if re.search(r"(?i)\b(depends on|merge .* first|stacked on)\b", body):
+        gaps.append("PR body declares a dependency on another delivery")
+
     if not extract_criteria(str(data.get("issue", {}).get("body", ""))):
         gaps.append("linked issue has no checklist acceptance criteria")
     return gaps
@@ -106,6 +117,19 @@ def validate(data: dict[str, Any]) -> tuple[list[CriterionResult], list[str]]:
     results: list[CriterionResult] = []
 
     searchable = []
+    for container in (data.get("issue", {}), data.get("pr", {})):
+        for kind in ("comments", "review_comments", "reviews"):
+            for comment in container.get(kind, []) or []:
+                body = redact(str(comment.get("body", "")))
+                author = str(comment.get("user", {}).get("login", "unknown"))
+                searchable.append(
+                    {
+                        "text": body,
+                        "supports": None,
+                        "source": f"{kind} by @{author}",
+                        "summary": body[:240],
+                    }
+                )
     for item in evidence_items:
         searchable.append(
             {
@@ -191,6 +215,23 @@ def build_report(data: dict[str, Any]) -> str:
         [
             "",
             "> This report is evidence triage. It never approves, merges, or replaces human review.",
+        ]
+    )
+    issue_comments = len(data.get("issue", {}).get("comments", []) or [])
+    pr_comments = sum(
+        len(data.get("pr", {}).get(kind, []) or [])
+        for kind in ("comments", "review_comments", "reviews")
+    )
+    lines.extend(
+        [
+            "",
+            "## Sources consulted",
+            "",
+            f"- Issue comments: {issue_comments}",
+            f"- PR conversation/review entries: {pr_comments}",
+            f"- Changed files: {len(data.get('pr', {}).get('files', []) or [])}",
+            f"- Checks: {len(data.get('pr', {}).get('checks', []) or [])}",
+            f"- Recorded test executions: {len(data.get('tests', []) or [])}",
         ]
     )
     return "\n".join(lines) + "\n"
