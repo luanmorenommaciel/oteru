@@ -109,3 +109,36 @@ def test_runner_records_command_exit_and_bounded_output() -> None:
     assert result["command"].startswith("python -c")
     assert result["exit_code"] == 0
     assert "123" in result["stdout"]
+
+
+import subprocess
+import sys
+from pathlib import Path
+
+
+def test_end_to_end_fixture_generates_expected_report(tmp_path: Path) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "end_to_end.json"
+    output = tmp_path / "report.md"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools.pr_issue_validator.cli",
+            "--input",
+            str(fixture),
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    report = output.read_text(encoding="utf-8")
+    assert "dbt changes lack evidence from `dbt build --full-refresh`" in report
+    assert "`dbt run` was recorded but is not equivalent to `dbt build`" in report
+    assert "ingestor change has no Windows/CRLF check evidence" in report
+    assert "verify unrelated scope" in report
+    assert "stacked on open branch `feature-parent`" in report
+    assert "Issue comments: 1" in report
