@@ -83,6 +83,9 @@ response policy proposed for #65 using synthetic checks.
 
 ## Development
 
+For the offline operational-risk permission slice (#63), see
+[`docs/operational-risk.md`](docs/operational-risk.md).
+
 ```bash
 make test         # pytest suite (oteru-emitter/tests)
 make lint         # ruff check + format check
