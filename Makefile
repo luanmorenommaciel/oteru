@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals test-risk lint-risk demo-risk-permission e2e-risk up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
+.PHONY: help setup test lint format test-human-gate lint-human-gate demo-human-gate dry-run pii-guard e2e-signals test-risk lint-risk demo-risk-permission e2e-risk up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -69,6 +69,17 @@ demo-risk-permission: ## project synthetic Claude events and evaluate permission
 
 e2e-risk: ## send risk logs to an isolated collector and ClickHouse
 	$(VENV)/$(BINDIR)/python scripts/check_risk_e2e.py
+
+test-human-gate: ## run the isolated, offline issue #65 contract tests
+	$(VENV)/$(BINDIR)/python -m pytest -q tests/test_human_gate.py
+
+lint-human-gate: ## lint and check formatting for the issue #65 simulator
+	$(VENV)/$(BINDIR)/python -m ruff check oteru_gate tests/test_human_gate.py
+	$(VENV)/$(BINDIR)/python -m ruff format --check oteru_gate tests/test_human_gate.py
+
+demo-human-gate: ## verify all V1 scenarios; set GATE_OUTPUT to a new directory
+	@test -n "$(GATE_OUTPUT)" || { echo "Set GATE_OUTPUT to a new local directory"; exit 2; }
+	$(VENV)/$(BINDIR)/python -m oteru_gate.demo "$(GATE_OUTPUT)"
 
 format: ## apply ruff format + autofixes
 	cd $(EMITTER) && $(VENV_PY) -m ruff check --fix oteru_emitter tests

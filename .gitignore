@@ -8,6 +8,7 @@ __pycache__/
 # under docs/ instead of letting it sit in everyone's `git status`.
 tmp/
 output/
+__pycache__/
 .tmp_palestra/
 /*.png
 
