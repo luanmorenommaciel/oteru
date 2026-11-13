@@ -15,3 +15,7 @@ __pycache__/
 # Claude Code: `settings.json` is shareable and stays tracked; `settings.local.json`
 # is per-machine (absolute paths, personal permission grants) and is not.
 .claude/settings.local.json
+
+# Python bytecode
+__pycache__/
+*.pyc

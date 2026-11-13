@@ -1,0 +1,191 @@
+# Custom OpenTelemetry Collector distribution (OCB).
+# Builds the binary, tests the local HMAC converter module, produces an SBOM,
+# and fails on HIGH/CRITICAL vulns or leaked secrets. Does not push an image.
+name: Collector OCB
+
+on:
+  push:
+    paths:
+      - "oteru-collector/hmacconverter/**"
+      - "oteru-collector/builder-config.yaml"
+      - "oteru-collector/Dockerfile"
+      - ".gitleaksignore"
+      - "docs/ocb-vulns.md"
+      - ".github/workflows/collector-ocb.yml"
+  pull_request:
+    paths:
+      - "oteru-collector/hmacconverter/**"
+      - "oteru-collector/builder-config.yaml"
+      - "oteru-collector/Dockerfile"
+      - ".gitleaksignore"
+      - "docs/ocb-vulns.md"
+      - ".github/workflows/collector-ocb.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: collector-ocb-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ocb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout (full history for gitleaks)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.27.3"
+          cache: false
+      - name: Pin GOTOOLCHAIN
+        run: echo "GOTOOLCHAIN=go1.27.3" >> "$GITHUB_ENV"
+
+      - name: Install OCB v0.155.0
+        run: |
+          go install go.opentelemetry.io/collector/cmd/builder@v0.155.0
+          mkdir -p "$HOME/.local/bin"
+          mv "$(go env GOPATH)/bin/builder" "$HOME/.local/bin/ocb"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: OCB build
+        working-directory: oteru-collector
+        run: ocb --config=builder-config.yaml
+
+      - name: Binary sha256
+        working-directory: oteru-collector/_build
+        run: sha256sum otelcol-oteru
+
+      - name: Collector modules stay on v0.155.0 / v1.61.0
+        working-directory: oteru-collector/_build
+        run: |
+          # Fail if any collector core/contrib module drifted off the
+          # v0.155.0 (unstable) / v1.61.0 (stable) line.
+          off="$(go list -m all | awk '
+            $1 ~ /go\.opentelemetry\.io\/collector(\/|$)/ ||
+            $1 ~ /github\.com\/open-telemetry\/opentelemetry-collector-contrib(\/|$)/ {
+              v=$2
+              if (v ~ /^v0\./ && v != "v0.155.0") print
+              else if (v ~ /^v1\./ && v != "v1.61.0") print
+            }')"
+          if [ -n "$off" ]; then
+            echo "collector modules off the v0.155.0 / v1.61.0 line:"
+            echo "$off"
+            exit 1
+          fi
+          go list -m all
+
+      - name: go test (hmacconverter)
+        working-directory: oteru-collector
+        run: |
+          cd hmacconverter
+          go vet ./...
+          go test -v ./...
+
+      - name: govulncheck
+        working-directory: oteru-collector/_build
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          # Documented remainder: docs/ocb-vulns.md
+          # Exact ID + module@version. A new ID, or the same ID on a
+          # different module or version, fails with govulncheck's original rc.
+          # Source mode (./...) is unchanged; no continue-on-error.
+          allowlist='GO-2026-6615 go.opentelemetry.io/otel/sdk/log@v0.20.0
+          GO-2026-6508 go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc@v0.20.0
+          GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace@v1.44.0
+          GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc@v1.44.0
+          GO-2026-6505 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.44.0
+          GO-2026-6505 go.opentelemetry.io/otel/sdk@v1.44.0'
+          tmp="$(mktemp)"
+          # Capture rc without tripping set -e / pipefail (no pipe here).
+          rc=0
+          govulncheck -json ./... >"$tmp" || rc=$?
+          # Only 0 (clean) and 3 (findings, filtered below) are acceptable.
+          # Anything else (e.g. 2 from a panic, 1 from a usage/load error)
+          # fails the job before the allowlist filter can call it clean.
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+            echo "govulncheck -json exited $rc (not 0 or 3): scan did not complete"
+            exit "$rc"
+          fi
+          unexpected="$(jq -nr --arg allow "$allowlist" '
+            ($allow | split("\n") | map(gsub("^\\s+|\\s+$";"")) | map(select(length>0))) as $ok
+            | [inputs
+               | .finding
+               | select(.)
+               | select(any(.trace[]?; .package or .function))
+               | "\(.osv) \(.trace[0].module)@\(.trace[0].version)"
+              ]
+            | unique
+            | map(select(. as $p | $ok | index($p) | not))
+            | .[]
+          ' <"$tmp")"
+          if [ -n "$unexpected" ]; then
+            echo "govulncheck findings not on the documented allowlist:"
+            echo "$unexpected"
+            echo "See docs/ocb-vulns.md"
+            if [ "$rc" -eq 0 ]; then
+              # -json exits 0 even with findings; text source mode exits 3.
+              set +e
+              govulncheck ./...
+              rc=$?
+              set -e
+              [ "$rc" -ne 0 ] || rc=3
+            fi
+            exit "$rc"
+          fi
+          echo "govulncheck: called findings match docs/ocb-vulns.md"
+
+      - name: SBOM (syft)
+        uses: anchore/sbom-action@f8bdd1d8ac5e901a77a92f111440fdb1b593736b # v0.20.6
+        with:
+          path: oteru-collector/_build
+          format: spdx-json
+          upload-artifact: false
+          output-file: otelcol-oteru.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: otelcol-oteru-sbom
+          path: otelcol-oteru.spdx.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Trivy filesystem (fail on CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: oteru-collector
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: false
+
+      # gitleaks-action is commercial; run the MIT CLI against full history.
+      - name: Gitleaks (full branch history)
+        run: |
+          ver=8.24.3
+          tgz="gitleaks_${ver}_linux_x64.tar.gz"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${ver}"
+          cd /tmp
+          curl -sSfL "${base}/${tgz}" -o "${tgz}"
+          curl -sSfL "${base}/gitleaks_${ver}_checksums.txt" -o gitleaks_checksums.txt
+          # Check only the matching line; fails if absent or mismatched.
+          grep -E "  ${tgz}\$" gitleaks_checksums.txt > gitleaks_tgz.sha256
+          [ "$(wc -l < gitleaks_tgz.sha256)" -eq 1 ]
+          sha256sum -c gitleaks_tgz.sha256
+          tar -xzf "${tgz}" -C /tmp gitleaks
+          cd "${GITHUB_WORKSPACE}"
+          /tmp/gitleaks detect --source . --verbose --redact --log-opts=--all
+
+      - name: Docker image (local tag, no push)
+        working-directory: oteru-collector
+        run: |
+          docker build -t oteru-collector:0.155.0 .
+          docker inspect --format='id={{.Id}}' oteru-collector:0.155.0
