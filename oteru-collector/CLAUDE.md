@@ -97,9 +97,10 @@ Current (fragile, accidental) discriminators:
 - **timestamps**: emitter records are restamped to ~now in bursts.
 
 Implication: anything that aggregates this data (metering, cost, contracts)
-will blend real dev usage with test traffic. A clean separation is **deferred** —
-the planned approach is an opt-in `--mark-synthetic` resource attribute on the
-emitter (e.g. `oteru.traffic=synthetic`) that keeps the `claude_code.*` records
-byte-identical while tagging the envelope. Until then, treat mixed captures as
-contaminated and filter by the discriminators above. Note: `telemetry/*.json` is
+will blend real dev usage with test traffic. The clean separation is the
+emitter's opt-in `--mark-synthetic`: it tags every resource
+`oteru.traffic=synthetic` and keeps the `claude_code.*` records byte-identical.
+Aggregations filter `ResourceAttributes['oteru.traffic'] != 'synthetic'`
+(`make e2e-signals` asserts the tag lands). Replays run WITHOUT the flag are
+still indistinguishable — fall back to the discriminators above for those. Note: `telemetry/*.json` is
 gitignored, so this mix is never committed.
