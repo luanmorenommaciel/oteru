@@ -3,17 +3,17 @@
 # container runtime (compose: environment from .env; collector config:
 # ${env:OTERU_PII_HMAC_KEY}).
 
-# golang:1.27.3-bookworm — same Go as the ingestor (#115/#118). OTTL
-# generics in contrib v0.155.0 fail to link on the Go 1.25 linker
-# (relocation target not defined). Index digest of the 1.27.3-bookworm tag
-# (not a floating latest).
-FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS builder
+# golang:1.27.4-bookworm — same Go as Collector OCB (GO-2026-6859 is
+# fixed in net/http@go1.27.4). OTTL generics in contrib v0.155.0 fail
+# to link on the Go 1.25 linker (relocation target not defined). Index
+# digest of the 1.27.4-bookworm tag (not a floating latest).
+FROM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS builder
 
 WORKDIR /src
 ENV CGO_ENABLED=0 \
     GOPROXY=https://proxy.golang.org,direct \
     GOBIN=/usr/local/bin \
-    GOTOOLCHAIN=go1.27.3
+    GOTOOLCHAIN=go1.27.4
 
 # OCB (collector builder) at the same version as the distro.
 RUN go install go.opentelemetry.io/collector/cmd/builder@v0.155.0 \
