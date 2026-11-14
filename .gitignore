@@ -16,6 +16,7 @@ __pycache__/
 # is per-machine (absolute paths, personal permission grants) and is not.
 .claude/settings.local.json
 
-# Python bytecode
+# Local Python execution artifacts.
 __pycache__/
+# Python bytecode
 *.pyc

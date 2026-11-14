@@ -46,15 +46,22 @@ ClickStack all-in-one; see `docs/clickstack.md`).
   collector has by construction. `make e2e-signals`
   (`scripts/check_signals_e2e.sh`) is the verification artifact for this claim —
   it asserts every combination lands in the right ClickHouse tables.
-- **All three signals fan into two exporters: `debug` and `file`.** `debug`
+- **Privacy processors run before every exporter.** A bounded JSON policy in
+  `privacy/policy.json` compiles at startup; the `privacy-policy` service must
+  complete successfully before a new Collector starts. Use `make apply-privacy`
+  for changes to a running installation. See `docs/privacy.md` for the approved
+  catalog, metric rejection, exclusions and rollback. Never bypass the
+  processors in a new signal pipeline or an override.
+- **All three signals fan into two base exporters: `debug` and `file`.** `debug`
   (`verbosity: detailed`) prints human-readable text to stdout; `file`
   (`/telemetry/telemetry.json`, with rotation) writes structured OTLP/JSON, one
   batch per line. To route elsewhere, add an exporter and reference it in the
   pipeline — don't drop `debug`/`file` unless you mean to lose that visibility.
 - **The `file` exporter persists to the host.** `/telemetry` inside the
   container is bind-mounted to `./telemetry`; `telemetry/*.json` is gitignored.
-  The format is the raw OTLP payload (`resourceLogs`/`resourceMetrics`) — this is
-  exactly what `oteru-emitter` replays.
+  The format is structured OTLP/JSON after privacy processing; records dropped
+  by the policy are absent. `oteru-emitter` can replay it, but it is not a
+  byte-faithful capture of the original input.
 - **Config is bind-mounted, not baked in.** Edits to `oteru-collector-config.yml`
   take effect on container recreate without rebuilding.
 - **The HyperDX override uses the standalone image, never the all-in-one.** The

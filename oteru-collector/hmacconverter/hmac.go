@@ -88,6 +88,10 @@ func bindKeyFromEnv() error {
 	return nil
 }
 
+// InitializeKeyFromEnv validates and binds the process HMAC key for custom
+// processors in this module. Call this from their factory's Create method.
+func InitializeKeyFromEnv() error { return bindKeyFromEnv() }
+
 func currentKey() ([]byte, error) {
 	p := boundKey.Load()
 	if p == nil {
@@ -97,4 +101,13 @@ func currentKey() ([]byte, error) {
 		return nil, err
 	}
 	return *p, nil
+}
+
+// HashCurrent hashes a value with the key validated and bound by this process.
+func HashCurrent(value []byte) (string, error) {
+	key, err := currentKey()
+	if err != nil {
+		return "", err
+	}
+	return Digest(key, value), nil
 }

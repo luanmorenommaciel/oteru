@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format test-human-gate lint-human-gate demo-human-gate dry-run pii-guard e2e-signals test-risk lint-risk demo-risk-permission e2e-risk up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
+.PHONY: help setup test lint format test-human-gate lint-human-gate demo-human-gate dry-run pii-guard e2e-signals privacy-config-check e2e-privacy demo-privacy apply-privacy test-risk lint-risk demo-risk-permission e2e-risk up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -38,12 +38,14 @@ setup: ## create the venv, install the emitter (editable + dev) and enable the P
 	$(PYTHON) -m venv $(VENV)
 	$(VENV)/$(BINDIR)/python -m pip install --upgrade pip
 	$(VENV)/$(BINDIR)/python -m pip install -e "./$(EMITTER)[dev]"
+	$(VENV)/$(BINDIR)/python -m pip install -r $(COLLECTOR)/requirements-dev.txt
 	git config core.hooksPath .githooks
 	@echo "setup OK — pre-commit hook (PII guard) enabled."
 
-test: ## run the emitter's and the hook bridge's pytest suites
+test: ## run emitter, hook bridge and static Collector privacy tests
 	cd $(EMITTER) && $(VENV_PY) -m pytest
 	$(MAKE) --no-print-directory test-hooks
+	$(VENV)/$(BINDIR)/python -m pytest $(COLLECTOR)/tests/test_policy.py $(COLLECTOR)/tests/test_configs.py
 
 test-hooks: ## run the hook bridge tests (oteru-hooks/, #90)
 	cd $(EMITTER) && $(VENV_PY) -m pytest ../oteru-hooks/tests
@@ -54,6 +56,8 @@ test-risk: ## run the operational-risk contract tests
 lint: ## ruff check + formatting check
 	cd $(EMITTER) && $(VENV_PY) -m ruff check oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff format --check oteru_emitter tests
+	$(VENV)/$(BINDIR)/python -m ruff check $(COLLECTOR)/privacy $(COLLECTOR)/tests scripts/apply_privacy.py
+	$(VENV)/$(BINDIR)/python -m ruff format --check $(COLLECTOR)/privacy $(COLLECTOR)/tests scripts/apply_privacy.py
 	cd $(EMITTER) && $(VENV_PY) -m ruff check ../scripts/check_pii.py ../scripts/check_risk_e2e.py
 	cd $(EMITTER) && $(VENV_PY) -m ruff format --check ../scripts/check_pii.py ../scripts/check_risk_e2e.py
 	cd $(EMITTER) && $(VENV_PY) -m ruff check ../oteru-hooks && $(VENV_PY) -m ruff format --check ../oteru-hooks
@@ -84,6 +88,9 @@ demo-human-gate: ## verify all V1 scenarios; set GATE_OUTPUT to a new directory
 format: ## apply ruff format + autofixes
 	cd $(EMITTER) && $(VENV_PY) -m ruff check --fix oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff format oteru_emitter tests
+	$(VENV)/$(BINDIR)/python -m ruff check --fix $(COLLECTOR)/privacy $(COLLECTOR)/tests scripts/apply_privacy.py
+	$(VENV)/$(BINDIR)/python -m ruff format $(COLLECTOR)/privacy $(COLLECTOR)/tests scripts/apply_privacy.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff check --fix ../oteru-hooks && $(VENV_PY) -m ruff format ../oteru-hooks
 
 dry-run: ## validate the sample without network (smoke test)
 	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.cli replay $(SAMPLE) --dry-run
@@ -94,8 +101,30 @@ pii-guard: ## scan committed captures for PII (system python)
 e2e-signals: ## verify every --emit combination lands in ClickHouse (needs `make up-clickhouse`)
 	bash scripts/check_signals_e2e.sh
 
+privacy-config-check: ## verify policy contract and all Collector pipelines (no Docker daemon)
+	$(VENV)/$(BINDIR)/python -m pytest $(COLLECTOR)/tests/test_policy.py $(COLLECTOR)/tests/test_configs.py
+
+e2e-privacy: ## exercise privacy policy and sinks in isolated Docker containers
+	$(VENV)/$(BINDIR)/python -m pytest $(COLLECTOR)/tests/test_runtime.py
+
+demo-privacy: ## prove identity pseudonymization and metric continuity (isolated Docker)
+	@echo 'Synthetic input only; success means cataloged identity is replaced and safe metrics retain their measurements.'
+	$(VENV)/$(BINDIR)/python -m pytest -v --tb=short \
+		$(COLLECTOR)/tests/test_runtime.py::test_identity_is_scrubbed_before_file_and_stdout \
+		$(COLLECTOR)/tests/test_runtime.py::test_hash_uses_versioned_field_domain_and_preserves_metric_identity \
+		$(COLLECTOR)/tests/test_runtime.py::test_reference_metrics_keep_all_934_points_and_measurements \
+		$(COLLECTOR)/tests/test_runtime.py::test_two_principals_keep_stable_pseudonyms_across_signals_and_restart \
+		$(COLLECTOR)/tests/test_runtime.py::test_uninspectable_links_and_exemplars_are_rejected \
+		$(COLLECTOR)/tests/test_runtime.py::test_clickstack_forwarder_receives_only_scrubbed_otlp \
+		$(COLLECTOR)/tests/test_runtime.py::test_clickhouse_tables_receive_only_scrubbed_records \
+		$(COLLECTOR)/tests/test_runtime.py::test_clickhouse_cost_volume_and_trend_by_two_pseudonyms \
+		$(COLLECTOR)/tests/test_runtime.py::test_policy_activation_replaces_valid_policy_and_stops_on_invalid
+
+apply-privacy: ## stop ingestion, compile a new policy and recreate Collector (PROFILE=base|clickhouse|clickstack|clickstack-local|hyperdx)
+	$(PYTHON) scripts/apply_privacy.py --profile $(or $(PROFILE),base)
+
 up: ## start the collector (docker compose, detached)
-	cd $(COLLECTOR) && docker compose up -d
+	cd $(COLLECTOR) && docker compose up -d --build
 
 up-clickstack-local: ## start the collector forwarding to a local ClickStack all-in-one; UI at http://localhost:8080
 	@cd $(COLLECTOR) && \
@@ -105,7 +134,7 @@ up-clickstack-local: ## start the collector forwarding to a local ClickStack all
 		     "container is up) or copy the ingestion key from the UI (Team Settings)" \
 		     "into $(COLLECTOR)/.env (see .env.example), then re-run 'make up-clickstack-local'."; \
 	fi && \
-	docker compose -f docker-compose.yml -f docker-compose.clickstack-local.yml up -d
+		docker compose -f docker-compose.yml -f docker-compose.clickstack-local.yml up -d --build
 
 up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK_ENDPOINT + CLICKSTACK_API_KEY)
 	@cd $(COLLECTOR) && \
@@ -114,10 +143,10 @@ up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK
 		     "see $(COLLECTOR)/.env.example). Never commit real values."; \
 		exit 1; \
 	fi && \
-	docker compose -f docker-compose.yml -f docker-compose.clickstack.yml up -d
+		docker compose -f docker-compose.yml -f docker-compose.clickstack.yml up -d --build
 
 up-clickhouse: ## start the collector + a self-contained ClickHouse backend (native clickhouse exporter)
-	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml up -d
+	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml up -d --build
 
 INGEST_COMPOSE := -f docker-compose.yml -f docker-compose.clickhouse.yml -f docker-compose.ingestor.yml
 IMPL ?= python
@@ -146,7 +175,7 @@ ingest-loop: ## keep ingesting forever (Ctrl+C to stop)
 
 up-hyperdx: ## start the collector + ClickHouse + the local HyperDX (ClickStack) UI on :8080
 	cd $(COLLECTOR) && docker compose -f docker-compose.yml \
-		-f docker-compose.clickhouse.yml -f docker-compose.hyperdx.yml up -d
+		-f docker-compose.clickhouse.yml -f docker-compose.hyperdx.yml up -d --build
 	@echo "HyperDX UI: http://localhost:8080 — connect it to ClickHouse at http://clickhouse:8123 (user/pass: otel)."
 
 down: ## stop the collector

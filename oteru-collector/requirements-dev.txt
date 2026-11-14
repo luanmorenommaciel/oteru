@@ -1,0 +1,2 @@
+# Install alongside the emitter's [dev] extras (OTLP clients, pytest and Ruff).
+PyYAML>=6.0.2,<7

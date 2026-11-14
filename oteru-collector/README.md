@@ -1,24 +1,28 @@
 # oteru-collector
 
 **OpenTelemetry Collector** sandbox (contrib distribution) for the Oteru
-platform. Receives OTLP telemetry, prints it to stdout (`debug`) and persists
-it to disk (`file`). It is the **receiving** end — its pair is the
+platform. Receives OTLP telemetry, applies a bounded privacy policy, prints the
+result to stdout (`debug`) and persists it to disk (`file`). It is the **receiving** end — its pair is the
 [`oteru-emitter`](../oteru-emitter), which forges the traffic.
 
 ```
-emitter / Claude Code / POD-1   ──OTLP──►   this collector   ──►  debug (stdout)
+emitter / Claude Code / POD-1   ──OTLP──► privacy policy ──►  debug (stdout)
         (gRPC :4317 | HTTP :4318)                            └─►  file  (telemetry/)
 ```
 
 ## Prerequisites
 
 - **Docker** running.
+- A stable `OTERU_PII_HMAC_KEY` in the environment or in gitignored `.env`.
+  Generate it once with `python -c 'import secrets;print(secrets.token_hex(32))'`
+  and keep it for every restart. Missing or invalid keys make the Collector
+  refuse startup.
 
 ## Commands
 
 ```bash
-docker compose up                       # foreground (telemetry prints here)
-docker compose up -d                    # background
+docker compose up --build               # build OCB distribution; foreground
+docker compose up -d --build            # build and run in background
 docker compose logs -f oteru-collector  # follow the output
 docker compose down                     # stop
 ```
@@ -26,10 +30,14 @@ docker compose down                     # stop
 From the monorepo root, `make up` / `make down` / `make demo` (start + send 5
 emitter batches + show the logs) do the same via the Makefile.
 
-After editing `oteru-collector-config.yml`, recreate to remount the config:
+For policy changes on a running installation, use the profile-aware activation
+command from [the privacy runbook](../docs/privacy.md). It builds the custom
+distribution first, then stops ingestion before compilation; a policy or startup
+failure after stop leaves the Collector stopped. For other Collector config
+changes, rebuild and recreate the stack:
 
 ```bash
-docker compose up -d --force-recreate
+docker compose up -d --build --force-recreate
 ```
 
 ## Local ClickStack (HyperDX all-in-one)
@@ -41,6 +49,9 @@ automated API-key bootstrap, see [`docs/clickstack.md`](../docs/clickstack.md):
 make up-direct            # ClickStack alone; emitter ingests direct on :4318
 make up-clickstack-local  # collector + ClickStack (collector forwards internally)
 ```
+
+Direct ingest bypasses the Collector privacy policy. Use `up-clickstack-local`
+for telemetry that requires its masking and dropping rules.
 
 ## Forwarding to ClickStack (optional)
 
@@ -175,12 +186,15 @@ guidance for a shared deployment.
 | `4317` | OTLP/gRPC | emitter `--transport grpc`, production POD-1 |
 | `4318` | OTLP/HTTP (`http/protobuf` and `http/json`) | Claude Code CLI, emitter `--transport http` |
 
-Both receivers feed the same pipelines (`traces`, `logs`, `metrics`).
+Both receivers feed the same pipelines (`traces`, `logs`, `metrics`). Each
+pipeline applies the privacy policy before any exporter. Metric records with
+identity labels are rejected to avoid merging distinct series; the committed
+sample's 934 metric datapoints are all affected by the default policy.
 
 ## Exporters
 
-All three signals fan out to **two** exporters (see
-`oteru-collector-config.yml`):
+After privacy processing, all three signals fan out to **two** base exporters
+(see `oteru-collector-config.yml`):
 
 - **`debug`** (`verbosity: detailed`) — prints human-readable telemetry to
   stdout.
