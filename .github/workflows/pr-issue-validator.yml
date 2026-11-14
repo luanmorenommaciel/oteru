@@ -1,0 +1,70 @@
+name: Validate issue against PR
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/pr-issue-validator.yml"
+      - "tools/pr_issue_validator/**"
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number
+        required: true
+        type: number
+      test_command:
+        description: Optional explicit test command to run in the isolated runner
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  checks: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependency
+        run: python -m pip install pytest
+      - name: Unit tests
+        run: python -m pytest -q tools/pr_issue_validator/tests
+  validate:
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build evidence report
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TEST_COMMAND: ${{ inputs.test_command }}
+        run: |
+          args=(
+            --repo "${{ github.repository }}"
+            --pr "${{ inputs.pr }}"
+            --output pr-issue-validation.md
+          )
+          if [[ -n "$TEST_COMMAND" ]]; then
+            args+=(--test-command "$TEST_COMMAND")
+          fi
+          python -m tools.pr_issue_validator.cli "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr-issue-validation-${{ inputs.pr }}
+          path: pr-issue-validation.md
+          if-no-files-found: error
