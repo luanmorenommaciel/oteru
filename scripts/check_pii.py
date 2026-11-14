@@ -125,6 +125,8 @@ def _risk_demo_payloads() -> list[tuple[str, list[str]]]:
     sys.path.insert(0, emitter_dir)
     try:
         from oteru_emitter.risk.demo import policy, synthetic_capture
+        from oteru_emitter.risk.demo_inventory import example as inventory_example
+        from oteru_emitter.risk.demo_tool_rate import example as tool_rate_example
         from oteru_emitter.risk.output import canonical, otlp_batch
         from oteru_emitter.risk.rules import evaluate
         from oteru_emitter.risk.source_claude import project_capture
@@ -136,6 +138,10 @@ def _risk_demo_payloads() -> list[tuple[str, list[str]]]:
             bundle = project_capture(path, "risk-demo", "subject")
         rules = policy()
         findings, report = evaluate(bundle, rules)
+        tool_bundle, tool_policy = tool_rate_example(11)
+        tool_findings, tool_report = evaluate(tool_bundle, tool_policy)
+        inventory_bundle, inventory_policy = inventory_example()
+        inventory_findings, inventory_report = evaluate(inventory_bundle, inventory_policy)
         return [
             (
                 "risk-demo",
@@ -150,7 +156,33 @@ def _risk_demo_payloads() -> list[tuple[str, list[str]]]:
                         otlp_batch(findings),
                     )
                 ],
-            )
+            ),
+            (
+                "risk-tool-rate-demo",
+                [
+                    json.dumps(item)
+                    for item in (
+                        tool_bundle,
+                        tool_policy,
+                        tool_report,
+                        *tool_findings,
+                        otlp_batch(tool_findings),
+                    )
+                ],
+            ),
+            (
+                "risk-inventory-demo",
+                [
+                    json.dumps(item)
+                    for item in (
+                        inventory_bundle,
+                        inventory_policy,
+                        inventory_report,
+                        *inventory_findings,
+                        otlp_batch(inventory_findings),
+                    )
+                ],
+            ),
         ]
     finally:
         sys.path.remove(emitter_dir)
