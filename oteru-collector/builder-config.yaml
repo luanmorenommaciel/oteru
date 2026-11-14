@@ -43,6 +43,9 @@ processors:
   - gomod: github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter v0.155.0
     import: github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter
     name: transformprocessor
+  - gomod: github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter v0.155.0
+    import: github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter/privacyprocessor
+    name: privacy
 
 exporters:
   - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.155.0

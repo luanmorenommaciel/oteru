@@ -15,6 +15,7 @@ on:
       - "oteru-ingestor/**"
       - "oteru-hooks/**"
       - "scripts/**"
+      - "oteru-collector/**"
       - "oteru_gate/**"
       - "tests/test_human_gate.py"
       - "ruff.toml"
@@ -29,6 +30,7 @@ on:
       - "oteru-ingestor/**"
       - "oteru-hooks/**"
       - "scripts/**"
+      - "oteru-collector/**"
       - "oteru_gate/**"
       - "tests/test_human_gate.py"
       - "ruff.toml"
@@ -104,6 +106,34 @@ jobs:
       - name: PII guard (committed captures)
         run: python scripts/check_pii.py
 
+  privacy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependencies
+        run: |
+          python -m pip install -e "./oteru-emitter[dev]"
+          python -m pip install -r oteru-collector/requirements-dev.txt
+      - name: Lint Collector privacy code
+        run: |
+          python -m ruff check oteru-collector/privacy oteru-collector/tests scripts/apply_privacy.py
+          python -m ruff format --check \
+            oteru-collector/privacy \
+            oteru-collector/tests/support.py \
+            oteru-collector/tests/test_configs.py \
+            oteru-collector/tests/test_policy.py \
+            oteru-collector/tests/test_runtime.py \
+            scripts/apply_privacy.py
+          bash -n scripts/check_signals_e2e.sh
+      - name: Check static policy and topology
+        run: python -m pytest oteru-collector/tests/test_policy.py oteru-collector/tests/test_configs.py
+      - name: Exercise isolated Collector, ClickHouse and OTLP forwarding
+        run: python -m pytest oteru-collector/tests/test_runtime.py
+
   ingestor-check:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -118,13 +148,16 @@ jobs:
           cache-dependency-path: oteru-emitter/pyproject.toml
       - name: Install emitter venv
         run: make setup
-      - name: Ephemeral ClickHouse password
+      - name: Ephemeral ClickHouse credentials and HMAC key
         run: |
           pw="$(openssl rand -hex 24)"
+          hmac_key="$(openssl rand -hex 32)"
           echo "::add-mask::${pw}"
+          echo "::add-mask::${hmac_key}"
           {
             printf 'CLICKHOUSE_PASSWORD=%s\n' "${pw}"
             printf 'CLICKHOUSE_URL=http://localhost:8123/?user=otel&password=%s\n' "${pw}"
+            printf 'OTERU_PII_HMAC_KEY=%s\n' "${hmac_key}"
           } >> "${GITHUB_ENV}"
       - name: make up-ingestor
         run: make up-ingestor
