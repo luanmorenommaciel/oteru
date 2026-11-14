@@ -12,9 +12,12 @@ services:
       - privacy-config:/compiled
 
   oteru-collector:
-    # Verified release 0.155.0; digest prevents changes behind a mutable tag.
-    image: otel/opentelemetry-collector-contrib:0.155.0@sha256:4935caa35e9a4cb387e35732e8fb22b2b5759af8d12e7043357f03837f6e8df5
+    # OCB image from #154 registers HMACSHA256 in transformprocessor.
+    image: otelcol-oteru:0.155.0
+    build: .
     command: ["--config=/etc/oteru-collector-config.yml"]
+    environment:
+      OTERU_PII_HMAC_KEY: ${OTERU_PII_HMAC_KEY:-}
     depends_on:
       privacy-policy:
         condition: service_completed_successfully

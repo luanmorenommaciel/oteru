@@ -57,6 +57,13 @@ make clean      # removes build/test caches (keeps .venv)
 CI (`.github/workflows/ci.yml`): emitter lint + tests on ubuntu/windows ×
 Python 3.10/3.13, `pii-guard`, and a Linux Docker E2E privacy job. Changes to
 `oteru-emitter/**`, `oteru-collector/**`, `scripts/**` or the workflow trigger CI.
+Collector OCB (`.github/workflows/collector-ocb.yml`): OCB build, govulncheck fail-closed
+against the exact allowlist in `docs/ocb-vulns.md`, Gitleaks over full
+history of all refs (`fetch-depth: 0`, `--log-opts=--all`), Trivy
+HIGH/CRITICAL, SBOM, and a local Docker image (no push). The
+`collector-tests` job in `ci.yml` runs hmacconverter `go vet`/`go test`
+plus pytest for the ephemeral ClickHouse guard and HMAC fixture
+cross-check (no ClickHouse).
 
 ## Cross-cutting gotchas
 

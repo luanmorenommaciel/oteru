@@ -28,7 +28,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format dry-run pii-guard e2e-signals privacy-config-check e2e-privacy demo-privacy apply-privacy up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
+.PHONY: help setup test lint format test-human-gate lint-human-gate demo-human-gate dry-run pii-guard e2e-signals privacy-config-check e2e-privacy demo-privacy apply-privacy test-risk lint-risk demo-risk-permission e2e-risk up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -50,12 +50,40 @@ test: ## run emitter, hook bridge and static Collector privacy tests
 test-hooks: ## run the hook bridge tests (oteru-hooks/, #90)
 	cd $(EMITTER) && $(VENV_PY) -m pytest ../oteru-hooks/tests
 
+test-risk: ## run the operational-risk contract tests
+	cd $(EMITTER) && $(VENV_PY) -m pytest tests/test_risk.py
+
 lint: ## ruff check + formatting check
 	cd $(EMITTER) && $(VENV_PY) -m ruff check oteru_emitter tests
 	cd $(EMITTER) && $(VENV_PY) -m ruff format --check oteru_emitter tests
 	$(VENV)/$(BINDIR)/python -m ruff check $(COLLECTOR)/privacy $(COLLECTOR)/tests scripts/apply_privacy.py
 	$(VENV)/$(BINDIR)/python -m ruff format --check $(COLLECTOR)/privacy $(COLLECTOR)/tests scripts/apply_privacy.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff check ../scripts/check_pii.py ../scripts/check_risk_e2e.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff format --check ../scripts/check_pii.py ../scripts/check_risk_e2e.py
 	cd $(EMITTER) && $(VENV_PY) -m ruff check ../oteru-hooks && $(VENV_PY) -m ruff format --check ../oteru-hooks
+
+lint-risk: ## lint the operational-risk evaluator and tests
+	cd $(EMITTER) && $(VENV_PY) -m ruff check oteru_emitter/risk tests/test_risk.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff format --check oteru_emitter/risk tests/test_risk.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff check ../scripts/check_risk_e2e.py
+	cd $(EMITTER) && $(VENV_PY) -m ruff format --check ../scripts/check_risk_e2e.py
+
+demo-risk-permission: ## project synthetic Claude events and evaluate permission risk offline
+	cd $(EMITTER) && $(VENV_PY) -m oteru_emitter.risk.demo
+
+e2e-risk: ## send risk logs to an isolated collector and ClickHouse
+	$(VENV)/$(BINDIR)/python scripts/check_risk_e2e.py
+
+test-human-gate: ## run the isolated, offline issue #65 contract tests
+	$(VENV)/$(BINDIR)/python -m pytest -q tests/test_human_gate.py
+
+lint-human-gate: ## lint and check formatting for the issue #65 simulator
+	$(VENV)/$(BINDIR)/python -m ruff check oteru_gate tests/test_human_gate.py
+	$(VENV)/$(BINDIR)/python -m ruff format --check oteru_gate tests/test_human_gate.py
+
+demo-human-gate: ## verify all V1 scenarios; set GATE_OUTPUT to a new directory
+	@test -n "$(GATE_OUTPUT)" || { echo "Set GATE_OUTPUT to a new local directory"; exit 2; }
+	$(VENV)/$(BINDIR)/python -m oteru_gate.demo "$(GATE_OUTPUT)"
 
 format: ## apply ruff format + autofixes
 	cd $(EMITTER) && $(VENV_PY) -m ruff check --fix oteru_emitter tests
@@ -96,7 +124,7 @@ apply-privacy: ## stop ingestion, compile a new policy and recreate Collector (P
 	$(PYTHON) scripts/apply_privacy.py --profile $(or $(PROFILE),base)
 
 up: ## start the collector (docker compose, detached)
-	cd $(COLLECTOR) && docker compose up -d
+	cd $(COLLECTOR) && docker compose up -d --build
 
 up-clickstack-local: ## start the collector forwarding to a local ClickStack all-in-one; UI at http://localhost:8080
 	@cd $(COLLECTOR) && \
@@ -106,7 +134,7 @@ up-clickstack-local: ## start the collector forwarding to a local ClickStack all
 		     "container is up) or copy the ingestion key from the UI (Team Settings)" \
 		     "into $(COLLECTOR)/.env (see .env.example), then re-run 'make up-clickstack-local'."; \
 	fi && \
-	docker compose -f docker-compose.yml -f docker-compose.clickstack-local.yml up -d
+		docker compose -f docker-compose.yml -f docker-compose.clickstack-local.yml up -d --build
 
 up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK_ENDPOINT + CLICKSTACK_API_KEY)
 	@cd $(COLLECTOR) && \
@@ -115,10 +143,10 @@ up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK
 		     "see $(COLLECTOR)/.env.example). Never commit real values."; \
 		exit 1; \
 	fi && \
-	docker compose -f docker-compose.yml -f docker-compose.clickstack.yml up -d
+		docker compose -f docker-compose.yml -f docker-compose.clickstack.yml up -d --build
 
 up-clickhouse: ## start the collector + a self-contained ClickHouse backend (native clickhouse exporter)
-	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml up -d
+	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml up -d --build
 
 INGEST_COMPOSE := -f docker-compose.yml -f docker-compose.clickhouse.yml -f docker-compose.ingestor.yml
 IMPL ?= python
@@ -147,7 +175,7 @@ ingest-loop: ## keep ingesting forever (Ctrl+C to stop)
 
 up-hyperdx: ## start the collector + ClickHouse + the local HyperDX (ClickStack) UI on :8080
 	cd $(COLLECTOR) && docker compose -f docker-compose.yml \
-		-f docker-compose.clickhouse.yml -f docker-compose.hyperdx.yml up -d
+		-f docker-compose.clickhouse.yml -f docker-compose.hyperdx.yml up -d --build
 	@echo "HyperDX UI: http://localhost:8080 — connect it to ClickHouse at http://clickhouse:8123 (user/pass: otel)."
 
 down: ## stop the collector

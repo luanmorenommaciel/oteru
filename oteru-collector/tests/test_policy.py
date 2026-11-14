@@ -10,12 +10,21 @@ def test_default_is_closed_and_reproducible():
     result = policy.compile_policy(default())
     assert result == policy.compile_policy(default())
     assert set(result) == {
+        "privacy/hash_shared_identity",
         "transform/privacy",
         "filter/privacy_invalid",
         "filter/privacy_links",
         "filter/privacy_metrics",
     }
-    assert all(p["error_mode"] == "propagate" for p in result.values())
+    assert all(
+        result[name]["error_mode"] == "propagate"
+        for name in (
+            "transform/privacy",
+            "filter/privacy_invalid",
+            "filter/privacy_links",
+            "filter/privacy_metrics",
+        )
+    )
 
 
 def test_default_preserves_identity_dimensioned_metrics_with_hash():
@@ -25,11 +34,25 @@ def test_default_preserves_identity_dimensioned_metrics_with_hash():
     assert set(source["identity"].values()) == {"hash"}
     result = policy.compile_policy(source)
     assert {entry["context"] for entry in result["transform/privacy"]["metric_statements"]} == {
-        "resource",
-        "scope",
-        "datapoint",
+        "datapoint"
     }
+    assert result["privacy/hash_shared_identity"]["fields"] == list(source["identity"])
     assert "user.email" not in json.dumps(result["filter/privacy_metrics"])
+
+
+def test_hash_uses_domain_separated_hmac_without_compiling_key_material():
+    compiled = policy.compile_policy(default())
+    statements = [
+        statement
+        for signal in ("log", "trace", "metric")
+        for context in compiled["transform/privacy"][f"{signal}_statements"]
+        for statement in context["statements"]
+    ]
+    text = "\n".join(statements)
+    assert 'Concat(["hmac:v1:", HMACSHA256(' in text
+    assert 'HMACSHA256(Concat(["oteru-pii:v1|user.email|"' in text
+    assert "SHA256(" not in text.replace("HMACSHA256(", "")
+    assert "OTERU_PII_HMAC_KEY" not in text
 
 
 @pytest.mark.parametrize("action", ["ignore", "encrypt", "allow", "", None, [], {}])

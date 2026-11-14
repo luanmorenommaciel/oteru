@@ -17,9 +17,19 @@ def assert_privacy_topology(config):
     assert set(pipelines) == {"logs", "traces", "metrics"}
     for signal, pipeline in pipelines.items():
         expected = {
-            "logs": ["filter/privacy_invalid", "transform/privacy"],
-            "traces": ["filter/privacy_links", "filter/privacy_invalid", "transform/privacy"],
-            "metrics": ["filter/privacy_invalid", "transform/privacy", "filter/privacy_metrics"],
+            "logs": ["filter/privacy_invalid", "privacy/hash_shared_identity", "transform/privacy"],
+            "traces": [
+                "filter/privacy_links",
+                "filter/privacy_invalid",
+                "privacy/hash_shared_identity",
+                "transform/privacy",
+            ],
+            "metrics": [
+                "filter/privacy_invalid",
+                "privacy/hash_shared_identity",
+                "transform/privacy",
+                "filter/privacy_metrics",
+            ],
         }[signal]
         assert pipeline["processors"] == expected
         assert {"debug", "file"}.issubset(pipeline["exporters"])
@@ -39,7 +49,9 @@ def test_all_export_paths_require_privacy(profile):
 def test_compose_blocks_collector_on_policy_failure():
     config = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
     collector = config["services"]["oteru-collector"]
-    assert "@sha256:" in collector["image"]
+    assert collector["image"] == "otelcol-oteru:0.155.0"
+    assert collector["build"] == "."
+    assert collector["environment"]["OTERU_PII_HMAC_KEY"] == "${OTERU_PII_HMAC_KEY:-}"
     assert (
         collector["depends_on"]["privacy-policy"]["condition"] == "service_completed_successfully"
     )

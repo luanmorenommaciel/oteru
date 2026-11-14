@@ -85,17 +85,18 @@ def _present(attributes: str, key: str) -> str:
 def _hash_statement(attributes: str, key: str) -> str:
     return (
         f'set({attributes}["{key}"], '
-        f'Concat(["sha256:v1:", SHA256(Concat(['
+        f'Concat(["hmac:v1:", HMACSHA256(Concat(['
         f'"oteru-pii:v1|{key}|", {attributes}["{key}"]], ""))], "")) '
         f"where {_present(attributes, key)}"
     )
 
 
-def _statements(attributes: str, source: dict) -> list[str]:
+def _statements(attributes: str, source: dict, *, hash_identity: bool = True) -> list[str]:
     result = []
     for key, action in source["identity"].items():
         if action == "hash":
-            result.append(_hash_statement(attributes, key))
+            if hash_identity:
+                result.append(_hash_statement(attributes, key))
         elif action == "mask":
             result.append(
                 f'set({attributes}["{key}"], "REDACTED") where {_present(attributes, key)}'
@@ -131,7 +132,14 @@ def compile_policy(source: dict) -> dict:
         ("trace", ("resource", "scope", "span", "spanevent")),
     ):
         transform[f"{signal}_statements"] = [
-            {"context": context, "statements": _statements(f"{context}.attributes", source)}
+            {
+                "context": context,
+                "statements": _statements(
+                    f"{context}.attributes",
+                    source,
+                    hash_identity=context not in ("resource", "scope"),
+                ),
+            }
             for context in contexts
         ]
     if source["content"]["log_body"] == "drop":
@@ -142,15 +150,18 @@ def compile_policy(source: dict) -> dict:
             "statements": [
                 _hash_statement(f"{context}.attributes", key)
                 for key, action in source["identity"].items()
-                if action == "hash"
+                if action == "hash" and context not in ("resource", "scope")
             ],
         }
-        for context in ("resource", "scope", "datapoint")
+        for context in ("datapoint",)
     ]
     sensitive = [key for key, action in source["identity"].items() if action != "hash"]
     if source["content"]["known_fields"] == "drop":
         sensitive.extend(CONTENT_KEYS)
     return {
+        "privacy/hash_shared_identity": {
+            "fields": [key for key, action in source["identity"].items() if action == "hash"]
+        },
         "transform/privacy": transform,
         "filter/privacy_invalid": {
             "error_mode": "propagate",

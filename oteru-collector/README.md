@@ -13,12 +13,16 @@ emitter / Claude Code / POD-1   ──OTLP──► privacy policy ──►  de
 ## Prerequisites
 
 - **Docker** running.
+- A stable `OTERU_PII_HMAC_KEY` in the environment or in gitignored `.env`.
+  Generate it once with `python -c 'import secrets;print(secrets.token_hex(32))'`
+  and keep it for every restart. Missing or invalid keys make the Collector
+  refuse startup.
 
 ## Commands
 
 ```bash
-docker compose up                       # foreground (telemetry prints here)
-docker compose up -d                    # background
+docker compose up --build               # build OCB distribution; foreground
+docker compose up -d --build            # build and run in background
 docker compose logs -f oteru-collector  # follow the output
 docker compose down                     # stop
 ```
@@ -27,12 +31,13 @@ From the monorepo root, `make up` / `make down` / `make demo` (start + send 5
 emitter batches + show the logs) do the same via the Makefile.
 
 For policy changes on a running installation, use the profile-aware activation
-command from [the privacy runbook](../docs/privacy.md). It stops ingestion before
-compilation and leaves it stopped if validation fails. For other Collector config
-changes, recreate the stack:
+command from [the privacy runbook](../docs/privacy.md). It builds the custom
+distribution first, then stops ingestion before compilation; a policy or startup
+failure after stop leaves the Collector stopped. For other Collector config
+changes, rebuild and recreate the stack:
 
 ```bash
-docker compose up -d --force-recreate
+docker compose up -d --build --force-recreate
 ```
 
 ## Local ClickStack (HyperDX all-in-one)

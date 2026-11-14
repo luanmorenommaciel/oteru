@@ -1,7 +1,8 @@
-"""Stop ingestion, compile policy, then recreate only the Collector.
+"""Build the custom Collector, stop ingestion, compile policy, then recreate it.
 
-Backends must already be running. Failure leaves ingestion stopped. Does not
-remove telemetry, volumes or backend services. No hot reload is supported.
+Backends must already be running. An image-build failure leaves the running
+Collector untouched. Any failure after stop leaves ingestion stopped. This
+does not remove telemetry, volumes or backend services. No hot reload exists.
 """
 
 from __future__ import annotations
@@ -31,15 +32,20 @@ def main(argv=None):
     if args.profile == "hyperdx":
         command += ["-f", "docker-compose.hyperdx.yml"]
     for operation in (
+        ["build", "oteru-collector"],
         ["stop", "oteru-collector"],
         ["run", "--rm", "--no-deps", "privacy-policy"],
         ["up", "-d", "--no-deps", "--force-recreate", "oteru-collector"],
     ):
         result = subprocess.run(command + operation, cwd=ROOT, check=False)
         if result.returncode:
-            print(
-                "Privacy activation failed; Collector was not restarted. Check policy and retry."
-            )
+            if operation[0] == "build":
+                print("Collector image build failed; the running Collector was left untouched.")
+            else:
+                print(
+                    "Privacy activation failed after stop; Collector remains stopped. "
+                    "Check and retry."
+                )
             return result.returncode
     return 0
 

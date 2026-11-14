@@ -1,0 +1,25 @@
+{
+  "_comment": "TEST-ONLY public fixture key: public_test_pattern repeated public_test_repeat times (64 lowercase hex). Not a secret; never use in any deployment. Stored split so it is never a literal key in the repo. Expected values from Python hmac.new(key.encode(), message.encode(), sha256).",
+  "public_test_pattern": "0123456789abcdef",
+  "public_test_repeat": 4,
+  "cases": [
+    {
+      "field": "actor_id",
+      "value": "synthetic-actor-0001",
+      "message": "oteru-pii:v1|actor_id|synthetic-actor-0001",
+      "expected": "hmac:v1:17957f822c4f45fedf068b38fd133772152af56b096d3a4b313042b13b684b13"
+    },
+    {
+      "field": "actor_id",
+      "value": "synthetic-actor-0002@example.invalid",
+      "message": "oteru-pii:v1|actor_id|synthetic-actor-0002@example.invalid",
+      "expected": "hmac:v1:c1ad77f321a5d5a2f94f8993af7dedb842668a644f87096796e3c9cc6c278609"
+    },
+    {
+      "field": "actor_id",
+      "value": "",
+      "message": "oteru-pii:v1|actor_id|",
+      "expected": "hmac:v1:a6fe7bf3276e1915968ea1be75ecfd1af1dc3d9add47878e25d9785045ab67c5"
+    }
+  ]
+}

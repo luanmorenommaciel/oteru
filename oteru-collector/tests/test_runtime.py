@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import hmac
 import io
 import json
+import os
+import secrets
 import subprocess
 import tarfile
 import tempfile
@@ -31,10 +34,8 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTrace
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2_grpc import TraceServiceStub
 from support import ROOT, default, policy
 
-IMAGE = (
-    "otel/opentelemetry-collector-contrib@"
-    "sha256:4935caa35e9a4cb387e35732e8fb22b2b5759af8d12e7043357f03837f6e8df5"
-)
+IMAGE = "otelcol-oteru:privacy-test"
+TEST_HMAC_KEY = secrets.token_hex(32)
 SIGNALS = {
     "logs": ("resourceLogs", "scopeLogs", "logRecords", ExportLogsServiceRequest, LogsServiceStub),
     "traces": ("resourceSpans", "scopeSpans", "spans", ExportTraceServiceRequest, TraceServiceStub),
@@ -85,6 +86,35 @@ def docker(*args, check=True):
     return result
 
 
+def pseudonym(field: str, value: str) -> str:
+    message = f"oteru-pii:v1|{field}|{value}".encode()
+    digest = hmac.new(TEST_HMAC_KEY.encode(), message, hashlib.sha256).hexdigest()
+    return "hmac:v1:" + digest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def build_hmac_collector():
+    """Build the #154 OCB distro so runtime tests exercise the real converter."""
+    name = "OTERU_PII_HMAC_KEY"
+    previous = os.environ.get(name)
+    os.environ[name] = TEST_HMAC_KEY
+    try:
+        result = subprocess.run(
+            ["docker", "build", "--tag", IMAGE, str(ROOT)],
+            check=False,
+            text=True,
+            capture_output=True,
+            timeout=1800,
+        )
+        assert result.returncode == 0, f"custom Collector build failed:\n{result.stderr}"
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = previous
+
+
 @contextmanager
 def collector(tmp_path, config, network=None):
     name = "oteru-privacy-" + uuid.uuid4().hex[:12]
@@ -106,6 +136,8 @@ def collector(tmp_path, config, network=None):
             "-p",
             "127.0.0.1::4318",
             *network_args,
+            "-e",
+            f"OTERU_PII_HMAC_KEY={TEST_HMAC_KEY}",
             "--mount",
             f"type=bind,src={tmp_path},dst=/out",
             IMAGE,
@@ -349,12 +381,10 @@ def test_identity_is_scrubbed_before_file_and_stdout(tmp_path, action):
 
 def test_hash_uses_versioned_field_domain_and_preserves_metric_identity(tmp_path):
     value = "same"
-    expected_email = "sha256:v1:117fba4f31a410110584fb7d44fc7d538f7284118c6c33b3805d32b537a7fde6"
-    expected_id = "sha256:v1:2455b2dcff68f09b9b99c20d4c1b89454473477df2cac17a951d8662d6cadd61"
-    assert (
-        expected_email == "sha256:v1:" + hashlib.sha256(b"oteru-pii:v1|user.email|same").hexdigest()
-    )
-    assert expected_id == "sha256:v1:" + hashlib.sha256(b"oteru-pii:v1|user.id|same").hexdigest()
+    expected_email = pseudonym("user.email", value)
+    expected_id = pseudonym("user.id", value)
+    assert expected_email.startswith("hmac:v1:")
+    assert expected_id.startswith("hmac:v1:")
     with collector(tmp_path, config_for("hash")) as instance:
         send(instance, "logs", "http", payload("logs", value={"stringValue": value}))
         metric = payload("metrics", value={"stringValue": value})
@@ -404,10 +434,10 @@ def test_reference_metrics_keep_all_934_points_and_measurements(tmp_path):
         if isinstance(value, dict):
             if value.get("key") in IDENTITY and isinstance(value.get("value"), dict):
                 original = value["value"]["stringValue"]
-                digest = hashlib.sha256(
-                    f"oteru-pii:v1|{value['key']}|{original}".encode()
-                ).hexdigest()
-                return {**value, "value": {"stringValue": "sha256:v1:" + digest}}
+                return {
+                    **value,
+                    "value": {"stringValue": pseudonym(value["key"], original)},
+                }
             return {key: pseudonymized(item) for key, item in value.items()}
         return value
 
@@ -441,9 +471,7 @@ def test_hash_covers_six_fields_in_every_supported_context(tmp_path, signal):
             send(instance, signal, "grpc", data)
         batches = wait_records(instance[3], signal, len(contexts))
         for key in IDENTITY:
-            expected = (
-                "sha256:v1:" + hashlib.sha256(f"oteru-pii:v1|{key}|{value}".encode()).hexdigest()
-            )
+            expected = pseudonym(key, value)
             values = [
                 item["value"]["stringValue"] for item in walk(batches) if item.get("key") == key
             ]
@@ -479,10 +507,7 @@ def test_two_principals_keep_stable_pseudonyms_across_signals_and_restart(tmp_pa
                     user_id = next(
                         a["value"]["stringValue"] for a in attrs if a["key"] == "user.id"
                     )
-                    expected = (
-                        "sha256:v1:"
-                        + hashlib.sha256(f"oteru-pii:v1|user.id|{value}".encode()).hexdigest()
-                    )
+                    expected = pseudonym("user.id", value)
                     assert user_id == expected
                     seen.setdefault(value, set()).add(user_id)
             assert "principal-a" not in json.dumps(read_batches(instance[3]))
@@ -639,10 +664,7 @@ def test_content_controls_are_independent(tmp_path):
         record = records(batches, "logs")[0]
         assert record["body"] == {"stringValue": "REDACTED"}
         attrs = {a["key"]: a["value"] for a in record["attributes"]}
-        assert attrs["user.email"] == {
-            "stringValue": "sha256:v1:"
-            + hashlib.sha256(b"oteru-pii:v1|user.email|privacy-canary@example.com").hexdigest()
-        }
+        assert attrs["user.email"] == {"stringValue": pseudonym("user.email", CANARY)}
         assert attrs["user_prompt"] == {"stringValue": CANARY}
 
 
@@ -752,12 +774,7 @@ def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path, profile, exp
                 assert len(records(batches, "traces")) == 1
                 assert len(records(batches, "metrics")) == (2 if action == "hash" else 1)
                 if action == "hash":
-                    expected = (
-                        "sha256:v1:"
-                        + hashlib.sha256(
-                            b"oteru-pii:v1|user.email|privacy-canary@example.com"
-                        ).hexdigest()
-                    )
+                    expected = pseudonym("user.email", CANARY)
                     assert expected in json.dumps(batches)
                 assert CANARY not in json.dumps(read_batches(source[3]))
         finally:
@@ -848,12 +865,7 @@ def test_clickhouse_tables_receive_only_scrubbed_records(tmp_path, action):
                     assert len(result.stdout.splitlines()) == expected_count
                     assert CANARY not in result.stdout
                     if action == "hash":
-                        expected = (
-                            "sha256:v1:"
-                            + hashlib.sha256(
-                                b"oteru-pii:v1|user.email|privacy-canary@example.com"
-                            ).hexdigest()
-                        )
+                        expected = pseudonym("user.email", CANARY)
                         assert expected in result.stdout
                 assert CANARY not in json.dumps(read_batches(source[3]))
         finally:
@@ -913,11 +925,8 @@ def test_clickhouse_cost_volume_and_trend_by_two_pseudonyms(tmp_path):
                     ],
                 }
                 send(instance, "metrics", "http", data)
-                pseudonym = (
-                    "sha256:v1:"
-                    + hashlib.sha256(f"oteru-pii:v1|user.id|{principal}".encode()).hexdigest()
-                )
-                expected[(pseudonym, name, period)] = value
+                principal_pseudonym = pseudonym("user.id", principal)
+                expected[(principal_pseudonym, name, period)] = value
 
             query = (
                 "SELECT Attributes['user.id'] AS principal, MetricName AS metric, "
@@ -959,6 +968,29 @@ def test_clickhouse_cost_volume_and_trend_by_two_pseudonyms(tmp_path):
             assert "principal-b" not in result.stdout
 
 
+@pytest.mark.parametrize("key", [None, "A" * 64])
+def test_missing_or_invalid_hmac_key_refuses_collector_start(tmp_path, key):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config_for("hash")))
+    args = [
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--mount",
+        f"type=bind,src={path},dst=/out/config.json,readonly",
+    ]
+    if key is not None:
+        args.extend(["-e", f"OTERU_PII_HMAC_KEY={key}"])
+    result = docker(*args, IMAGE, "--config=/out/config.json", check=False)
+    output = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "OTERU_PII_HMAC_KEY" in output
+    assert TEST_HMAC_KEY not in output
+    if key is not None:
+        assert key not in output
+
+
 @pytest.mark.parametrize("profile", ["base", "clickhouse", "clickstack", "clickstack-local"])
 def test_production_config_validates_in_pinned_collector(tmp_path, profile):
     output = tmp_path / "processors.json"
@@ -971,6 +1003,8 @@ def test_production_config_validates_in_pinned_collector(tmp_path, profile):
         "--rm",
         "--network",
         "none",
+        "-e",
+        f"OTERU_PII_HMAC_KEY={TEST_HMAC_KEY}",
         "-e",
         "CLICKSTACK_ENDPOINT=http://127.0.0.1:4318",
         "-e",
@@ -989,8 +1023,6 @@ def test_production_config_validates_in_pinned_collector(tmp_path, profile):
     "profile", ["base", "clickhouse", "clickstack", "clickstack-local", "hyperdx"]
 )
 def test_effective_compose_mounts_policy_before_every_profile(profile):
-    import os
-
     command = ["docker", "compose", "-f", str(ROOT / "docker-compose.yml")]
     if profile in ("clickhouse", "hyperdx"):
         command += ["-f", str(ROOT / "docker-compose.clickhouse.yml")]
@@ -1005,6 +1037,7 @@ def test_effective_compose_mounts_policy_before_every_profile(profile):
         "CLICKSTACK_ENDPOINT": "http://test-only:4318",
         "CLICKSTACK_API_KEY": "test-only",
         "HYPERDX_API_KEY": "test-only",
+        "OTERU_PII_HMAC_KEY": TEST_HMAC_KEY,
     }
     result = subprocess.run(
         command + ["config", "--format", "json"],
@@ -1015,6 +1048,8 @@ def test_effective_compose_mounts_policy_before_every_profile(profile):
     )
     config = json.loads(result.stdout)
     service = config["services"]["oteru-collector"]
+    assert service["image"] == "otelcol-oteru:0.155.0"
+    assert service["environment"]["OTERU_PII_HMAC_KEY"] == TEST_HMAC_KEY
     assert service["depends_on"]["privacy-policy"]["condition"] == "service_completed_successfully"
     mounts = {v["target"]: v for v in service["volumes"]}
     assert mounts["/etc/oteru-privacy"]["read_only"]
@@ -1031,6 +1066,9 @@ def test_policy_activation_replaces_valid_policy_and_stops_on_invalid(tmp_path, 
     stack = tmp_path / "stack"
     stack.mkdir()
     shutil.copy(ROOT / "docker-compose.yml", stack)
+    compose_config = yaml.safe_load((stack / "docker-compose.yml").read_text())
+    compose_config["services"]["oteru-collector"]["build"] = {"context": str(ROOT)}
+    (stack / "docker-compose.yml").write_text(yaml.safe_dump(compose_config, sort_keys=False))
     shutil.copy(ROOT / "oteru-collector-config.yml", stack)
     shutil.copytree(
         ROOT / "privacy", stack / "privacy", ignore=shutil.ignore_patterns("__pycache__")
