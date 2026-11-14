@@ -15,7 +15,7 @@
 # go.opentelemetry.io/collector* and opentelemetry-collector-contrib*
 # module on that line — nothing else. Do not add components "just in case".
 #
-# Toolchain: Go 1.27.3 / GOTOOLCHAIN=go1.27.3 (contrib v0.155.0 OTTL
+# Toolchain: Go 1.27.4 / GOTOOLCHAIN=go1.27.4 (contrib v0.155.0 OTTL
 # generics fail to link on the Go 1.25 linker).
 #
 # HMACSHA256 OTTL converter (Duto):

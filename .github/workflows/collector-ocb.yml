@@ -43,10 +43,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: "1.27.3"
+          go-version: "1.27.4"
           cache: false
       - name: Pin GOTOOLCHAIN
-        run: echo "GOTOOLCHAIN=go1.27.3" >> "$GITHUB_ENV"
+        run: echo "GOTOOLCHAIN=go1.27.4" >> "$GITHUB_ENV"
 
       - name: Install OCB v0.155.0
         run: |
