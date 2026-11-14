@@ -2,7 +2,7 @@ module github.com/luanmorenommaciel/oteru/oteru-collector/hmacconverter
 
 go 1.26.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.155.0
