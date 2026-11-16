@@ -1,11 +1,33 @@
-# docker-compose.yml
+# A policy compilation failure prevents a new Collector from accepting traffic.
 services:
-  oteru-collector:
-    image: otel/opentelemetry-collector-contrib:latest
-    command: ["--config=/etc/oteru-collector-config.yml"]
+  privacy-policy:
+    image: python:3.13.8-alpine3.22@sha256:3a77fbbb5bc88c0f63cc2692a13b011547f25ee93536e991544c452801856226
+    network_mode: none
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    command: [python, /privacy/compile.py, --policy, /privacy/policy.json, --output, /compiled/processors.json]
     volumes:
-      - ./oteru-collector-config.yml:/etc/oteru-collector-config.yml
+      - ./privacy:/privacy:ro
+      - privacy-config:/compiled
+
+  oteru-collector:
+    # OCB image from #154 registers HMACSHA256 in transformprocessor.
+    image: otelcol-oteru:0.155.0
+    build: .
+    command: ["--config=/etc/oteru-collector-config.yml"]
+    environment:
+      OTERU_PII_HMAC_KEY: ${OTERU_PII_HMAC_KEY:-}
+    depends_on:
+      privacy-policy:
+        condition: service_completed_successfully
+    volumes:
+      - ./oteru-collector-config.yml:/etc/oteru-collector-config.yml:ro
+      - privacy-config:/etc/oteru-privacy:ro
       - ./telemetry:/telemetry
     ports:
       - "4317:4317"   # gRPC
       - "4318:4318"   # HTTP
+
+volumes:
+  privacy-config:
