@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """PII guard: scans committed captures and generated fixtures for real identity.
 
 The repo's #1 documented risk is committing an un-redacted OTLP capture
@@ -9,7 +8,8 @@ is the single verification artifact — reused by the Makefile
 Coverage: every file under ``SCAN_DIRS`` (committed captures/fixtures) plus
 the OTLP payloads built programmatically by ``oteru-emitter/tests/factories.py``
 (trace/log fixtures no longer live as JSON on disk — the guard builds them
-in memory and applies the same rules).
+in memory and applies the same rules). The operational-risk synthetic demo and
+its projected output are scanned the same way.
 
 Rules (violation -> ``file:line`` + description, exit 1):
 1. E-mails outside the reserved ``example.com/org/net`` domains.
@@ -29,6 +29,7 @@ import inspect
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -118,6 +119,43 @@ def _generated_payloads() -> list[tuple[str, list[str]]]:
     return payloads
 
 
+def _risk_demo_payloads() -> list[tuple[str, list[str]]]:
+    """Build the stdlib-only risk demo before setup and scan every output layer."""
+    emitter_dir = str(REPO_ROOT / "oteru-emitter")
+    sys.path.insert(0, emitter_dir)
+    try:
+        from oteru_emitter.risk.demo import policy, synthetic_capture
+        from oteru_emitter.risk.output import canonical, otlp_batch
+        from oteru_emitter.risk.rules import evaluate
+        from oteru_emitter.risk.source_claude import project_capture
+
+        capture = synthetic_capture()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "capture.jsonl"
+            path.write_text(canonical(capture) + "\n", encoding="utf-8")
+            bundle = project_capture(path, "risk-demo", "subject")
+        rules = policy()
+        findings, report = evaluate(bundle, rules)
+        return [
+            (
+                "risk-demo",
+                [
+                    json.dumps(item)
+                    for item in (
+                        bundle,
+                        rules,
+                        capture,
+                        report,
+                        *findings,
+                        otlp_batch(findings),
+                    )
+                ],
+            )
+        ]
+    finally:
+        sys.path.remove(emitter_dir)
+
+
 def main() -> int:
     files: list[Path] = []
     for scan_dir in SCAN_DIRS:
@@ -145,8 +183,8 @@ def main() -> int:
     generated = 0
     if FACTORIES_PATH.is_file():
         try:
-            payloads = _generated_payloads()
-        except Exception as exc:  # a broken builder must not mute the guard
+            payloads = [*_generated_payloads(), *_risk_demo_payloads()]
+        except Exception as exc:  # noqa: BLE001 — a broken builder must not mute the guard
             print(f"factories.py: could not build payloads ({exc}) — guard coverage lost.")
             return 1
         for name, lines in payloads:
