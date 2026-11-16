@@ -161,6 +161,52 @@ Two things `--emit` deliberately does *not* do:
 - It **is applied before `--limit`**, so `--emit metric --limit 5` sends five
   *metric* batches rather than the metrics among the first five batches.
 
+## Forging a trace by hand (`forge`)
+
+To get trace data before any agent is instrumented — a demo, a new dashboard,
+a contract test — describe the run in a small JSON spec and let `forge` turn it
+into an OTLP traces capture. `replay` then sends it like any other capture:
+
+```bash
+oteru-emitter forge samples/manual-trace.spec.json -o run.json --seed 1
+oteru-emitter replay run.json --profile generic --transport grpc
+```
+
+The spec names spans and links them; everything OTLP-specific (trace/span IDs,
+nanosecond timestamps, value types, enum codes) is derived:
+
+```json
+{
+  "resource": {"service.name": "my-agent"},
+  "traces": [
+    {"spans": [
+      {"id": "root", "name": "invoke_agent my-agent", "duration_ms": 1200},
+      {"id": "llm", "name": "chat my-model", "parent": "root", "kind": "client",
+       "start_ms": 15, "duration_ms": 800, "status": "ok",
+       "attributes": {"gen_ai.request.model": "my-model", "gen_ai.usage.input_tokens": 1830}}
+    ]}
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `resource` | resource attributes; `service.name` defaults to `oteru-manual` |
+| `scope` | instrumentation scope; defaults to `{"name": "oteru.manual"}` |
+| `traces[].spans[].id` | local name, unique per trace — used only by `parent` |
+| `parent` | `id` of the parent span (any order); omit for the root |
+| `start_ms` / `duration_ms` | offsets from the forge time (start defaults to 0) |
+| `kind` | `internal` (default), `server`, `client`, `producer`, `consumer` |
+| `status` / `status_message` | `unset` (default), `ok`, `error` |
+| `attributes` | strings, numbers, booleans, or lists of those |
+
+Each trace becomes one batch with its own trace ID, and `parent` becomes
+`parentSpanId`. A broken spec (unknown parent, duplicate id, parent cycle,
+negative duration, nested attribute…) exits 1 naming the offending span.
+`samples/manual-trace.spec.json` is a two-trace example — an agent run with LLM
+calls and an MCP tool call, then a failing tool call — using the OTel `gen_ai.*`
+and `mcp.*` attribute names. Without `-o`, the capture goes to stdout.
+
 ## Signals: what Claude Code actually emits
 
 | Signal | Claude Code | In `samples/telemetry-sample.json` |
