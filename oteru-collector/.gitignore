@@ -8,7 +8,19 @@
 # Secrets — never commit credentials
 .env
 
+# OCB generated sources / binary. Produced by
+# `ocb --config=builder-config.yaml` (hundreds of files under _build/).
+# Never commit this tree — 463e094 and later OCB infra commits do not
+# contain it; a local `git status` that shows +thousands of lines is
+# uncommitted OCB output, not the commit.
+/_build/
+
 # OS / IDE
 .DS_Store
 .vscode/
 .idea/
+
+# Python policy compiler / tests
+__pycache__/
+.pytest_cache/
+.ruff_cache/
