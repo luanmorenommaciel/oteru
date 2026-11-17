@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+
 from oteru_evidence.exceptions import ExceptionRecord, ExceptionState
 
 NOW = datetime(2026, 11, 3, tzinfo=timezone.utc)
