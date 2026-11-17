@@ -251,10 +251,14 @@ jobs:
       - name: Test governance modules
         shell: bash
         run: |
-          for project in +            oteru-buffer oteru-adoption oteru-evidence +            oteru-policy oteru-portfolio oteru-coverage; do
+          for project in \
+            oteru-buffer oteru-adoption oteru-evidence \
+            oteru-policy oteru-portfolio oteru-coverage; do
             if [[ -d "$project/tests" ]]; then
               (cd "$project" && python -m pytest -q tests)
             fi
           done
-          [[ ! -d benchmarks/ingestor/tests ]] || +            python -m pytest -q benchmarks/ingestor/tests
-          [[ ! -d tools/pr_issue_validator/tests ]] || +            python -m pytest -q tools/pr_issue_validator/tests
+          [[ ! -d benchmarks/ingestor/tests ]] || \
+            python -m pytest -q benchmarks/ingestor/tests
+          [[ ! -d tools/pr_issue_validator/tests ]] || \
+            python -m pytest -q tools/pr_issue_validator/tests
