@@ -2,6 +2,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+
 from oteru_evidence.export import build_archive, verify_archive
 
 
@@ -21,6 +22,19 @@ def test_export_rejects_sensitive_content_keys(tmp_path: Path) -> None:
         build_archive(
             tmp_path / "pack.zip", {"events.json": [{"prompt": "private"}]}, {}
         )
+    for key in ("user.email", "gen_ai.prompt", "gen_ai.completion"):
+        with pytest.raises(ValueError, match="sensitive field"):
+            build_archive(
+                tmp_path / "pack.zip", {"events.json": [{key: "private"}]}, {}
+            )
+
+
+@pytest.mark.parametrize(
+    "name", ["../escape.json", "/absolute.json", "folder\\escape.json", "manifest.json"]
+)
+def test_export_rejects_unsafe_archive_paths(tmp_path: Path, name: str) -> None:
+    with pytest.raises(ValueError, match="unsafe artifact path"):
+        build_archive(tmp_path / "pack.zip", {name: {"safe": True}}, {})
 
 
 def test_offline_verifier_detects_tampered_artifact(tmp_path: Path) -> None:
