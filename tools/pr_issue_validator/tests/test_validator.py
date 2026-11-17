@@ -146,10 +146,7 @@ def test_end_to_end_fixture_generates_expected_report(tmp_path: Path) -> None:
 
 def test_runner_does_not_inherit_github_token(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "must-not-reach-child")
-    command = (
-        'python -c "import os; '
-        'print(os.environ.get(\'GITHUB_TOKEN\', \'absent\'))"'
-    )
+    command = "python -c \"import os; print(os.environ.get('GITHUB_TOKEN', 'absent'))\""
     result = run_test(command, timeout=10)
     assert result["exit_code"] == 0
     assert "must-not-reach-child" not in result["stdout"]
