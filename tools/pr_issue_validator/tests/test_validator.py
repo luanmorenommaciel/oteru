@@ -1,3 +1,7 @@
+import subprocess
+import sys
+from pathlib import Path
+
 from tools.pr_issue_validator.runner import run_test
 from tools.pr_issue_validator.validator import (
     Status,
@@ -109,11 +113,6 @@ def test_runner_records_command_exit_and_bounded_output() -> None:
     assert result["command"].startswith("python -c")
     assert result["exit_code"] == 0
     assert "123" in result["stdout"]
-
-
-import subprocess
-import sys
-from pathlib import Path
 
 
 def test_end_to_end_fixture_generates_expected_report(tmp_path: Path) -> None:
