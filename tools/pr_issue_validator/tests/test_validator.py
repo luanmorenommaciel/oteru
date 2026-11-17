@@ -142,3 +142,25 @@ def test_end_to_end_fixture_generates_expected_report(tmp_path: Path) -> None:
     assert "verify unrelated scope" in report
     assert "stacked on open branch `feature-parent`" in report
     assert "Issue comments: 1" in report
+
+
+def test_runner_does_not_inherit_github_token(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "must-not-reach-child")
+    command = (
+        'python -c "import os; '
+        'print(os.environ.get(\'GITHUB_TOKEN\', \'absent\'))"'
+    )
+    result = run_test(command, timeout=10)
+    assert result["exit_code"] == 0
+    assert "must-not-reach-child" not in result["stdout"]
+    assert "absent" in result["stdout"]
+
+
+def test_workflow_pins_actions_and_checks_out_requested_pr() -> None:
+    workflow = (
+        Path(__file__).parents[3] / ".github" / "workflows" / "pr-issue-validator.yml"
+    ).read_text(encoding="utf-8")
+    assert "actions/checkout@v" not in workflow
+    assert "actions/setup-python@v" not in workflow
+    assert "actions/upload-artifact@v" not in workflow
+    assert "ref: refs/pull/${{ inputs.pr }}/merge" in workflow

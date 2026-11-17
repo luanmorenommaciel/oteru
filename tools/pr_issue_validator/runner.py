@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 
@@ -11,6 +12,25 @@ def run_test(command: str, timeout: int = 300, limit: int = 4000) -> dict:
     if not argv:
         raise ValueError("test command is empty")
     try:
+        safe_env = {
+            name: value
+            for name, value in os.environ.items()
+            if name.upper()
+            in {
+                "PATH",
+                "PATHEXT",
+                "SYSTEMROOT",
+                "WINDIR",
+                "TEMP",
+                "TMP",
+                "HOME",
+                "USERPROFILE",
+                "PYTHONPATH",
+                "PYTHONUTF8",
+                "LANG",
+                "LC_ALL",
+            }
+        }
         completed = subprocess.run(
             argv,
             capture_output=True,
@@ -18,6 +38,7 @@ def run_test(command: str, timeout: int = 300, limit: int = 4000) -> dict:
             timeout=timeout,
             shell=False,
             check=False,
+            env=safe_env,
         )
         return {
             "name": command,
