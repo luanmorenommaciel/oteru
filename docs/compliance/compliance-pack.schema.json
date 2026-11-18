@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oteru.dev/schemas/compliance-pack-v1.json",
+  "title": "Oteru Compliance Pack",
+  "type": "object",
+  "required": ["pack_version", "snapshot_id", "generated_at", "period", "scope", "requirements", "artifacts", "limitations"],
+  "properties": {
+    "pack_version": {"const": 1},
+    "snapshot_id": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "period": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {"start": {"type": "string", "format": "date-time"}, "end": {"type": "string", "format": "date-time"}}
+    },
+    "scope": {"type": "object"},
+    "requirements": {"type": "array", "items": {"type": "object"}},
+    "artifacts": {"type": "array", "items": {"type": "object"}},
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  }
+}

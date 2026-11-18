@@ -1,0 +1,25 @@
+{
+  "pack_version": 1,
+  "snapshot_id": "example-snapshot",
+  "generated_at": "2026-11-03T00:00:00Z",
+  "period": {"start": "2026-11-01T00:00:00Z", "end": "2026-11-02T00:00:00Z"},
+  "scope": {"tenant": "example-tenant", "system": "oteru-demo"},
+  "requirements": [
+    {
+      "article": "12",
+      "claim": "The sample timeline can be reconstructed for the selected period.",
+      "status": "partially_supported",
+      "evidence_refs": ["timeline.json"],
+      "limitations": ["This is synthetic demonstration data."]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "timeline.json",
+      "media_type": "application/json",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "size": 0
+    }
+  ],
+  "limitations": ["Example only; no compliance conclusion is implied."]
+}
