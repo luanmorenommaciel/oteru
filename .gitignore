@@ -12,9 +12,10 @@ __pycache__/
 .tmp_palestra/
 /*.png
 
-# Claude Code: `settings.json` is shareable and stays tracked; `settings.local.json`
-# is per-machine (absolute paths, personal permission grants) and is not.
+# Claude Code local settings and policy may contain machine-specific paths or
+# operational rules; the shareable `settings.json` remains tracked.
 .claude/settings.local.json
+.claude/oteru-policy.local.json
 
 # Local Python execution artifacts.
 __pycache__/
