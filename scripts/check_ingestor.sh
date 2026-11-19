@@ -167,6 +167,51 @@ stored="$(count otel_metrics_sum "MetricName = 'conf.sum'")"
 if [ "$code" = "200" ] && [ "$rejected" = "1" ] && [ "$stored" = "1" ]; then ok "histogram rejected via partialSuccess (1), sum point stored"; else
   fail "partial success: http $code, rejectedDataPoints=[$rejected], sum rows=$stored"; fi
 
+# 9. malformed bodies answer 400 and leave the server healthy (review on #87) ---------
+# JSON whose root is not an object, and a truncated gzip stream, used to close the
+# connection with an unhandled exception (python) or be accepted as empty (go: null).
+printf '\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03\xab\x56' > "$WORK/truncated.gz"
+got=""
+for body in null '[]' '"x"' 7; do
+  got="$got$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/v1/logs" -H 'Content-Type: application/json' --data "$body") "
+done
+got="$got$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/v1/logs" -H 'Content-Type: application/json' \
+  -H 'Content-Encoding: gzip' --data-binary @"$WORK/truncated.gz")"
+after="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/v1/logs" -H 'Content-Type: application/json' --data-binary @"$WORK/logs.json")"
+if [ "$got" = "400 400 400 400 400" ] && [ "$after" = "200" ]; then
+  ok "JSON root not an object -> 400, truncated gzip -> 400, next valid request -> 200"
+else
+  fail "malformed bodies: [$got] (expected 400 x5), next valid request: $after"
+fi
+
+# 10. /healthz is readiness: 503 while ClickHouse is down, 200 again once it is back.
+# Stops the ClickHouse container briefly; skipped with INGESTOR_SKIP_DOWNTIME=1 or
+# when the container is not found (e.g. an external ClickHouse).
+CH_CONTAINER="${CLICKHOUSE_CONTAINER:-oteru-collector-clickhouse-1}"
+if [ "${INGESTOR_SKIP_DOWNTIME:-}" = "1" ] || ! docker inspect "$CH_CONTAINER" >/dev/null 2>&1; then
+  echo "  skip /healthz readiness (no ClickHouse container to stop)"
+else
+  docker stop "$CH_CONTAINER" >/dev/null
+  down=""
+  for _ in $(seq 1 15); do
+    down="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$URL/healthz")"
+    [ "$down" = "503" ] && break
+    sleep 1
+  done
+  docker start "$CH_CONTAINER" >/dev/null
+  up=""
+  for _ in $(seq 1 60); do
+    up="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$URL/healthz")"
+    [ "$up" = "200" ] && break
+    sleep 2
+  done
+  if [ "$down" = "503" ] && [ "$up" = "200" ]; then
+    ok "/healthz: 503 with ClickHouse down, 200 again after it recovers"
+  else
+    fail "/healthz readiness: down=$down (expected 503), recovered=$up (expected 200)"
+  fi
+fi
+
 if [ "$failures" -ne 0 ]; then
   echo; echo "ingestor-check ($IMPL): $failures check(s) failed."; exit 1
 fi
