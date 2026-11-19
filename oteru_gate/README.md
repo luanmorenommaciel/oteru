@@ -1,10 +1,12 @@
 # Human gate simulation — issue #65
 
-This local command evaluates **synthetic actions** against three explicit check
+The simulator evaluates **synthetic actions** against three explicit check
 results (`inventory`, `permission`, `anomaly`). It records `allow`, `review`, or
 `deny` and can simulate a human response. `would_execute` is a boolean in the
-report; the module has no executor, network client, credential, or production
-interception point. All decisions say `enforcement=simulated`.
+report; the simulator has no executor, network client, or credential. All
+simulator decisions say `enforcement=simulated`. The optional Claude Code
+adapter below can block or request confirmation for calls inside that runtime,
+but it does not make the simulator's synthetic decisions operational.
 
 ## Run
 
@@ -77,6 +79,75 @@ expired checks, execution attempted without approval, and a post-action
 finding. Only the low-risk allow and the valid review approval can yield
 `would_execute=true`. Invalid check input is a separate expected failure; it
 does not produce a decision or an audit report.
+
+## Optional Claude Code hook adapter
+
+`oteru_gate.claude_pretool` adapts an explicit local policy to Claude Code's
+`PreToolUse` event. It is opt-in and runs only when registered in Claude Code
+settings, following Claude Code's documented
+[`PreToolUse` decision contract](https://code.claude.com/docs/en/hooks#pretooluse-decision-control).
+Start with the example policy in
+[`fixtures/claude-pretool-policy.json`](fixtures/claude-pretool-policy.json).
+The policy supports exact tool names and exact top-level `tool_input` fields;
+it does not parse shell commands or infer consequence from arbitrary inputs.
+
+Copy the example policy to a local file you control, then add this complete
+settings object to `.claude/settings.local.json` or your user settings. Replace
+the policy path with the file you reviewed. The example policy contains only
+synthetic commands:
+
+```bash
+mkdir -p .claude
+cp oteru_gate/fixtures/claude-pretool-policy.json .claude/oteru-policy.local.json
+```
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/oteru_gate/claude_pretool.py",
+              "--policy",
+              "${CLAUDE_PROJECT_DIR}/.claude/oteru-policy.local.json"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The adapter maps matching rules as follows:
+
+- `deny` returns Claude Code's `permissionDecision=deny` and blocks that tool
+  call.
+- `review` returns `permissionDecision=ask`, which requests confirmation in
+  the current Claude Code session.
+- `allow`, or no matching rule, emits no decision. Claude Code's own permission
+  rules still decide whether the call proceeds.
+- If matching rules disagree, the most restrictive decision wins
+  (`deny` > `review` > `allow`), independent of file order.
+- Missing, oversized, malformed or unsupported policy, invalid hook input, or
+  an invalid rule returns a stable `deny` response. The policy is limited to
+  64 KiB and 128 rules; the hook payload is limited to 256 KiB.
+
+The local prompt is not authenticated identity or centralized approval. This
+adapter does not consume findings from #63/#64/#66, write Oteru audit records,
+or control runtimes other than Claude Code. Exact rules are operator-authored;
+they are not a detector of action consequence. Keep secrets out of policy
+files, especially when using project settings that may be committed. The
+installed Claude Code CLI on the authoring machine was 2.1.221; unit tests
+exercise the JSON contract, not an interactive Claude session. Validate
+`review` in the supported interactive surface before relying on it
+operationally. A missing interpreter or disabled/unloaded hook is outside the
+adapter's control; this is not a tamper-resistant enterprise gate.
 
 ## Boundaries, decisions still needed and rollback
 

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "rules": [
+    {
+      "id": "review-production-deploy",
+      "match": {
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "deploy production"
+        }
+      },
+      "decision": "review",
+      "reason": "Production deployment requires local confirmation"
+    },
+    {
+      "id": "deny-unapproved-release",
+      "match": {
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "release production"
+        }
+      },
+      "decision": "deny",
+      "reason": "Production release is not permitted by this policy"
+    }
+  ]
+}
