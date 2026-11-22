@@ -34,13 +34,16 @@ def _reject_constant(_value: str) -> None:
 
 
 def _parse_json(raw: bytes | str) -> Any:
-    return json.loads(raw, object_pairs_hook=_unique_object, parse_constant=_reject_constant)
+    try:
+        return json.loads(raw, object_pairs_hook=_unique_object, parse_constant=_reject_constant)
+    except RecursionError as exc:
+        raise PolicyError("invalid_json_value") from exc
 
 
 def _canonical(value: Any) -> str:
     try:
         return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    except (TypeError, ValueError) as exc:
+    except (RecursionError, TypeError, ValueError) as exc:
         raise PolicyError("invalid_json_value") from exc
 
 

@@ -153,6 +153,48 @@ def test_policy_and_hook_input_size_limits_fail_closed(tmp_path):
     assert permission(result)["permissionDecision"] == "deny"
 
 
+def test_deeply_nested_hook_json_fails_closed_without_traceback(tmp_path):
+    path = tmp_path / "policy.json"
+    path.write_text(json.dumps(policy()), encoding="utf-8")
+    nested = b"[" * 1500 + b"0" + b"]" * 1500
+    payload = (
+        b'{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"value":'
+        + nested
+        + b"}}"
+    )
+
+    result = json.loads(run(payload, path))
+
+    assert permission(result)["permissionDecision"] == "deny"
+    assert permission(result)["permissionDecisionReason"] == "invalid_json_value"
+
+
+def test_deeply_nested_policy_json_fails_closed_without_traceback(tmp_path):
+    path = tmp_path / "policy.json"
+    nested = b"[" * 1500 + b"0" + b"]" * 1500
+    path.write_bytes(
+        b'{"schema_version":1,"rules":[{"id":"deep","match":{"tool_name":"Bash",'
+        b'"tool_input":{"value":' + nested + b'}},"decision":"deny","reason":"deny deep value"}]}'
+    )
+
+    result = json.loads(run(json.dumps(hook_input()).encode(), path))
+
+    assert permission(result)["permissionDecision"] == "deny"
+    assert permission(result)["permissionDecisionReason"] == "invalid_json_value"
+
+
+def test_programmatic_deep_value_is_rejected_by_canonicalizer():
+    nested: object = 0
+    for _ in range(1500):
+        nested = [nested]
+
+    with pytest.raises(PolicyError, match="invalid_json_value"):
+        decide(
+            {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"value": nested}},
+            policy(rule("deep", "deny")),
+        )
+
+
 def test_rule_schema_rejects_shell_pattern_guessing():
     with pytest.raises(PolicyError, match="invalid_policy_match"):
         decide(
