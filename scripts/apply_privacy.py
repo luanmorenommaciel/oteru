@@ -8,6 +8,8 @@ does not remove telemetry, volumes or backend services. No hot reload exists.
 from __future__ import annotations
 
 import argparse
+import os
+import stat
 import subprocess
 from pathlib import Path
 
@@ -21,8 +23,29 @@ def main(argv=None):
         choices=("base", "clickhouse", "clickstack", "clickstack-local", "hyperdx"),
         default="base",
     )
+    parser.add_argument(
+        "--encrypt",
+        action="store_true",
+        help="opt in to AES-GCM identity encryption using OTERU_PII_KEYRING_FILE",
+    )
     args = parser.parse_args(argv)
+    secret_file = None
+    if args.encrypt:
+        configured = os.environ.get("OTERU_PII_KEYRING_FILE", "")
+        try:
+            secret_file = Path(configured)
+            if not secret_file.is_absolute():
+                parser.error("--encrypt requires an absolute OTERU_PII_KEYRING_FILE path")
+            info = secret_file.lstat()
+        except (OSError, ValueError):
+            parser.error(
+                "--encrypt requires OTERU_PII_KEYRING_FILE to name a protected regular file"
+            )
+        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+            parser.error("keyring must be a regular file with no group or other permissions")
     command = ["docker", "compose", "-f", "docker-compose.yml"]
+    if args.encrypt:
+        command += ["-f", "docker-compose.encrypt.yml"]
     if args.profile in ("clickhouse", "hyperdx"):
         command += ["-f", "docker-compose.clickhouse.yml"]
     if args.profile == "clickstack":

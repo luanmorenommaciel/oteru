@@ -1,0 +1,10 @@
+# Opt-in V1 encryption. The file is bind-mounted by Compose; it is not a vault.
+services:
+  oteru-collector:
+    secrets:
+      - source: oteru_pii_keyring
+        target: oteru_pii_keyring
+
+secrets:
+  oteru_pii_keyring:
+    file: ${OTERU_PII_KEYRING_FILE:?set OTERU_PII_KEYRING_FILE to a protected keyring file}
