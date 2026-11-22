@@ -1,6 +1,6 @@
 # ADR-003 — Estratégia configurável de PII
 
-- **Status:** Proposed
+- **Status:** Proposed (revisada após review; implementação é acompanhada separadamente)
 - **Data:** 2026-11-02
 - **Issue:** [#9](https://github.com/luanmorenommaciel/oteru/issues/9)
 - **Decidor:** Vinicius Sena, Captain
@@ -8,78 +8,86 @@
 
 ## Contexto
 
-O repositório possui um PII guard para impedir que capturas e fixtures versionadas contenham identidade real. Esse guard não transforma telemetria em runtime. O replay atual preserva atributos de identidade principal para manter fidelidade à captura.
+O PII guard impede que capturas e fixtures versionadas contenham identidade real; ele não transforma telemetria em runtime. O Collector já aplica uma policy local antes dos exporters cobertos. Hoje há uma policy controlada pelo operador por instalação dedicada, não uma policy selecionável por tenant enviado no OTLP. O contrato implementado está documentado em [`docs/privacy.md`](../privacy.md) e usa policy JSON v2.
 
-Portanto, “o guard passou” não significa que storage e logs de produção estejam redigidos. A política precisa atuar antes da persistência e ser configurável por tenant e campo.
+Esta ADR decide a direção de produto para a evolução de #21. Ela não altera nem rebatiza silenciosamente o comportamento já entregue em #94/#154: `hash` é HMAC-SHA-256 com chave; `mask` substitui por `REDACTED`; `drop` remove o atributo. O valor HMAC é estável para o mesmo campo e valor enquanto a chave não mudar, portanto é pseudonimização com capacidade de correlação, não anonimização. A implementação atual cobre os exporters declarados no runbook; modos que enviam diretamente ao backend e contornam o Collector não recebem essa proteção.
 
 ## Decisão proposta
 
-Cada tenant terá uma policy versionada com três ações:
+O contrato-alvo oferece quatro ações por campo:
 
-- `mask`: substitui o valor por token irreversível ou HMAC quando correlação for necessária;
-- `ignore`: remove o campo antes de buffer, storage, logs e métricas;
+- `hash`: pseudonimiza via HMAC-SHA-256 quando correlação estável for necessária;
+- `mask`: substitui o valor por `REDACTED`;
+- `drop`: remove o campo antes de buffer, storage, logs e métricas;
 - `encrypt`: cifra o valor com chave gerenciada e controle de acesso separado.
 
-Defaults:
+`ignore` não é uma ação de transformação no contrato implementado: é o default seguro para campos sem regra. O schema atual não aceita `ignore` como ação explícita. “Ignore” significa omitir/remover o campo sensível; não se aplica indiscriminadamente ao evento inteiro. Campos operacionais benignos, valores de métricas, timestamps e contexto estrutural são preservados conforme as regras e os filtros descritos no runbook.
 
-1. identificadores diretos conhecidos usam `mask`;
-2. prompt, parâmetros e respostas usam `ignore`, salvo allowlist explícita;
-3. `encrypt` exige configuração explícita, chave válida e justificativa de retenção;
-4. campo sensível sem regra aplicável não é persistido em claro;
-5. falha de chave em ação `encrypt` envia o evento protegido para quarentena ou recusa a ingestão; nunca rebaixa para texto claro.
+Defaults propostos para a evolução:
 
-## Schema de policy v1
+1. Os seis atributos de identidade catalogados continuam usando `hash` por padrão na implementação atual; mudanças exigem migração explícita de policy e avaliação dos dashboards que dependem da forma pseudônima.
+2. Conteúdo conhecido de prompt, entrada/saída de ferramentas e resposta é removido nos contextos cobertos. Texto livre do corpo de logs é preservado por padrão e pode conter dados pessoais; a policy atual permite substituir o corpo inteiro por `REDACTED`.
+3. `encrypt` só poderá ser ativado com chave válida resolvida por uma integração de gerenciamento de chaves aprovada, autorização separada para decrypt e justificativa/retention configurada. A ADR ainda não escolhe provedor nem formato de referência da chave: isso é bloqueio de implementação, não uma licença para inventar um backend local ou persistir chave no arquivo da policy.
+4. Campo sensível sem regra aplicável não pode ser exportado em claro. Falha de validação, chave ausente ou erro de cifra deve interromper o caminho afetado sem fallback em claro; quarentena só poderá ser usada quando seu armazenamento também estiver protegido e explicitamente configurado.
+
+## Schema implementado hoje
+
+O exemplo abaixo descreve semântica, não o schema literal do Collector. A policy executável atual está em `oteru-collector/privacy/policy.json`, usa `version: 2`, `identity`, `content` e `metrics`, e aceita `hash`, `mask` e `drop` conforme `docs/privacy.md`. Ela não implementa `encrypt`, policy multi-tenant, nem os campos `tenant_id`, `rules` ou `retention_days` deste rascunho anterior.
+
+## Contrato-alvo para a próxima versão da policy
+
+O schema final precisa ser versionado separadamente e validar ações, escopos, tipos e referências de chave antes da ativação. Este exemplo é ilustrativo e **não é aceito pelo compilador atual**:
 
 ```yaml
-version: 1
-tenant_id: example-tenant
+version: 3
+installation_id: example-installation
 default_action: ignore
 rules:
   - field: user.email
-    action: mask
+    action: hash
     method: hmac-sha256
     key_ref: pii-linkability-v1
   - field: user.id
-    action: mask
+    action: hash
     method: hmac-sha256
     key_ref: pii-linkability-v1
   - field: prompt.content
-    action: ignore
+    action: drop
   - field: approved.audit.subject
     action: encrypt
     key_ref: pii-encryption-v3
-retention_days: 30
+    purpose: approved-audit-retention
 ```
 
-Policies inválidas são rejeitadas antes de ativação. O evento registra apenas `policy_version`, ação aplicada e `key_id`; nunca material de chave.
+Políticas inválidas são rejeitadas antes de ativação. Metadados operacionais podem registrar versão da policy, ação e identificador não secreto da chave; nunca valor original, ciphertext sensível em log, nem material de chave. O contrato de retenção deve referenciar o controle operacional que realmente expira dados no backend; um número na policy, por si só, não implementa retenção.
 
 ## Matriz inicial
 
-| Classe de dado | Default | Permitido | Observação |
-| --- | --- | --- | --- |
-| E-mail, conta e identidade pessoal | Mask | Mask, ignore, encrypt | HMAC com chave de tenant quando houver correlação |
-| Session/trace/span IDs | Mask/preservar conforme finalidade | Mask, ignore | Não presumir que correlação seja anônima |
-| Prompt, tool input/output e resposta | Ignore | Ignore, encrypt | Persistência em claro proibida |
-| Organização/tenant | Mask | Mask, encrypt | Segregação não depende do valor declarado no payload |
-| Host e caminho de usuário | Ignore | Ignore, mask | Evitar identidade indireta |
-| Métricas agregadas sem identificador | Preservar | Preservar | Verificar risco de reidentificação |
+| Classe de dado | Regra atual / proposta | Observação |
+| --- | --- | --- |
+| E-mail, conta e identidade pessoal | Hoje: `hash` HMAC nos seis campos catalogados; alvo pode permitir `mask`, `drop` ou `encrypt` explícitos. | A chave atual é da instalação. A ADR não afirma suporte por tenant. |
+| `session.id` e `prompt.id` | Preservados hoje. | São atributos de correlação com risco de linkabilidade; não são os IDs estruturais OTLP. Uma policy futura poderá transformá-los apenas com regra que mantenha joins coerentes. |
+| `trace_id` e `span_id` OTLP | Preservados hoje; não são atributos comuns da policy. | A policy não deve reescrevê-los como strings arbitrárias. Preservar mantém a estrutura da trace; remover ou remapear exige transformação consciente de todos os links, parent IDs, events e exemplars. V1 não oferece remapeamento. |
+| Prompt, tool input/output e resposta | Campos de conteúdo conhecidos são removidos nos contextos cobertos; conteúdo livre de log é preservado, salvo `content.log_body: drop`. | Não afirmar sanitização de texto livre; encrypt permanece não implementado. |
+| Organização/tenant | Policy de instalação; `tenant.id` enviado pelo cliente não seleciona policy. | Compartilhamento multi-tenant de receiver está fora do comportamento implementado. |
+| Métricas e dimensões | Métricas/timestamps e dimensões benignas preservados; identidade catalogada recebe HMAC. Dimensões incompatíveis com `mask`/`drop`, conteúdo conhecido ou exemplars são rejeitados pelos filtros de segurança. | Não remover silenciosamente dimensões que alterariam a identidade da série. |
 
 ## Pseudonimização e chaves
 
-- Hash simples sem chave não é aceito para identificadores de baixa entropia.
-- HMAC usa chave separada por tenant e finalidade.
-- Ciphertext inclui `key_id`, algoritmo e nonce; chave nunca acompanha o evento.
-- Rotação cria nova versão. Uma janela de dual-read permite migração sem manter plaintext.
-- Acesso a decrypt é separado de acesso a observabilidade e sempre auditado.
+- Hash simples sem chave não é aceito para PII de baixa entropia.
+- HMAC atual usa um segredo operacional da instalação e separação de domínio por nome de campo; não há chave por tenant/finalidade. Não reutilizar ou descrever essa chave como chave de encryption.
+- Encryption futura precisa definir formato autenticado, nonce, identificador de chave, encoding e limites de tamanho. Algoritmo e envelope ainda dependem da integração de chaves escolhida.
+- Rotação HMAC altera os pseudônimos e interrompe continuidade entre versões de chave. Migração/dual-read ainda não está implementada nem aprovada; nunca se deve recuperar plaintext para recalcular sem uma fonte autorizada.
+- Acesso a decrypt deve ser separado do acesso comum à observabilidade e auditado. Identidades autorizadas, fluxo de aprovação e comportamento de emergência ainda precisam ser especificados antes de habilitar Encrypt.
 
 ## Threat model resumido
 
 | Ameaça | Controle |
 | --- | --- |
-| Reidentificação por dicionário | HMAC com chave e segregação por tenant |
+| Reidentificação por dicionário | HMAC com segredo fora do payload; hoje o escopo da chave é a instalação |
 | Vazamento em log de erro | Logs estruturados sem payload e testes de redaction |
-| Chave ausente ou expirada | Quarentena/recusa; nunca fallback para claro |
-| Cross-tenant | Identidade do tenant derivada de credencial, não de campo do cliente |
+| Chave ausente ou expirada | Para HMAC, o Collector atual não inicia sem chave válida. Para Encrypt futuro, interromper sem fallback; quarentena depende de armazenamento protegido configurado |
+| Cross-tenant | Não há isolamento multi-tenant implementado; deployments com dados de tenants distintos precisam de instalações isoladas até que identidade e seleção de policy confiáveis sejam projetadas |
 | Reprocessamento com policy antiga | `policy_version` e migração explícita |
 | Operador com acesso amplo | Menor privilégio e auditoria de decrypt/replay |
 
@@ -87,7 +95,7 @@ Policies inválidas são rejeitadas antes de ativação. O evento registra apena
 
 ### SHA-256 sem chave
 
-Rejeitada para PII de baixa entropia por permitir ataques de dicionário e correlação entre tenants.
+Rejeitada para PII de baixa entropia por permitir ataques de dicionário e correlação entre instalações.
 
 ### Uma ação global para todos os campos
 
@@ -99,18 +107,18 @@ Rejeitada como default por ampliar custo, superfície de acesso e risco de uso i
 
 ## Migração e rollback
 
-1. Inventariar campos e storages existentes.
-2. Ativar policy em shadow mode, reportando violações sem copiar valores.
-3. Aplicar transformação antes do buffer persistente.
-4. Reprocessar ou expirar dados históricos conforme base legal.
-5. Rollback de policy nunca reintroduz plaintext; volta para `ignore` quando não houver ação segura.
+1. Inventariar campos, exporters e rotas de ingestão; a configuração direta de ClickStack contorna o Collector e permanece fora deste controle.
+2. Evoluir o contrato de policy em versão explícita, mantendo compatibilidade e migração documentadas; não chamar a policy atual de schema v1.
+3. Validar policy e disponibilidade das chaves antes de aceitar tráfego; aplicar transformação antes de buffer/exporter e testar todos os sinais e destinos habilitados.
+4. Definir migração e retenção dos dados históricos com o backend e base legal; trocar a policy não altera dados já persistidos.
+5. Rollback nunca deve reintroduzir plaintext. Se não houver uma policy segura ou chave válida, parar ingestão ou remover o campo de forma segura.
 
 ## Evidências para ratificação
 
-- [x] Guard de fixtures existente e limite runtime documentado.
-- [ ] Validador de schema e policy por tenant.
-- [ ] Testes que procuram PII em storage, logs, DLQ e erros.
-- [ ] Testes de rotação, chave ausente e segregação.
+- [x] Validador do contrato local atual e testes de ausência de valores catalogados nos destinos cobertos (ver `docs/privacy.md`).
+- [ ] Decidir provedor e escopo da chave de encryption, envelope autenticado, autorização de decrypt, rotação/recuperação e retenção/quarentena protegida.
+- [ ] Definir semântica de migração do contrato atual `hash`/`mask`/`drop` para o alvo sem quebrar correlação e dashboards.
+- [ ] Definir política confiável para tenancy antes de anunciar policy por tenant.
+- [ ] Expandir testes para encryption, logs/erros e cada destino/rota operacional que a V1 venha a suportar.
 - [ ] Threat model revisado por segurança/compliance.
 - [ ] Aceite do aprovador.
-
