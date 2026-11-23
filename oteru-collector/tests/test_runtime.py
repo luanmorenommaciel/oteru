@@ -132,6 +132,9 @@ def collector(tmp_path, config, network=None, keyring=None):
             if keyring
             else []
         )
+        keyring_owner_args = (
+            ["--user", f"{keyring.stat().st_uid}:{keyring.stat().st_gid}"] if keyring else []
+        )
         docker(
             "run",
             "-d",
@@ -143,6 +146,7 @@ def collector(tmp_path, config, network=None, keyring=None):
             "127.0.0.1::4318",
             *network_args,
             *keyring_args,
+            *keyring_owner_args,
             "-e",
             f"OTERU_PII_HMAC_KEY={TEST_HMAC_KEY}",
             "--mount",
