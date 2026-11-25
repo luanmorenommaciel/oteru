@@ -10,10 +10,13 @@ from datetime import datetime, timezone
 
 SCHEMA_VERSION = 1
 ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
+HEX = re.compile(r"[0-9a-f]{64}\Z")
 MODES = {"default", "plan", "acceptEdits", "auto", "dontAsk", "bypassPermissions"}
 KINDS = (
     "bypass_mode_observed",
     "permission_escalation_observed",
+    "fixed_threshold_exceeded",
+    "declared_component_unapproved",
 )
 MAX_RECORDS = 10_000
 MAX_NS = 2**63 - 1
@@ -51,6 +54,12 @@ def _id(value: object, code: str) -> str:
     return value
 
 
+def _digest(value: object, code: str) -> str:
+    if not isinstance(value, str) or not HEX.fullmatch(value):
+        _fail(code)
+    return value
+
+
 def _canonical(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
@@ -77,6 +86,31 @@ def _dedupe(records: list, category: str) -> tuple[list[dict], int]:
     return list(unique.values()), duplicate_count
 
 
+def _components(raw: object, category: str) -> list[dict]:
+    output: dict[tuple[str, str, str, str], dict] = {}
+    by_identity: dict[tuple[str, str], tuple[str, str]] = {}
+    for entry in _list(raw, f"{category}_list_invalid"):
+        item = _object(entry, f"{category}_entry_invalid")
+        kind = item.get("kind")
+        if kind not in ("mcp", "plugin", "skill"):
+            _fail(f"{category}_kind_invalid")
+        identifier = _id(item.get("id"), f"{category}_id_invalid")
+        version = _id(item.get("version"), f"{category}_version_invalid")
+        digest = _digest(item.get("digest"), f"{category}_digest_invalid")
+        identity = (kind, identifier)
+        value = (version, digest)
+        if category == "inventory" and identity in by_identity and by_identity[identity] != value:
+            _fail("inventory_identity_conflict")
+        by_identity[identity] = value
+        output[(kind, identifier, version, digest)] = {
+            "kind": kind,
+            "id": identifier,
+            "version": version,
+            "digest": digest,
+        }
+    return [output[key] for key in sorted(output)]
+
+
 def _validate_policy(raw: object) -> dict:
     policy = _object(raw, "policy_invalid")
     if type(policy.get("schema_version")) is not int or policy["schema_version"] != SCHEMA_VERSION:
@@ -84,9 +118,28 @@ def _validate_policy(raw: object) -> dict:
     _id(policy.get("policy_id"), "policy_id_invalid")
     _int(policy.get("policy_version"), "policy_version_invalid", minimum=1)
     severity = _object(policy.get("severity"), "severity_missing")
-    for kind in KINDS:
+    required_kinds = list(KINDS[:2])
+    if "tool_rate" in policy:
+        required_kinds.append("fixed_threshold_exceeded")
+    if "allowlist" in policy:
+        required_kinds.append("declared_component_unapproved")
+    for kind in required_kinds:
         if severity.get(kind) not in ("warning", "high"):
             _fail("severity_invalid")
+    if "tool_rate" in policy:
+        rate = _object(policy["tool_rate"], "tool_rate_invalid")
+        _id(rate.get("baseline_id"), "baseline_id_invalid")
+        _int(rate.get("baseline_version"), "baseline_version_invalid", minimum=1)
+        _int(rate.get("window_seconds"), "window_invalid", minimum=1, maximum=3600)
+        _int(rate.get("threshold"), "threshold_invalid", minimum=0, maximum=MAX_RECORDS)
+    if "allowlist" in policy:
+        allowed = _object(policy["allowlist"], "allowlist_invalid")
+        _id(allowed.get("allowlist_id"), "allowlist_id_invalid")
+        _int(allowed.get("allowlist_version"), "allowlist_version_invalid", minimum=1)
+        return {
+            **policy,
+            "allowlist": {**allowed, "entries": _components(allowed.get("entries"), "allowlist")},
+        }
     return policy
 
 
@@ -162,6 +215,21 @@ def evaluate(bundle: object, raw_policy: object) -> tuple[list[dict], dict]:
     )
     if observations and changes:
         _fail("permission_evidence_mixed")
+    tool_supplied = "tool_calls" in data
+    if tool_supplied and "tool_rate" not in policy:
+        _fail("tool_rate_missing")
+    tool_calls, tool_dups = _dedupe(_list(data.get("tool_calls", []), "tool_list_invalid"), "tool")
+    inventory = data.get("inventory")
+    if inventory is not None:
+        if "allowlist" not in policy:
+            _fail("allowlist_missing")
+        inventory = _object(inventory, "inventory_invalid")
+        _id(inventory.get("snapshot_id"), "snapshot_id_invalid")
+        inventory_time = _int(inventory.get("observed_at_ns"), "inventory_time_invalid")
+        components = _components(inventory.get("components"), "inventory")
+    else:
+        inventory_time = None
+        components = []
     diagnostics: set[str] = set()
     findings: list[dict] = []
     change_sequences: set[tuple[str, int]] = set()
@@ -275,10 +343,105 @@ def evaluate(bundle: object, raw_policy: object) -> tuple[list[dict], dict]:
                 )
             previous = item
 
+    rate = policy.get("tool_rate")
+    window_ns = rate["window_seconds"] * 1_000_000_000 if rate else 0
+    windows: dict[tuple[str, int], set[str]] = defaultdict(set)
+    for item in tool_calls:
+        session = _id(item.get("session_id"), "tool_session_invalid")
+        when = _int(item.get("time_unix_nano"), "tool_time_invalid")
+        if not start <= when < end:
+            _fail("tool_outside_coverage")
+        windows[(session, when // window_ns * window_ns)].add(item["id"])
+    tool_evaluable = tool_supplied and coverage["complete"]
+    for (session, window_start), ids in sorted(windows.items()):
+        window_end = window_start + window_ns
+        if window_start < start or window_end > end:
+            tool_evaluable = False
+            diagnostics.add("partial_window")
+            continue
+        if not coverage["complete"]:
+            continue
+        if len(ids) > rate["threshold"]:
+            details = {
+                "baseline_id": rate["baseline_id"],
+                "baseline_version": rate["baseline_version"],
+                "baseline_count": rate["threshold"],
+                "observed_count": len(ids),
+                "difference_count": len(ids) - rate["threshold"],
+                "window_start_ns": window_start,
+                "window_end_ns": window_end,
+                "group_by": "subject_id,session_id",
+            }
+            findings.append(
+                _event(
+                    data,
+                    policy,
+                    "fixed_threshold_exceeded",
+                    "tool.calls.fixed_window",
+                    window_end,
+                    sorted(ids),
+                    details,
+                    session,
+                )
+            )
+    if not coverage["complete"]:
+        diagnostics.add("coverage_unconfirmed")
+
+    inventory_results: list[dict] = []
+    if inventory is not None:
+        allowed = policy["allowlist"]
+        for component in components:
+            same_id = [
+                entry
+                for entry in allowed["entries"]
+                if entry["kind"] == component["kind"] and entry["id"] == component["id"]
+            ]
+            status = (
+                "unknown"
+                if not same_id
+                else "version_mismatch"
+                if all(entry["version"] != component["version"] for entry in same_id)
+                else "digest_mismatch"
+                if all(
+                    entry["digest"] != component["digest"]
+                    for entry in same_id
+                    if entry["version"] == component["version"]
+                )
+                else "allowed"
+            )
+            inventory_results.append({**component, "status": status})
+            if status == "allowed":
+                continue
+            details = {
+                "component_kind": component["kind"],
+                "component_id": component["id"],
+                "component_version": component["version"],
+                "component_digest": component["digest"],
+                "reason": status,
+                "allowlist_id": allowed["allowlist_id"],
+                "allowlist_version": allowed["allowlist_version"],
+            }
+            findings.append(
+                _event(
+                    data,
+                    policy,
+                    "declared_component_unapproved",
+                    "supply_chain.declared_allowlist",
+                    inventory_time,
+                    [inventory["snapshot_id"]],
+                    details,
+                )
+            )
+
     findings.sort(key=lambda event: (event["observed_at_ns"], event["event_id"]))
     permission_evaluable = bool(observations or changes) and not diagnostics.intersection(
         {"permission_mode_unknown", "sequence_gap", "timestamp_regression"}
     )
+    evaluations = {"permission": "evaluated" if permission_evaluable else "not_evaluable"}
+    if tool_supplied or rate is not None:
+        evaluations["tool_rate"] = "evaluated" if tool_evaluable else "not_evaluable"
+    if inventory is not None or "allowlist" in policy:
+        evaluations["inventory"] = "evaluated" if inventory is not None else "not_evaluable"
     report = {
         "schema_version": 1,
         "input_integrity": "valid",
@@ -287,12 +450,18 @@ def evaluate(bundle: object, raw_policy: object) -> tuple[list[dict], dict]:
         "source_id": data["source_id"],
         "policy_id": policy["policy_id"],
         "policy_version": policy["policy_version"],
-        "evaluations": {
-            "permission": "evaluated" if permission_evaluable else "not_evaluable",
-        },
+        "evaluations": evaluations,
         "diagnostics": sorted(diagnostics),
-        "received": len(data["permission_observations"]) + len(changes) + change_dups,
-        "duplicates": permission_dups + change_dups,
+        "inventory_results": inventory_results,
+        "received": len(data["permission_observations"])
+        + len(changes)
+        + change_dups
+        + len(data.get("tool_calls", []))
+        + (len(inventory["components"]) if inventory else 0),
+        "duplicates": permission_dups
+        + change_dups
+        + tool_dups
+        + ((len(inventory["components"]) - len(components)) if inventory else 0),
         "findings": len(findings),
     }
     return findings, report
