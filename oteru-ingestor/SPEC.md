@@ -40,7 +40,9 @@ Contract
 ### Storage
 
 - Apply [`schema.sql`](schema.sql) at startup with `{db}` = `ingest_python`,
-  `ingest_go` or `ingest_rust` (statements split on a line holding only `;`).
+  `ingest_go` or `ingest_rust` (statements split on a line holding only `;`);
+  accept `\r\n` as well as `\n` line endings — a Windows checkout may bring
+  either, and `make ingestor-crlf-check` asserts all three cope.
 - **One INSERT per table per request** (v0: no cross-request batching — that
   is a benchmark variable, not a correctness one).
 - Config from env: `CLICKHOUSE_URL` (HTTP interface, default

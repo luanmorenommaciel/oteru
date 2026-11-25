@@ -113,7 +113,10 @@ func applySchema() error {
 	if err != nil {
 		return err
 	}
-	for _, stmt := range strings.Split(strings.ReplaceAll(string(raw), "{db}", db), "\n;\n") {
+	// A Windows checkout can bring the file with \r\n; normalise before
+	// splitting on the "\n;\n" statement separator (SPEC.md, "Storage").
+	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	for _, stmt := range strings.Split(strings.ReplaceAll(text, "{db}", db), "\n;\n") {
 		var lines []string
 		for _, ln := range strings.Split(stmt, "\n") {
 			if !strings.HasPrefix(strings.TrimSpace(ln), "--") {
