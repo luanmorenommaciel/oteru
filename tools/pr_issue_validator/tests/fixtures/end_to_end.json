@@ -1,0 +1,42 @@
+{
+  "issue": {
+    "number": 119,
+    "title": "Validate issue acceptance criteria against pull requests",
+    "body": "## Acceptance criteria\n- [ ] dbt build handles mixed complete and incomplete telemetry\n- [ ] Windows CRLF healthcheck passes\n- [ ] unrelated work and dependencies are reported\n",
+    "comments": [
+      {
+        "body": "A green narrow fixture is not proof of the integrated flow.",
+        "user": {"login": "reviewer"}
+      }
+    ]
+  },
+  "pr": {
+    "number": 999,
+    "title": "Fixture PR",
+    "body": "Stacked on #998 and contains a dbt model plus ingestor changes.",
+    "base": "feature-parent",
+    "head": "fixture-head",
+    "files": [
+      "oteru-dbt/models/fct_events.sql",
+      "oteru-ingestor/go/main.go",
+      "docs/fixture.md",
+      "scripts/fixture.py"
+    ],
+    "commits": [{"sha": "fixture"}],
+    "comments": [],
+    "review_comments": [],
+    "reviews": [],
+    "checks": [{"name": "linux", "conclusion": "success"}]
+  },
+  "tests": [
+    {
+      "name": "mixed complete incomplete telemetry dbt run",
+      "command": "dbt run --full-refresh",
+      "exit_code": 0,
+      "stdout": "PASS",
+      "stderr": "",
+      "skipped": false
+    }
+  ],
+  "evidence": []
+}
