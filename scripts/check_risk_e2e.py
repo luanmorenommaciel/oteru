@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -74,6 +76,9 @@ def _wait_otlp(endpoint: str) -> None:
 
 
 def main() -> int:
+    # The isolated Collector now requires a valid privacy key. Keep E2E data
+    # unlinkable outside this run and never rely on a developer's real key.
+    os.environ["OTERU_PII_HMAC_KEY"] = secrets.token_hex(32)
     project = "oterurisk" + uuid.uuid4().hex[:10]
     with tempfile.TemporaryDirectory(prefix="oteru-risk-e2e-") as directory:
         work = Path(directory)
@@ -92,6 +97,7 @@ def main() -> int:
             "    volumes: !override\n"
             f"      - {json.dumps(config_mount)}\n"
             f"      - {json.dumps(telemetry_mount)}\n"
+            "      - privacy-config:/etc/oteru-privacy:ro\n"
             "  clickhouse:\n"
             "    ports: !override\n"
             "      - '127.0.0.1::8123'\n",
