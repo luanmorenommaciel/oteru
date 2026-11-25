@@ -82,6 +82,13 @@ collector keeps writing exactly where `make up-clickhouse` puts it.
 The isolated [human gate simulation](oteru_gate/README.md) exercises the
 response policy proposed for #65 using synthetic checks.
 
+## Which agent tools can Oteru observe?
+
+[`docs/emitter-coverage.md`](docs/emitter-coverage.md) maps ~40 coding agents,
+IDEs, agent frameworks and the Microsoft Copilot family to how each reaches
+Oteru: natively on the integration surface, via a mapping, an emitter profile,
+a hook bridge — or not at all (research snapshot 2026-10-06, sources inline).
+
 ## Development
 
 For the offline operational-risk permission slice (#63), see
