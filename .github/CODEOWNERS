@@ -14,3 +14,6 @@
 /scripts/check_pii.py              @luanmorenommaciel
 /oteru_gate/                       @luanmorenommaciel
 /LICENSE                           @luanmorenommaciel
+/docs/specs/                       @luanmorenommaciel
+/.githooks/                        @luanmorenommaciel
+/.gitleaksignore                   @luanmorenommaciel

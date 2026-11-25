@@ -70,5 +70,4 @@ A estrutura, as regras de alocação e as vagas abertas estão em [pods.md](./po
 
 - [Roadmap e gates](./roadmap.md)
 - [Índice de ADRs](../adr/README.md)
-- [Plano de execução da fase](../governance-adr-development-plan-2026-11-02.md)
 
