@@ -83,6 +83,27 @@ func clickhouse(query string, body []byte) error {
 	return nil
 }
 
+var healthClient = &http.Client{Timeout: 2 * time.Second}
+
+// ping is the readiness probe: ClickHouse answers `SELECT 1` within 2 s.
+func ping() error {
+	req, err := http.NewRequest(http.MethodPost, chURL, strings.NewReader("SELECT 1"))
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(chUser, chPassword)
+	resp, err := healthClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("clickhouse %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func urlQuery(q string) string {
 	return strings.NewReplacer(" ", "%20", "\n", "%20").Replace(q)
 }
@@ -337,6 +358,11 @@ func handle(signal string) http.HandlerFunc {
 				return nil
 			}
 			if isJSON {
+				// `null`, arrays and scalars are valid JSON but not an OTLP
+				// request; pdata would accept `null` as empty (review on #87).
+				if trimmed := bytes.TrimSpace(raw); trimmed[0] != '{' {
+					return errors.New("JSON root must be an object")
+				}
 				return req.UnmarshalJSON(raw)
 			}
 			return req.UnmarshalProto(raw)
@@ -415,11 +441,16 @@ func main() {
 	mux.HandleFunc("/v1/traces", handle("traces"))
 	mux.HandleFunc("/v1/metrics", handle("metrics"))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		if ready.Load() {
-			_, _ = w.Write([]byte("ok"))
+		// Readiness, per SPEC: schema applied AND ClickHouse answering now.
+		if !ready.Load() {
+			http.Error(w, "starting", http.StatusServiceUnavailable)
 			return
 		}
-		http.Error(w, "starting", http.StatusServiceUnavailable)
+		if err := ping(); err != nil {
+			http.Error(w, "clickhouse unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte("ok"))
 	})
 	log.Printf("oteru-ingestor (go) listening on :%s -> %s.*", port, db)
 	log.Fatal(http.ListenAndServe(":"+port, mux))
