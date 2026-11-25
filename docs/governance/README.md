@@ -69,5 +69,5 @@ A estrutura, as regras de alocação e as vagas abertas estão em [pods.md](./po
 ## Registros relacionados
 
 - [Roadmap e gates](./roadmap.md)
-- [Índice de ADRs](../adr/README.md)
+- ADRs: [ADR-003 — Estratégia de PII](../adr/0003-pii-strategy.md) · [ADR-004 — Estados de policy](../adr/0004-policy-enforcement.md)
 
