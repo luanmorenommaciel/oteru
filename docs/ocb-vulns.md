@@ -86,6 +86,17 @@ Collector self-telemetry, reachable, **MODERATE/LOW**:
 - GO-2026-6615 `go.opentelemetry.io/otel/sdk/log@v0.20.0` — MODERATE
 - GO-2026-6508 `.../otlploggrpc@v0.20.0` — MODERATE
 - GO-2026-6505 `otel/sdk` + `otlptrace*` @v1.44.0 — LOW
+- GO-2026-6975 `go.opentelemetry.io/otel` + `otel/trace` @v1.44.0 — W3C baggage
+  parsing memory amplification (published after the Nov 3 proof; fixed in v1.47.0)
+- GO-2026-6974 `otel/sdk` + `otel/trace` @v1.44.0 + `otel/sdk/log` @v0.20.0 — AttributeValueLengthLimit
+  bypass via U+FFFD (fixed in v1.47.0)
+
+GO-2026-6975 / 6974 were checked as `replaces` floors first (2026-11-25): pinning the
+core OTel Go modules to v1.47.0 fails to compile, because v1.47.0 also moves
+`otel/log` to its stable v1.47 API and `contrib/bridges/otelzap` v0.19.0 / `sdk/log`
+v0.20.0 (both pinned by otelcol v0.155.0) no longer link (`undefined: log.KeyValue`).
+They are allowlisted until the collector line moves to an otelcol release built on
+OTel Go v1.47+; that bump is the tracked follow-up.
 
 Fixing these would mean replacing the OTel Go SDK that otelcol
 v0.155.0 pins, which is outside the HIGH floor.
