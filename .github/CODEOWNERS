@@ -1,0 +1,16 @@
+# Code owners: GitHub requests review from these owners, and with
+# "Require review from Code Owners" on main their approval is required.
+# Scope: CI/workflows, security / PII / crypto / keys, contracts and release config.
+# Everything else stays with the crew (one approval + green CI).
+
+/.github/                          @luanmorenommaciel
+/oteru-collector/hmacconverter/    @luanmorenommaciel
+/oteru-collector/privacy/          @luanmorenommaciel
+/oteru-collector/builder-config.yaml @luanmorenommaciel
+/docs/privacy.md                   @luanmorenommaciel
+/docs/adr/                         @luanmorenommaciel
+/docs/governance/                  @luanmorenommaciel
+/scripts/apply_privacy.py          @luanmorenommaciel
+/scripts/check_pii.py              @luanmorenommaciel
+/oteru_gate/                       @luanmorenommaciel
+/LICENSE                           @luanmorenommaciel
