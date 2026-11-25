@@ -119,6 +119,24 @@ def iter_scope_names(batch: Batch) -> Iterator[str]:
                 yield name
 
 
+def iter_service_names(batch: Batch) -> Iterator[str]:
+    """Yields the resource ``service.name`` of every resource in the batch.
+
+    ``service.name`` is how an OTLP emitter announces itself, which is what
+    ``--profile auto`` keys on: a collector capture mixes every tool that
+    pointed at it, and each needs its own profile.
+    """
+    keys = SCOPE_KEYS_BY_SIGNAL.get(batch.signal)
+    if keys is None:
+        return
+    for resource in batch.payload.get(keys[0], []):
+        for attr in (resource.get("resource") or {}).get("attributes", []):
+            if attr.get("key") == "service.name":
+                name = (attr.get("value") or {}).get("stringValue")
+                if name:
+                    yield name
+
+
 def load_batches(path: str) -> list[Batch]:
     """Loads every batch from the file, in arrival (line) order."""
     batches: list[Batch] = []
