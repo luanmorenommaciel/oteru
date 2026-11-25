@@ -18,14 +18,15 @@
 # Toolchain: Go 1.27.4 / GOTOOLCHAIN=go1.27.4 (contrib v0.155.0 OTTL
 # generics fail to link on the Go 1.25 linker).
 #
-# HMACSHA256 OTTL converter (Duto):
+# Privacy OTTL converters (HMAC + optional AES-GCM):
 #   Local module oteru-collector/hmacconverter/. Its NewFactory wraps
-#   contrib transformprocessor and registers HMACSHA256(value); the key
-#   is read from OTERU_PII_HMAC_KEY in the factory. OCB lists that
-#   module as the transform processor (name stays `transform`). The
+#   contrib transformprocessor and registers HMACSHA256(value) and
+#   AESGCMEncrypt(value, field). HMAC uses OTERU_PII_HMAC_KEY; AES-GCM
+#   loads the optional file-backed installation keyring only when policy
+#   v3 contains Encrypt actions. OCB lists that module as `transform`. The
 #   `replaces` entry maps the module path onto ../hmacconverter
 #   (relative to OCB output_path ./_build, not this file). This
-#   change does not edit hmacconverter/ source — that tree is Duto's.
+#   module also owns the privacy processor and local decrypt audit helper.
 
 dist:
   module: github.com/luanmorenommaciel/oteru/oteru-collector

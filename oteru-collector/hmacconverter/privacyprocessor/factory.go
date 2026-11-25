@@ -1,5 +1,5 @@
-// Package privacyprocessor hashes identity attributes shared by a resource or
-// instrumentation scope. The transformprocessor OTTL contexts in Collector
+// Package privacyprocessor transforms identity attributes shared by a resource
+// or instrumentation scope. The transformprocessor OTTL contexts in Collector
 // v0.155.0 do not expose resource/scope function registration.
 package privacyprocessor
 
@@ -20,11 +20,12 @@ import (
 )
 
 type Config struct {
-	Fields []string `mapstructure:"fields"`
+	Fields        []string `mapstructure:"fields"`
+	EncryptFields []string `mapstructure:"encrypt_fields"`
 }
 
 func (c *Config) Validate() error {
-	seen := make(map[string]struct{}, len(c.Fields))
+	seen := make(map[string]struct{}, len(c.Fields)+len(c.EncryptFields))
 	for _, field := range c.Fields {
 		if field == "" {
 			return errors.New("field names must not be empty")
@@ -33,6 +34,18 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("duplicate field %q", field)
 		}
 		seen[field] = struct{}{}
+	}
+	for _, field := range c.EncryptFields {
+		if field == "" {
+			return errors.New("field names must not be empty")
+		}
+		if _, ok := seen[field]; ok {
+			return fmt.Errorf("duplicate field %q", field)
+		}
+		seen[field] = struct{}{}
+		if !hmacconverter.SupportsEncryptionField(field) {
+			return fmt.Errorf("field %q is not supported for encryption", field)
+		}
 	}
 	return nil
 }
@@ -49,18 +62,31 @@ func bindKey() error { return hmacconverter.InitializeKeyFromEnv() }
 
 func fields(cfg component.Config) []string { return cfg.(*Config).Fields }
 
+func encryptFields(cfg component.Config) []string { return cfg.(*Config).EncryptFields }
+
+func keyring(cfg component.Config) (*hmacconverter.EncryptionKeyring, error) {
+	if len(encryptFields(cfg)) == 0 {
+		return nil, nil
+	}
+	return hmacconverter.LoadKeyringFile(hmacconverter.EncryptionKeyringPath)
+}
+
 func createLogs(ctx context.Context, set processor.Settings, cfg component.Config, next consumer.Logs) (processor.Logs, error) {
 	if err := bindKey(); err != nil {
+		return nil, err
+	}
+	keys, err := keyring(cfg)
+	if err != nil {
 		return nil, err
 	}
 	return processorhelper.NewLogs(ctx, set, cfg, next, func(_ context.Context, data plog.Logs) (plog.Logs, error) {
 		for i := 0; i < data.ResourceLogs().Len(); i++ {
 			resource := data.ResourceLogs().At(i)
-			if err := hashAttributes(resource.Resource().Attributes(), fields(cfg)); err != nil {
+			if err := transformAttributes(resource.Resource().Attributes(), fields(cfg), encryptFields(cfg), keys); err != nil {
 				return plog.Logs{}, err
 			}
 			for j := 0; j < resource.ScopeLogs().Len(); j++ {
-				if err := hashAttributes(resource.ScopeLogs().At(j).Scope().Attributes(), fields(cfg)); err != nil {
+				if err := transformAttributes(resource.ScopeLogs().At(j).Scope().Attributes(), fields(cfg), encryptFields(cfg), keys); err != nil {
 					return plog.Logs{}, err
 				}
 			}
@@ -73,14 +99,18 @@ func createTraces(ctx context.Context, set processor.Settings, cfg component.Con
 	if err := bindKey(); err != nil {
 		return nil, err
 	}
+	keys, err := keyring(cfg)
+	if err != nil {
+		return nil, err
+	}
 	return processorhelper.NewTraces(ctx, set, cfg, next, func(_ context.Context, data ptrace.Traces) (ptrace.Traces, error) {
 		for i := 0; i < data.ResourceSpans().Len(); i++ {
 			resource := data.ResourceSpans().At(i)
-			if err := hashAttributes(resource.Resource().Attributes(), fields(cfg)); err != nil {
+			if err := transformAttributes(resource.Resource().Attributes(), fields(cfg), encryptFields(cfg), keys); err != nil {
 				return ptrace.Traces{}, err
 			}
 			for j := 0; j < resource.ScopeSpans().Len(); j++ {
-				if err := hashAttributes(resource.ScopeSpans().At(j).Scope().Attributes(), fields(cfg)); err != nil {
+				if err := transformAttributes(resource.ScopeSpans().At(j).Scope().Attributes(), fields(cfg), encryptFields(cfg), keys); err != nil {
 					return ptrace.Traces{}, err
 				}
 			}
@@ -123,6 +153,32 @@ func hashAttributes(attrs pcommon.Map, names []string) error {
 			return err
 		}
 		value.SetStr("hmac:v1:" + digest)
+	}
+	return nil
+}
+
+func transformAttributes(
+	attrs pcommon.Map,
+	hashFields []string,
+	encryptFields []string,
+	keyring *hmacconverter.EncryptionKeyring,
+) error {
+	if err := hashAttributes(attrs, hashFields); err != nil {
+		return err
+	}
+	for _, name := range encryptFields {
+		value, ok := attrs.Get(name)
+		if !ok {
+			continue
+		}
+		if value.Type() != pcommon.ValueTypeStr || value.Str() == "" {
+			return errors.New("invalid value for encrypted identity field")
+		}
+		ciphertext, err := hmacconverter.EncryptValue(keyring, name, []byte(value.Str()))
+		if err != nil {
+			return errors.New("cannot encrypt identity field")
+		}
+		value.SetStr(ciphertext)
 	}
 	return nil
 }

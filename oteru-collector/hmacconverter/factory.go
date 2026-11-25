@@ -19,17 +19,29 @@ import (
 	"go.opentelemetry.io/collector/processor/xprocessor"
 )
 
-// NewFactory is the OCB entry point: contrib transform plus HMACSHA256(value)
-// in every OTTL context the privacy compiler uses. The HMAC key is read from
-// OTERU_PII_HMAC_KEY on Create* so a missing/empty/short key fails collector start.
+// NewFactory is the OCB entry point: contrib transform plus Oteru's HMAC and
+// field-bound AES-GCM converters. HMAC key validation remains required on
+// Create*; encryption keyring is required only when an Encrypt statement exists.
 func NewFactory() processor.Factory {
+	// OTTL config parsing can construct converter functions before Create* runs.
+	// Bind the mounted secret as soon as the component factory is constructed.
+	BindOptionalKeyringFile(EncryptionKeyringPath)
 	inner := transformprocessor.NewFactoryWithOptions(
 		transformprocessor.WithLogFunctions(transformprocessor.DefaultLogFunctions()),
-		transformprocessor.WithLogFunctions([]ottl.Factory[*ottllog.TransformContext]{NewHMACSHA256Factory[*ottllog.TransformContext]()}),
+		transformprocessor.WithLogFunctions([]ottl.Factory[*ottllog.TransformContext]{
+			NewHMACSHA256Factory[*ottllog.TransformContext](),
+			NewAESGCMEncryptFactory[*ottllog.TransformContext](),
+		}),
 		transformprocessor.WithSpanFunctions(transformprocessor.DefaultSpanFunctions()),
-		transformprocessor.WithSpanFunctions([]ottl.Factory[*ottlspan.TransformContext]{NewHMACSHA256Factory[*ottlspan.TransformContext]()}),
+		transformprocessor.WithSpanFunctions([]ottl.Factory[*ottlspan.TransformContext]{
+			NewHMACSHA256Factory[*ottlspan.TransformContext](),
+			NewAESGCMEncryptFactory[*ottlspan.TransformContext](),
+		}),
 		transformprocessor.WithSpanEventFunctions(transformprocessor.DefaultSpanEventFunctions()),
-		transformprocessor.WithSpanEventFunctions([]ottl.Factory[*ottlspanevent.TransformContext]{NewHMACSHA256Factory[*ottlspanevent.TransformContext]()}),
+		transformprocessor.WithSpanEventFunctions([]ottl.Factory[*ottlspanevent.TransformContext]{
+			NewHMACSHA256Factory[*ottlspanevent.TransformContext](),
+			NewAESGCMEncryptFactory[*ottlspanevent.TransformContext](),
+		}),
 		transformprocessor.WithMetricFunctions(transformprocessor.DefaultMetricFunctions()),
 		transformprocessor.WithMetricFunctions([]ottl.Factory[*ottlmetric.TransformContext]{NewHMACSHA256Factory[*ottlmetric.TransformContext]()}),
 		transformprocessor.WithDataPointFunctions(transformprocessor.DefaultDataPointFunctions()),
@@ -54,6 +66,7 @@ func (f wrappingFactory) CreateTraces(
 	if err := bindKeyFromEnv(); err != nil {
 		return nil, err
 	}
+	BindOptionalKeyringFile(EncryptionKeyringPath)
 	return f.Factory.CreateTraces(ctx, set, cfg, next)
 }
 
@@ -78,6 +91,7 @@ func (f wrappingFactory) CreateLogs(
 	if err := bindKeyFromEnv(); err != nil {
 		return nil, err
 	}
+	BindOptionalKeyringFile(EncryptionKeyringPath)
 	return f.Factory.CreateLogs(ctx, set, cfg, next)
 }
 

@@ -58,3 +58,78 @@ func TestConfigRejectsEmptyAndDuplicateFields(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigValidatesEncryptionFieldsAndOverlap(t *testing.T) {
+	for _, cfg := range []*Config{
+		{EncryptFields: []string{""}},
+		{EncryptFields: []string{"prompt.content"}},
+		{Fields: []string{"user.email"}, EncryptFields: []string{"user.email"}},
+	} {
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("expected invalid config: %#v", cfg)
+		}
+	}
+	if err := (&Config{EncryptFields: []string{"user.email", "host.name"}}).Validate(); err != nil {
+		t.Fatalf("catalogued encryption fields should validate: %v", err)
+	}
+}
+
+func TestTransformAttributesEncryptsCataloguedFieldOnly(t *testing.T) {
+	keyringJSON := `{"version":1,"active_key_id":"k1","keys":{"k1":"` + strings.Repeat("c", 64) + `"}}`
+	keyring, err := hmacconverter.ParseKeyring([]byte(keyringJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attrs := pcommon.NewMap()
+	attrs.PutStr("user.email", "person@example.invalid")
+	attrs.PutStr("service.name", "synthetic-service")
+	if err := transformAttributes(attrs, nil, []string{"user.email"}, keyring); err != nil {
+		t.Fatal(err)
+	}
+	sealed, _ := attrs.Get("user.email")
+	if !strings.HasPrefix(sealed.Str(), "oteru:enc:v1:k1:user.email:") {
+		t.Fatalf("identity field was not encrypted: %q", sealed.Str())
+	}
+	if strings.Contains(sealed.Str(), "person@example.invalid") {
+		t.Fatal("plaintext survived encryption")
+	}
+	service, _ := attrs.Get("service.name")
+	if service.Str() != "synthetic-service" {
+		t.Fatalf("benign attribute changed: %q", service.Str())
+	}
+	plaintext, keyID, err := hmacconverter.DecryptValue(keyring, "user.email", sealed.Str())
+	if err != nil || keyID != "k1" || string(plaintext) != "person@example.invalid" {
+		t.Fatalf("decrypt got key_id=%q plaintext=%q err=%v", keyID, plaintext, err)
+	}
+}
+
+func TestTransformAttributesRejectsInvalidEncryptedValue(t *testing.T) {
+	keyring, err := hmacconverter.ParseKeyring([]byte(`{"version":1,"active_key_id":"k1","keys":{"k1":"` + strings.Repeat("d", 64) + `"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []struct {
+		name string
+		set  func(pcommon.Map)
+	}{
+		{name: "non-string", set: func(attrs pcommon.Map) { attrs.PutInt("user.id", 1) }},
+		{name: "empty", set: func(attrs pcommon.Map) { attrs.PutStr("user.id", "") }},
+	} {
+		t.Run(value.name, func(t *testing.T) {
+			attrs := pcommon.NewMap()
+			value.set(attrs)
+			if err := transformAttributes(attrs, nil, []string{"user.id"}, keyring); err == nil {
+				t.Fatal("expected invalid encrypted value to fail")
+			}
+		})
+	}
+}
+
+func TestEncryptionErrorDoesNotEchoPII(t *testing.T) {
+	attrs := pcommon.NewMap()
+	attrs.PutStr("user.email", "private@example.invalid")
+	err := transformAttributes(attrs, nil, []string{"user.email"}, nil)
+	if err == nil || strings.Contains(err.Error(), "private@example.invalid") {
+		t.Fatalf("unexpected encryption error: %v", err)
+	}
+}

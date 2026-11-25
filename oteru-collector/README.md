@@ -17,6 +17,11 @@ emitter / Claude Code / POD-1   ──OTLP──► privacy policy ──►  de
   Generate it once with `python -c 'import secrets;print(secrets.token_hex(32))'`
   and keep it for every restart. Missing or invalid keys make the Collector
   refuse startup.
+- Encryption is opt-in. To use policy v3, keep an installation keyring in a
+  protected host file and activate the `docker-compose.encrypt.yml` override;
+  see the [privacy runbook](../docs/privacy.md). The regular Compose stack
+  continues to use the committed hash policy and does not mount an encryption
+  key.
 
 ## Commands
 
@@ -52,6 +57,14 @@ make up-clickstack-local  # collector + ClickStack (collector forwards internall
 
 Direct ingest bypasses the Collector privacy policy. Use `up-clickstack-local`
 for telemetry that requires its masking and dropping rules.
+
+## Optional reversible encryption
+
+Policy v3 can encrypt the six cataloged identity fields in log and trace
+attributes with AES-256-GCM. It does not encrypt prompts, tool I/O or log bodies.
+Metrics with an encrypted identity dimension are rejected to preserve series
+aggregation. Enable it only after reviewing the key custody and local decrypt
+audit limitations in the [privacy runbook](../docs/privacy.md).
 
 ## Forwarding to ClickStack (optional)
 

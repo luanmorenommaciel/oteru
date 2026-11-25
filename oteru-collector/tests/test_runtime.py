@@ -13,6 +13,7 @@ import io
 import json
 import os
 import secrets
+import socket
 import subprocess
 import tarfile
 import tempfile
@@ -116,7 +117,7 @@ def build_hmac_collector():
 
 
 @contextmanager
-def collector(tmp_path, config, network=None):
+def collector(tmp_path, config, network=None, keyring=None):
     name = "oteru-privacy-" + uuid.uuid4().hex[:12]
     output = tmp_path / "telemetry.json"
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -126,6 +127,14 @@ def collector(tmp_path, config, network=None):
     path.chmod(0o644)
     try:
         network_args = ["--network", network] if network else []
+        keyring_args = (
+            ["--mount", f"type=bind,src={keyring},dst=/run/secrets/oteru_pii_keyring,readonly"]
+            if keyring
+            else []
+        )
+        keyring_owner_args = (
+            ["--user", f"{keyring.stat().st_uid}:{keyring.stat().st_gid}"] if keyring else []
+        )
         docker(
             "run",
             "-d",
@@ -136,6 +145,8 @@ def collector(tmp_path, config, network=None):
             "-p",
             "127.0.0.1::4318",
             *network_args,
+            *keyring_args,
+            *keyring_owner_args,
             "-e",
             f"OTERU_PII_HMAC_KEY={TEST_HMAC_KEY}",
             "--mount",
@@ -229,11 +240,21 @@ def config_for(action="mask", profile="base"):
     config = yaml.safe_load((ROOT / filename).read_text())
     if "processors" in config:
         source = default()
+        if action == "encrypt":
+            source["version"] = 3
         source["identity"] = dict.fromkeys(IDENTITY, action)
         config["processors"] = policy.compile_policy(source)
     config["exporters"]["file"]["path"] = "/out/telemetry.json"
     config["exporters"]["file"]["flush_interval"] = "100ms"
     return config
+
+
+def encryption_keyring(tmp_path):
+    path = tmp_path / "keyring.json"
+    key = secrets.token_hex(32)
+    path.write_text(json.dumps({"version": 1, "active_key_id": "e2e-v1", "keys": {"e2e-v1": key}}))
+    path.chmod(0o400)
+    return path
 
 
 def attributes(value):
@@ -479,6 +500,62 @@ def test_hash_covers_six_fields_in_every_supported_context(tmp_path, signal):
         assert value not in json.dumps(batches)
 
 
+def test_encrypt_covers_all_42_identity_contexts_and_preserves_controls(tmp_path):
+    keyring = encryption_keyring(tmp_path)
+    contexts = (("logs", "resource"), ("logs", "scope"), ("logs", "record")) + tuple(
+        ("traces", context) for context in ("resource", "scope", "record", "event")
+    )
+    with collector(tmp_path, config_for("encrypt"), keyring=keyring) as instance:
+        for signal, context in contexts:
+            send(instance, signal, "http", payload(signal, context))
+        log_batches = wait_records(instance[3], "logs", 3)
+        trace_batches = wait_records(instance[3], "traces", 4)
+        assert CANARY not in json.dumps(log_batches) + json.dumps(trace_batches)
+        for signal, batches, expected in (
+            ("logs", log_batches, 18),
+            ("traces", trace_batches, 24),
+        ):
+            signal_envelopes = [
+                envelope for batch in batches for envelope in batch.get(SIGNALS[signal][0], [])
+            ]
+            encrypted = [
+                item["value"]["stringValue"]
+                for item in walk(signal_envelopes)
+                if item.get("key") in IDENTITY
+            ]
+            assert len(encrypted) == expected
+            assert all(value.startswith("oteru:enc:v1:e2e-v1:") for value in encrypted)
+        for batch in (log_batches, trace_batches):
+            assert "session-control" in json.dumps(batch)
+            assert "prompt-control" in json.dumps(batch)
+        assert "operational body" in json.dumps(log_batches)
+        collector_logs = docker("logs", instance[0])
+        assert CANARY not in collector_logs.stdout + collector_logs.stderr
+
+
+def test_encrypt_rejects_metric_identity_dimension_and_keeps_benign_series(tmp_path):
+    keyring = encryption_keyring(tmp_path)
+    data = payload("metrics", "record")
+    metric = data["resourceMetrics"][0]["scopeMetrics"][0]["metrics"][0]
+    point = metric["gauge"]["dataPoints"][0]
+    safe_point = copy.deepcopy(point)
+    safe_point["attributes"] = [
+        a for a in safe_point["attributes"] if a["key"] not in IDENTITY + CONTENT
+    ]
+    point["attributes"] = [a for a in point["attributes"] if a["key"] not in CONTENT]
+    safe_point["asDouble"] = 7.5
+    point["asDouble"] = 42.5
+    metric["gauge"]["dataPoints"].append(safe_point)
+    with collector(tmp_path, config_for("encrypt"), keyring=keyring) as instance:
+        send(instance, "metrics", "http", data)
+        batches = wait_records(instance[3], "metrics", 1)
+        metric_record = records(batches, "metrics")[0]
+        points = metric_record["gauge"]["dataPoints"]
+        assert len(points) == 1
+        assert points[0]["asDouble"] == 7.5
+        assert {a["key"] for a in points[0]["attributes"]}.isdisjoint(IDENTITY)
+
+
 def test_two_principals_keep_stable_pseudonyms_across_signals_and_restart(tmp_path):
     seen = {}
     for run in ("before", "after"):
@@ -716,7 +793,7 @@ def test_uninspectable_links_and_exemplars_are_rejected(tmp_path, signal, action
         ("clickstack-local", "otlp_http/hyperdx"),
     ],
 )
-@pytest.mark.parametrize("action", ["mask", "hash"])
+@pytest.mark.parametrize("action", ["mask", "hash", "encrypt"])
 def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path, profile, exporter, action):
     sink_dir = tmp_path / "sink"
     sink_dir.mkdir(mode=0o777)
@@ -754,10 +831,11 @@ def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path, profile, exp
             source_config = config_for(action, profile=profile)
             source_config["exporters"][exporter]["endpoint"] = "http://sink:4318"
             source_config["exporters"][exporter]["headers"] = {"authorization": "test-only"}
-            with collector(tmp_path / "source", source_config, network) as source:
+            keyring = encryption_keyring(tmp_path) if action == "encrypt" else None
+            with collector(tmp_path / "source", source_config, network, keyring=keyring) as source:
                 for signal in ("logs", "traces", "metrics"):
                     data = payload(signal)
-                    if signal == "metrics" and action == "hash":
+                    if signal == "metrics" and action in ("hash", "encrypt"):
                         point = data["resourceMetrics"][0]["scopeMetrics"][0]
                         point = point["metrics"][0]["gauge"]["dataPoints"][0]
                         point["attributes"] = [
@@ -776,13 +854,15 @@ def test_clickstack_forwarder_receives_only_scrubbed_otlp(tmp_path, profile, exp
                 if action == "hash":
                     expected = pseudonym("user.email", CANARY)
                     assert expected in json.dumps(batches)
+                if action == "encrypt":
+                    assert "oteru:enc:v1:e2e-v1:user.email:" in json.dumps(batches)
                 assert CANARY not in json.dumps(read_batches(source[3]))
         finally:
             OUTPUT_CONTAINERS.pop(sink_dir / "telemetry.json", None)
             docker("rm", "-f", sink_name, check=False)
 
 
-@pytest.mark.parametrize("action", ["mask", "hash"])
+@pytest.mark.parametrize("action", ["mask", "hash", "encrypt"])
 def test_clickhouse_tables_receive_only_scrubbed_records(tmp_path, action):
     database_name = "oteru-privacy-db-" + uuid.uuid4().hex[:12]
     with isolated_network() as network:
@@ -825,12 +905,16 @@ def test_clickhouse_tables_receive_only_scrubbed_records(tmp_path, action):
                 time.sleep(0.1)
             else:
                 raise AssertionError("isolated ClickHouse did not become ready")
+            keyring = encryption_keyring(tmp_path) if action == "encrypt" else None
             with collector(
-                tmp_path / "source", config_for(action, profile="clickhouse"), network
+                tmp_path / "source",
+                config_for(action, profile="clickhouse"),
+                network,
+                keyring=keyring,
             ) as source:
                 for signal in ("logs", "traces", "metrics"):
                     data = payload(signal)
-                    if signal == "metrics" and action == "hash":
+                    if signal == "metrics" and action in ("hash", "encrypt"):
                         point = data["resourceMetrics"][0]["scopeMetrics"][0]
                         point = point["metrics"][0]["gauge"]["dataPoints"][0]
                         point["attributes"] = [
@@ -867,6 +951,8 @@ def test_clickhouse_tables_receive_only_scrubbed_records(tmp_path, action):
                     if action == "hash":
                         expected = pseudonym("user.email", CANARY)
                         assert expected in result.stdout
+                    if action == "encrypt" and table in ("otel_logs", "otel_traces"):
+                        assert "oteru:enc:v1:e2e-v1:user.email:" in result.stdout
                 assert CANARY not in json.dumps(read_batches(source[3]))
         finally:
             docker("rm", "-f", database_name, check=False)
@@ -1032,31 +1118,49 @@ def test_effective_compose_mounts_policy_before_every_profile(profile):
         command += ["-f", str(ROOT / "docker-compose.clickstack-local.yml")]
     if profile == "hyperdx":
         command += ["-f", str(ROOT / "docker-compose.hyperdx.yml")]
+    profile_command = list(command)
+    encrypt_command = [*command, "-f", str(ROOT / "docker-compose.encrypt.yml")]
     env = {
         **os.environ,
         "CLICKSTACK_ENDPOINT": "http://test-only:4318",
         "CLICKSTACK_API_KEY": "test-only",
         "HYPERDX_API_KEY": "test-only",
         "OTERU_PII_HMAC_KEY": TEST_HMAC_KEY,
+        "OTERU_PII_KEYRING_FILE": str(ROOT / "privacy/policy.json"),
     }
-    result = subprocess.run(
-        command + ["config", "--format", "json"],
-        env=env,
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-    config = json.loads(result.stdout)
-    service = config["services"]["oteru-collector"]
-    assert service["image"] == "otelcol-oteru:0.155.0"
-    assert service["environment"]["OTERU_PII_HMAC_KEY"] == TEST_HMAC_KEY
-    assert service["depends_on"]["privacy-policy"]["condition"] == "service_completed_successfully"
-    mounts = {v["target"]: v for v in service["volumes"]}
-    assert mounts["/etc/oteru-privacy"]["read_only"]
-    suffix = "" if profile == "base" else ".clickhouse" if profile == "hyperdx" else "." + profile
-    assert mounts["/etc/oteru-collector-config.yml"]["source"].endswith(
-        f"oteru-collector-config{suffix}.yml"
-    )
+    for active_command, encrypted in (
+        (profile_command, False),
+        (encrypt_command, True),
+    ):
+        result = subprocess.run(
+            active_command + ["config", "--format", "json"],
+            env=env,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        config = json.loads(result.stdout)
+        service = config["services"]["oteru-collector"]
+        assert service["image"] == "otelcol-oteru:0.155.0"
+        assert service["environment"]["OTERU_PII_HMAC_KEY"] == TEST_HMAC_KEY
+        assert (
+            service["depends_on"]["privacy-policy"]["condition"] == "service_completed_successfully"
+        )
+        mounts = {v["target"]: v for v in service["volumes"]}
+        assert mounts["/etc/oteru-privacy"]["read_only"]
+        suffix = (
+            "" if profile == "base" else ".clickhouse" if profile == "hyperdx" else "." + profile
+        )
+        assert mounts["/etc/oteru-collector-config.yml"]["source"].endswith(
+            f"oteru-collector-config{suffix}.yml"
+        )
+        if encrypted:
+            assert service["secrets"] == [
+                {"source": "oteru_pii_keyring", "target": "oteru_pii_keyring"}
+            ]
+            assert config["secrets"]["oteru_pii_keyring"]["file"].endswith("policy.json")
+        else:
+            assert "secrets" not in service
 
 
 def test_policy_activation_replaces_valid_policy_and_stops_on_invalid(tmp_path, monkeypatch):
@@ -1067,7 +1171,17 @@ def test_policy_activation_replaces_valid_policy_and_stops_on_invalid(tmp_path, 
     stack.mkdir()
     shutil.copy(ROOT / "docker-compose.yml", stack)
     compose_config = yaml.safe_load((stack / "docker-compose.yml").read_text())
+    compose_config["services"]["oteru-collector"]["image"] = IMAGE
     compose_config["services"]["oteru-collector"]["build"] = {"context": str(ROOT)}
+    host_ports = []
+    for _ in range(2):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate:
+            candidate.bind(("127.0.0.1", 0))
+            host_ports.append(candidate.getsockname()[1])
+    compose_config["services"]["oteru-collector"]["ports"] = [
+        f"127.0.0.1:{host_ports[0]}:4317",
+        f"127.0.0.1:{host_ports[1]}:4318",
+    ]
     (stack / "docker-compose.yml").write_text(yaml.safe_dump(compose_config, sort_keys=False))
     shutil.copy(ROOT / "oteru-collector-config.yml", stack)
     shutil.copytree(
@@ -1076,31 +1190,9 @@ def test_policy_activation_replaces_valid_policy_and_stops_on_invalid(tmp_path, 
     (stack / "telemetry").mkdir(mode=0o777)
     (stack / "telemetry").chmod(0o777)
     # Isolate both volumes and ports from any live Oteru installation.
-    override = stack / "test.yml"
-    override.write_text(
-        "services:\n  oteru-collector:\n"
-        '    ports: !override ["127.0.0.1::4317", "127.0.0.1::4318"]\n'
-    )
     project = "privacy-" + uuid.uuid4().hex[:12]
     monkeypatch.setenv("COMPOSE_PROJECT_NAME", project)
-    # apply_privacy explicitly sets -f; use the test override as the base in this isolated copy.
-    resolved = subprocess.run(
-        [
-            "docker",
-            "compose",
-            "-f",
-            str(stack / "docker-compose.yml"),
-            "-f",
-            str(override),
-            "config",
-            "--format",
-            "json",
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    (stack / "docker-compose.yml").write_text(resolved.stdout)
+    # apply_privacy explicitly sets -f; use fixed ephemeral ports in this isolated copy.
     compose = ["compose", "-f", str(stack / "docker-compose.yml")]
     spec = importlib.util.spec_from_file_location(
         "apply_privacy", ROOT.parent / "scripts/apply_privacy.py"
@@ -1111,10 +1203,9 @@ def test_policy_activation_replaces_valid_policy_and_stops_on_invalid(tmp_path, 
     try:
         docker(*compose, "up", "-d")
         container_id = docker(*compose, "ps", "-q", "oteru-collector").stdout.strip()
-        ports = json.loads(docker("inspect", container_id).stdout)[0]["NetworkSettings"]["Ports"]
         instance = (
             container_id,
-            "http://127.0.0.1:" + ports["4318/tcp"][0]["HostPort"],
+            f"http://127.0.0.1:{host_ports[1]}",
             "",
             stack / "telemetry/telemetry.json",
         )
@@ -1127,8 +1218,7 @@ def test_policy_activation_replaces_valid_policy_and_stops_on_invalid(tmp_path, 
         (stack / "privacy/policy.json").write_text(json.dumps(source))
         assert activation.main([]) == 0
         new_id = docker(*compose, "ps", "-q", "oteru-collector").stdout.strip()
-        ports = json.loads(docker("inspect", new_id).stdout)[0]["NetworkSettings"]["Ports"]
-        instance = (new_id, "http://127.0.0.1:" + ports["4318/tcp"][0]["HostPort"], "", instance[3])
+        instance = (new_id, f"http://127.0.0.1:{host_ports[1]}", "", instance[3])
         OUTPUT_CONTAINERS[instance[3]] = (new_id, "/telemetry/telemetry.json")
         time.sleep(0.5)
         send(instance, "logs", "http", payload("logs"))

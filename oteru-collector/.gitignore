@@ -4,6 +4,7 @@
 
 # Redirected terminal logs
 *.log
+*oteru-decrypt-audit*.jsonl
 
 # Secrets — never commit credentials
 .env
