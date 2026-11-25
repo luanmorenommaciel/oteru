@@ -58,6 +58,7 @@ IDENTITY = (
 )
 CONTENT = (
     "user_prompt",
+    "prompt",
     "gen_ai.prompt",
     "gen_ai.completion",
     "gen_ai.input.messages",
