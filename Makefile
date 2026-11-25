@@ -87,11 +87,11 @@ e2e-risk-inventory: ## persist declared-inventory findings in isolated ClickHous
 	$(VENV)/$(BINDIR)/python scripts/check_risk_inventory_e2e.py
 
 test-human-gate: ## run the isolated, offline issue #65 contract tests
-	$(VENV)/$(BINDIR)/python -m pytest -q tests/test_human_gate.py
+	$(VENV)/$(BINDIR)/python -m pytest -q tests/test_human_gate.py tests/test_claude_pretool.py
 
 lint-human-gate: ## lint and check formatting for the issue #65 simulator
-	$(VENV)/$(BINDIR)/python -m ruff check oteru_gate tests/test_human_gate.py
-	$(VENV)/$(BINDIR)/python -m ruff format --check oteru_gate tests/test_human_gate.py
+	$(VENV)/$(BINDIR)/python -m ruff check oteru_gate tests/test_human_gate.py tests/test_claude_pretool.py
+	$(VENV)/$(BINDIR)/python -m ruff format --check oteru_gate tests/test_human_gate.py tests/test_claude_pretool.py
 
 demo-human-gate: ## verify all V1 scenarios; set GATE_OUTPUT to a new directory
 	@test -n "$(GATE_OUTPUT)" || { echo "Set GATE_OUTPUT to a new local directory"; exit 2; }
