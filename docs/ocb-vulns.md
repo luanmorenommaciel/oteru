@@ -88,7 +88,7 @@ Collector self-telemetry, reachable, **MODERATE/LOW**:
 - GO-2026-6505 `otel/sdk` + `otlptrace*` @v1.44.0 — LOW
 - GO-2026-6975 `go.opentelemetry.io/otel` + `otel/trace` @v1.44.0 — W3C baggage
   parsing memory amplification (published after the Nov 3 proof; fixed in v1.47.0)
-- GO-2026-6974 `otel/sdk` @v1.44.0 + `otel/sdk/log` @v0.20.0 — AttributeValueLengthLimit
+- GO-2026-6974 `otel/sdk` + `otel/trace` @v1.44.0 + `otel/sdk/log` @v0.20.0 — AttributeValueLengthLimit
   bypass via U+FFFD (fixed in v1.47.0)
 
 GO-2026-6975 / 6974 were checked as `replaces` floors first (2026-11-25): pinning the
