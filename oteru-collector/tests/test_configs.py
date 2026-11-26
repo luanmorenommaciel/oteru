@@ -9,7 +9,21 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-PROFILES = ("", ".clickhouse", ".clickstack", ".clickstack-local")
+# Every `oteru-collector-config*.yml` is a profile. Discovering them (instead of a
+# hand-kept list) means a new profile, for example one that adds an archive
+# exporter, must pass the same privacy topology or this suite fails.
+PROFILES = tuple(
+    sorted(
+        path.name.removeprefix("oteru-collector-config").removesuffix(".yml")
+        for path in ROOT.glob("oteru-collector-config*.yml")
+    )
+)
+
+
+def test_profile_discovery_covers_the_known_profiles():
+    assert {"", ".clickhouse", ".clickstack", ".clickstack-local"} <= set(PROFILES)
+
+
 ACTIVATION_SPEC = importlib.util.spec_from_file_location(
     "apply_privacy", ROOT.parent / "scripts/apply_privacy.py"
 )

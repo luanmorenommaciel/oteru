@@ -25,6 +25,9 @@ IDENTITY_KEYS = (
 )
 CONTENT_KEYS = (
     "user_prompt",
+    # Claude Code's `user_prompt` event is named that way, but carries the prompt
+    # text under the attribute key `prompt` (a literal only with OTEL_LOG_USER_PROMPTS=1).
+    "prompt",
     "gen_ai.prompt",
     "gen_ai.completion",
     "gen_ai.input.messages",
