@@ -1,0 +1,16 @@
+{
+  "version": 3,
+  "identity": {
+    "user.email": "encrypt",
+    "user.id": "encrypt",
+    "user.account_uuid": "encrypt",
+    "user.account_id": "encrypt",
+    "organization.id": "encrypt",
+    "host.name": "encrypt"
+  },
+  "content": {
+    "known_fields": "drop",
+    "log_body": "preserve"
+  },
+  "metrics": "preserve_hashed"
+}

@@ -12,6 +12,7 @@ EMITTER   := oteru-emitter
 COLLECTOR := oteru-collector
 VENV      := $(EMITTER)/.venv
 SAMPLE    := samples/telemetry-sample.json
+ENCRYPT_COMPOSE := $(if $(filter 1,$(ENCRYPT)),-f docker-compose.encrypt.yml,)
 
 ifeq ($(OS),Windows_NT)
 BINDIR := Scripts
@@ -28,7 +29,7 @@ PYTHON ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/nul
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup test lint format test-human-gate lint-human-gate demo-human-gate dry-run pii-guard e2e-signals privacy-config-check e2e-privacy demo-privacy apply-privacy test-risk lint-risk demo-risk-permission demo-risk-tool-rate demo-risk-inventory e2e-risk e2e-risk-tool-rate e2e-risk-inventory up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks
+.PHONY: help setup test lint format test-human-gate lint-human-gate demo-human-gate dry-run pii-guard e2e-signals privacy-config-check e2e-privacy demo-privacy apply-privacy test-risk lint-risk demo-risk-permission demo-risk-tool-rate demo-risk-inventory e2e-risk e2e-risk-tool-rate e2e-risk-inventory up up-clickstack up-clickhouse up-clickstack-local up-direct up-hyperdx down down-clickhouse down-direct down-hyperdx ingest ingest-loop demo clean up-ingestor down-ingestor ingestor-check test-hooks ingestor-crlf-check
 
 help: ## list the available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -132,11 +133,11 @@ demo-privacy: ## prove identity pseudonymization and metric continuity (isolated
 		$(COLLECTOR)/tests/test_runtime.py::test_clickhouse_cost_volume_and_trend_by_two_pseudonyms \
 		$(COLLECTOR)/tests/test_runtime.py::test_policy_activation_replaces_valid_policy_and_stops_on_invalid
 
-apply-privacy: ## stop ingestion, compile a new policy and recreate Collector (PROFILE=base|clickhouse|clickstack|clickstack-local|hyperdx)
-	$(PYTHON) scripts/apply_privacy.py --profile $(or $(PROFILE),base)
+apply-privacy: ## stop ingestion, compile a policy and recreate Collector (PROFILE=...; ENCRYPT=1 opts into AES-GCM)
+	$(PYTHON) scripts/apply_privacy.py --profile $(or $(PROFILE),base) $(if $(filter 1,$(ENCRYPT)),--encrypt,)
 
 up: ## start the collector (docker compose, detached)
-	cd $(COLLECTOR) && docker compose up -d --build
+	cd $(COLLECTOR) && docker compose -f docker-compose.yml $(ENCRYPT_COMPOSE) up -d --build
 
 up-clickstack-local: ## start the collector forwarding to a local ClickStack all-in-one; UI at http://localhost:8080
 	@cd $(COLLECTOR) && \
@@ -146,7 +147,7 @@ up-clickstack-local: ## start the collector forwarding to a local ClickStack all
 		     "container is up) or copy the ingestion key from the UI (Team Settings)" \
 		     "into $(COLLECTOR)/.env (see .env.example), then re-run 'make up-clickstack-local'."; \
 	fi && \
-		docker compose -f docker-compose.yml -f docker-compose.clickstack-local.yml up -d --build
+		docker compose -f docker-compose.yml $(ENCRYPT_COMPOSE) -f docker-compose.clickstack-local.yml up -d --build
 
 up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK_ENDPOINT + CLICKSTACK_API_KEY)
 	@cd $(COLLECTOR) && \
@@ -155,12 +156,12 @@ up-clickstack: ## start the collector forwarding to ClickStack (needs CLICKSTACK
 		     "see $(COLLECTOR)/.env.example). Never commit real values."; \
 		exit 1; \
 	fi && \
-		docker compose -f docker-compose.yml -f docker-compose.clickstack.yml up -d --build
+		docker compose -f docker-compose.yml $(ENCRYPT_COMPOSE) -f docker-compose.clickstack.yml up -d --build
 
 up-clickhouse: ## start the collector + a self-contained ClickHouse backend (native clickhouse exporter)
-	cd $(COLLECTOR) && docker compose -f docker-compose.yml -f docker-compose.clickhouse.yml up -d --build
+	cd $(COLLECTOR) && docker compose -f docker-compose.yml $(ENCRYPT_COMPOSE) -f docker-compose.clickhouse.yml up -d --build
 
-INGEST_COMPOSE := -f docker-compose.yml -f docker-compose.clickhouse.yml -f docker-compose.ingestor.yml
+INGEST_COMPOSE := -f docker-compose.yml $(ENCRYPT_COMPOSE) -f docker-compose.clickhouse.yml -f docker-compose.ingestor.yml
 IMPL ?= python
 
 up-ingestor: ## build + start one ingestor (IMPL=python|go|rust) next to the collector + ClickHouse
@@ -171,6 +172,9 @@ down-ingestor: ## stop the ingestor stack (keeps the ClickHouse volume)
 
 ingestor-check: ## run the conformance suite against one ingestor (IMPL=python|go|rust)
 	bash scripts/check_ingestor.sh $(IMPL)
+
+ingestor-crlf-check: ## every ingestor must apply a CRLF (Windows checkout) schema.sql (needs ClickHouse up)
+	bash scripts/check_ingestor_crlf.sh
 
 up-direct: ## start ClickStack alone (persistent volumes) + bootstrap the API key into .env
 	cd $(COLLECTOR) && docker compose -f docker-compose.hyperdx-direct.yml up -d
@@ -186,7 +190,7 @@ ingest-loop: ## keep ingesting forever (Ctrl+C to stop)
 	@while true; do $(MAKE) --no-print-directory ingest; sleep 2; done
 
 up-hyperdx: ## start the collector + ClickHouse + the local HyperDX (ClickStack) UI on :8080
-	cd $(COLLECTOR) && docker compose -f docker-compose.yml \
+	cd $(COLLECTOR) && docker compose -f docker-compose.yml $(ENCRYPT_COMPOSE) \
 		-f docker-compose.clickhouse.yml -f docker-compose.hyperdx.yml up -d --build
 	@echo "HyperDX UI: http://localhost:8080 — connect it to ClickHouse at http://clickhouse:8123 (user/pass: otel)."
 

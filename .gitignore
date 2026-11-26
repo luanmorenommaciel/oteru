@@ -1,5 +1,6 @@
 # Secrets / local environment — never commit credentials.
 .env
+oteru-decrypt-audit*.jsonl
 __pycache__/
 *.py[cod]
 

@@ -33,7 +33,8 @@ CONTENT_KEYS = (
     "gen_ai.input.messages",
     "gen_ai.output.messages",
 )
-CONTRACT_VERSION = 2
+CONTRACT_VERSION = 3
+SUPPORTED_CONTRACT_VERSIONS = (2, 3)
 
 
 class PolicyError(ValueError):
@@ -63,14 +64,15 @@ def _keys(value, expected, label):
 
 def validate_policy(source: dict) -> None:
     _keys(source, ("version", "identity", "content", "metrics"), "policy")
-    if type(source["version"]) is not int or source["version"] != CONTRACT_VERSION:
+    if type(source["version"]) is not int or source["version"] not in SUPPORTED_CONTRACT_VERSIONS:
         raise PolicyError("unsupported policy version")
     _keys(source["identity"], IDENTITY_KEYS, "identity")
+    allowed_actions = {"hash", "mask", "drop"}
+    if source["version"] == 3:
+        allowed_actions.update(("ignore", "encrypt"))
     for action in source["identity"].values():
-        if action not in ("hash", "mask", "drop"):
-            raise PolicyError(
-                "identity action must be hash, mask or drop; encrypt is not supported"
-            )
+        if not isinstance(action, str) or action not in allowed_actions:
+            raise PolicyError("identity action is unsupported for this policy version")
     _keys(source["content"], ("known_fields", "log_body"), "content")
     if source["content"]["known_fields"] not in ("drop", "preserve"):
         raise PolicyError("known_fields must be drop or preserve")
@@ -94,29 +96,41 @@ def _hash_statement(attributes: str, key: str) -> str:
     )
 
 
-def _statements(attributes: str, source: dict, *, hash_identity: bool = True) -> list[str]:
+def _statements(
+    attributes: str,
+    source: dict,
+    *,
+    hash_identity: bool = True,
+    encrypt_identity: bool = True,
+) -> list[str]:
     result = []
     for key, action in source["identity"].items():
         if action == "hash":
             if hash_identity:
                 result.append(_hash_statement(attributes, key))
+        elif action == "encrypt":
+            if encrypt_identity:
+                result.append(
+                    f'set({attributes}["{key}"], AESGCMEncrypt({attributes}["{key}"], "{key}")) '
+                    f"where {_present(attributes, key)}"
+                )
         elif action == "mask":
             result.append(
                 f'set({attributes}["{key}"], "REDACTED") where {_present(attributes, key)}'
             )
-        else:
+        elif action in ("drop", "ignore"):
             result.append(f'delete_key({attributes}, "{key}")')
     if source["content"]["known_fields"] == "drop":
         result.extend(f'delete_key({attributes}, "{key}")' for key in CONTENT_KEYS)
     return result
 
 
-def _invalid_hash_conditions(contexts: tuple[str, ...], source: dict) -> list[str]:
+def _invalid_identity_conditions(contexts: tuple[str, ...], source: dict) -> list[str]:
     result = []
     for context in contexts:
         attributes = f"{context}.attributes"
         for key, action in source["identity"].items():
-            if action == "hash":
+            if action in ("hash", "encrypt"):
                 result.append(
                     f"{_present(attributes, key)} and "
                     f'(not IsString({attributes}["{key}"]) or '
@@ -141,6 +155,7 @@ def compile_policy(source: dict) -> dict:
                     f"{context}.attributes",
                     source,
                     hash_identity=context not in ("resource", "scope"),
+                    encrypt_identity=context not in ("resource", "scope"),
                 ),
             }
             for context in contexts
@@ -163,16 +178,19 @@ def compile_policy(source: dict) -> dict:
         sensitive.extend(CONTENT_KEYS)
     return {
         "privacy/hash_shared_identity": {
-            "fields": [key for key, action in source["identity"].items() if action == "hash"]
+            "fields": [key for key, action in source["identity"].items() if action == "hash"],
+            "encrypt_fields": [
+                key for key, action in source["identity"].items() if action == "encrypt"
+            ],
         },
         "transform/privacy": transform,
         "filter/privacy_invalid": {
             "error_mode": "propagate",
-            "log_conditions": _invalid_hash_conditions(("resource", "scope", "log"), source),
-            "trace_conditions": _invalid_hash_conditions(
+            "log_conditions": _invalid_identity_conditions(("resource", "scope", "log"), source),
+            "trace_conditions": _invalid_identity_conditions(
                 ("resource", "scope", "span", "spanevent"), source
             ),
-            "metric_conditions": _invalid_hash_conditions(
+            "metric_conditions": _invalid_identity_conditions(
                 ("resource", "scope", "datapoint"), source
             ),
         },

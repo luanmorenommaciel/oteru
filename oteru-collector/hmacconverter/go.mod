@@ -14,6 +14,7 @@ require (
 	go.opentelemetry.io/collector/processor v1.61.0
 	go.opentelemetry.io/collector/processor/processortest v0.155.0
 	go.opentelemetry.io/collector/processor/xprocessor v0.155.0
+	golang.org/x/term v0.47.0
 )
 
 require (
